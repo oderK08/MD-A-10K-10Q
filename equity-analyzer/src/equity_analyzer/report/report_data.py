@@ -22,7 +22,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, Optional, TypeVar
 
+from ..data_layer.edgar_client import filing_index_url
 from ..data_layer.models import Filing, FinancialPeriod
+from ..data_layer.xbrl_normalizer import CANDIDATE_TAGS
 from ..diff.errors import DiffError
 from ..diff.mdna import diff_mdna
 from ..diff.risk_factors import RiskFactorsDiffResult, diff_risk_factors
@@ -77,6 +79,8 @@ class ReportData:
     prior_filing: Optional[Filing]
     generated_at: datetime
     financial_highlights: list = field(default_factory=list)  # list[FinancialHighlight]
+    financial_data_completeness: Optional[float] = None  # resolved / expected metrics, 0..1
+    source_filing_url: Optional[str] = None  # traceability link to the real SEC filing
     altman_z: SectionResult = None
     beneish_m: SectionResult = None
     piotroski_f: SectionResult = None
@@ -107,6 +111,19 @@ def _attempt(compute: Callable[[], T]) -> SectionResult:
         return _ok(compute())
     except (RedFlagError, DiffError, SentimentError) as exc:
         return _unavailable(str(exc))
+
+
+def _data_completeness(financials: Optional[FinancialPeriod]) -> Optional[float]:
+    """
+    Fraction of the metrics we look for (CANDIDATE_TAGS) that actually
+    resolved to a value for this period -- a plain, honest signal of how
+    complete the underlying data is, shown directly in the report rather
+    than making a reader infer it by counting "unavailable" red-flag
+    sections themselves.
+    """
+    if financials is None:
+        return None
+    return len(financials.resolved_tags) / len(CANDIDATE_TAGS)
 
 
 def _financial_highlights(financials: Optional[FinancialPeriod]) -> list:
@@ -204,6 +221,8 @@ def build_report_data(
         prior_filing=prior_filing,
         generated_at=generated_at or datetime.now(timezone.utc),
         financial_highlights=_financial_highlights(filing.financials),
+        financial_data_completeness=_data_completeness(filing.financials),
+        source_filing_url=filing_index_url(filing.cik, filing.accession_number),
         altman_z=altman_z,
         beneish_m=beneish_m,
         piotroski_f=piotroski_f,

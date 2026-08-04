@@ -12,7 +12,7 @@ compilés dans un rapport PDF structuré.
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
 | 3. Diff textuel | ✅ Terminé (16 tests) | Comparaison Item 1A / Item 7 entre deux filings |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
-| 5. Report Builder | ✅ Terminé (18 tests) | Génération du rapport PDF |
+| 5. Report Builder | ✅ Terminé (31 tests) | Génération du rapport PDF + tendance multi-année |
 
 ## Module 1 — Data Layer
 
@@ -316,12 +316,33 @@ Assemble les sorties des Modules 1 à 4 en un rapport HTML → PDF.
   `pip install xhtml2pdf` échoue avec *"Cannot uninstall cryptography...,
   RECORD file not found"* (paquet système sans métadonnées pip), utilise
   `pip install --ignore-installed cryptography xhtml2pdf`.
+- **Traçabilité** — chaque rapport contient un lien direct vers la vraie
+  page SEC EDGAR du filing source (`filing_index_url()` dans
+  `data_layer/edgar_client.py`, pure construction d'URL, pas d'appel
+  réseau), pour vérifier n'importe quel chiffre à la source.
+- **Indicateur de complétude des données** — % des métriques XBRL
+  attendues effectivement résolues pour la période, affiché explicitement
+  dans le rapport plutôt que de laisser deviner en comptant les sections
+  "indisponible" une par une.
+- **`trend.py`** — analyse multi-année : au lieu de comparer juste
+  N vs N-1, prend une liste de filings (ex: 5 ans de 10-K, du plus ancien
+  au plus récent) et calcule un `ReportData` par exercice, chacun comparé
+  à celui **immédiatement précédent dans la liste** (jamais une année
+  sautée). Ne réimplémente rien : réutilise directement
+  `build_report_data` en fenêtre glissante. Un score de 7/9 au Piotroski
+  ne veut rien dire seul — savoir que c'était 4/9 deux ans plus tôt, si.
+  **Comparaison sectorielle volontairement absente** de cette itération :
+  elle demanderait un nouveau mode de récupération de données (plusieurs
+  entreprises à la fois) qu'on ne peut pas valider contre de vraies
+  données depuis cet environnement de dev — mieux vaut ne pas livrer un
+  résultat non vérifié que de prétendre que c'est fiable.
 
 ### Tests
 
-18 tests, dont un test d'intégration bout-en-bout qui fait tourner
-**Module 1 → Module 5** sur les vraies fixtures (XBRL + HTML), jusqu'à un
-vrai PDF généré (vérifie les octets magiques `%PDF-`). Avec cette fixture
+31 tests, dont deux tests d'intégration bout-en-bout qui font tourner
+**Module 1 → Module 5** sur les vraies fixtures (XBRL + HTML) jusqu'à un
+vrai PDF généré (vérifie les octets magiques `%PDF-`) — un pour un rapport
+single-période, un pour une tendance sur 2 exercices. Avec cette fixture
 précise, les Red Flags ressortent "indisponibles" (tags XBRL manquants,
 données trimestrielles) — comportement voulu, pas un échec de test.
 
@@ -332,16 +353,23 @@ python -m pytest tests/report -v
 ### Utiliser le module
 
 ```python
-from equity_analyzer.report import build_report_data, render_html, save_pdf
+from equity_analyzer.report import (
+    build_report_data, render_html, save_pdf,
+    build_trend_analysis, render_trend_html,
+)
 
+# Rapport sur une période
 report = build_report_data(filing, prior_filing, lm_dictionary)
-html = render_html(report)
-save_pdf(html, "rapport.pdf")
+save_pdf(render_html(report), "rapport.pdf")
+
+# Tendance multi-année (filings triés du plus ancien au plus récent)
+trend = build_trend_analysis([filing_2021, filing_2022, filing_2023], lm_dictionary)
+save_pdf(render_trend_html(trend), "tendance.pdf")
 ```
 
 ## Statut : projet complet, validé contre de vraies données
 
-Les 5 modules sont terminés et testés (117 tests). Le pipeline a été validé
+Les 5 modules sont terminés et testés (131 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,

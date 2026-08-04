@@ -17,6 +17,7 @@ from __future__ import annotations
 from html import escape as _e
 
 from .report_data import ReportData, SectionResult
+from .trend import TrendAnalysis, TrendPoint
 
 _CSS = """
   body { font-family: Helvetica, Arial, sans-serif; color: #1a1a1a; font-size: 11pt; }
@@ -59,12 +60,16 @@ def _unavailable_html(section: SectionResult) -> str:
 
 def _render_header(report: ReportData) -> str:
     filing = report.filing
+    source_link = (
+        f' — <a href="{_e(report.source_filing_url)}">source SEC EDGAR</a>'
+        if report.source_filing_url else ""
+    )
     return f"""
     <h1>{_e(filing.company_name)} ({_e(filing.ticker)})</h1>
     <p class="subtitle">
       {_e(filing.form_type.value)} — exercice {filing.fiscal_year} {_e(filing.fiscal_period)}
       — déposé le {filing.filed_date.isoformat()}
-      — CIK {_e(filing.cik)} — accession {_e(filing.accession_number)}
+      — CIK {_e(filing.cik)} — accession {_e(filing.accession_number)}{source_link}
     </p>
     """
 
@@ -77,8 +82,19 @@ def _render_financial_highlights(report: ReportData) -> str:
         f"<td>{_e(h.concept) if h.concept else '—'}</td></tr>"
         for h in report.financial_highlights
     )
+    completeness_note = ""
+    if report.financial_data_completeness is not None:
+        completeness_note = (
+            f'<p>Complétude des données financières : '
+            f'<strong>{_fmt_pct(report.financial_data_completeness)}</strong> '
+            f"des métriques attendues ont été résolues pour ce filing "
+            f"(le reste — voir les sections indisponibles ci-dessous —"
+            f" n'est pas forcément un manque : certaines métriques ne "
+            f"s'appliquent pas à tous les secteurs).</p>"
+        )
     return f"""
     <h2>Chiffres clés</h2>
+    {completeness_note}
     <table>
       <tr><th>Poste</th><th>Valeur</th><th>Tag XBRL</th></tr>
       {rows}
@@ -235,6 +251,103 @@ def render_html(report: ReportData) -> str:
     Rapport généré automatiquement le {report.generated_at.isoformat()} à partir des
     données SEC EDGAR. Voir le code source du projet pour la méthodologie complète
     et les approximations documentées de chaque module.
+  </p>
+</body>
+</html>
+"""
+
+
+def _trend_altman_cell(section: SectionResult) -> str:
+    if not section.available:
+        return '<span class="unavailable">—</span>'
+    result = section.value
+    return f'{_fmt_ratio(result.score)} <span class="zone-{_e(result.zone)}">({_e(result.zone)})</span>'
+
+
+def _trend_beneish_cell(section: SectionResult) -> str:
+    if not section.available:
+        return '<span class="unavailable">—</span>'
+    result = section.value
+    flagged_class = "flagged-true" if result.flagged else "flagged-false"
+    return f'<span class="{flagged_class}">{_fmt_ratio(result.score)}</span>'
+
+
+def _trend_piotroski_cell(section: SectionResult) -> str:
+    if not section.available:
+        return '<span class="unavailable">—</span>'
+    result = section.value
+    return f"{result.score} / {result.max_score}"
+
+
+def _trend_sentiment_cell(section: SectionResult) -> str:
+    if not section.available:
+        return '<span class="unavailable">—</span>'
+    return _fmt_ratio(section.value.net_tone)
+
+
+def _render_trend_row(point: TrendPoint) -> str:
+    financials = point.filing.financials
+    revenue = financials.revenue.value if financials and financials.revenue else None
+    net_income = financials.net_income.value if financials and financials.net_income else None
+    report = point.report
+    source_link = (
+        f'<a href="{_e(report.source_filing_url)}">filing</a>'
+        if report.source_filing_url else "—"
+    )
+    return f"""
+    <tr>
+      <td>{point.fiscal_year}</td>
+      <td>{_fmt_currency(revenue)}</td>
+      <td>{_fmt_currency(net_income)}</td>
+      <td>{_fmt_pct(report.financial_data_completeness)}</td>
+      <td>{_trend_altman_cell(report.altman_z)}</td>
+      <td>{_trend_beneish_cell(report.beneish_m)}</td>
+      <td>{_trend_piotroski_cell(report.piotroski_f)}</td>
+      <td>{_trend_sentiment_cell(report.mdna_sentiment)}</td>
+      <td>{source_link}</td>
+    </tr>
+    """
+
+
+def render_trend_html(trend: TrendAnalysis) -> str:
+    """
+    Renders a TrendAnalysis (see trend.py) into a complete,
+    self-contained HTML document: one row per fiscal year, each score
+    computed against the immediately preceding year in the series --
+    the point of this view is seeing a score move over time, not just
+    its value in isolation.
+    """
+    if not trend.points:
+        raise ValueError("trend has no points to render")
+    last_filing = trend.points[-1].filing
+    years_span = f"{trend.points[0].fiscal_year}–{trend.points[-1].fiscal_year}"
+    rows = "\n".join(_render_trend_row(p) for p in trend.points)
+    return f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{_e(last_filing.company_name)} — historique {years_span}</title>
+  <style>{_CSS}</style>
+</head>
+<body>
+  <h1>{_e(last_filing.company_name)} ({_e(last_filing.ticker)}) — historique {years_span}</h1>
+  <p class="subtitle">
+    Chaque exercice est comparé à celui immédiatement précédent dans la série
+    (jamais une année sautée) — Beneish M, Piotroski F et la tonalité MD&amp;A
+    reflètent donc toujours une vraie comparaison année sur année.
+  </p>
+  <table>
+    <tr>
+      <th>Exercice</th><th>Revenue</th><th>Net Income</th>
+      <th>Complétude</th><th>Altman Z</th><th>Beneish M</th>
+      <th>Piotroski F</th><th>Tonalité MD&amp;A</th><th>Source</th>
+    </tr>
+    {rows}
+  </table>
+  <p class="footer">
+    Rapport de tendance généré automatiquement à partir des données SEC EDGAR.
+    Pas de comparaison sectorielle dans cette vue — voir le rapport détaillé
+    de chaque exercice pour le détail complet de chaque section.
   </p>
 </body>
 </html>

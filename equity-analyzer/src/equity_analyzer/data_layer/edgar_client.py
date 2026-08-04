@@ -136,3 +136,19 @@ class EdgarClient:
         url = (f"{SEC_ARCHIVES_BASE}/{cik_int}/{accession_no_dashes}/"
                f"{primary_document}")
         return self._get(url, expect_json=False)
+
+
+def filing_index_url(cik: str, accession_number: str) -> str:
+    """
+    The human-browsable SEC EDGAR index page for one filing (lists every
+    document and exhibit filed under that accession). Needs only `cik`
+    and `accession_number` -- unlike `fetch_filing_document`, no
+    `primary_document` required -- so report-generation code can build a
+    traceability link back to the real source filing for any figure
+    without an extra API round-trip. Pure URL construction, no network
+    call.
+    """
+    cik_int = str(int(cik))
+    accession_no_dashes = accession_number.replace("-", "")
+    return (f"{SEC_ARCHIVES_BASE}/{cik_int}/{accession_no_dashes}/"
+            f"{accession_number}-index.htm")
