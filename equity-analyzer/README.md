@@ -11,7 +11,7 @@ compilés dans un rapport PDF structuré.
 | 1. Data Layer | ✅ Terminé (26 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
 | 3. Diff textuel | ✅ Terminé (16 tests) | Comparaison Item 1A / Item 7 entre deux filings |
-| 4. Sentiment | ⏳ À venir | Score de tonalité Loughran-McDonald |
+| 4. Sentiment | ✅ Terminé (21 tests) | Score de tonalité Loughran-McDonald |
 | 5. Report Builder | ⏳ À venir | Génération du rapport PDF |
 
 ## Module 1 — Data Layer
@@ -183,7 +183,65 @@ Toutes les fonctions lèvent `MissingSectionError` si une section n'a pas
 python -m pytest tests/diff -v
 ```
 
+## Module 4 — Sentiment
+
+### Ce qu'il fait
+
+Score de tonalité Loughran-McDonald, construit sur `FilingTextSections`
+du Module 1 :
+
+- **`lm_dictionary.py`** — charge le **vrai** dictionnaire Loughran-McDonald
+  depuis son export CSV officiel. **Ce repo ne l'embarque volontairement
+  pas** : c'est une liste académique de plusieurs dizaines de milliers de
+  mots, maintenue et versionnée par l'université Notre Dame, publiée
+  gratuitement ici :
+  👉 https://sraf.nd.edu/loughranmcdonald-master-dictionary/
+  En recopier une version partielle de mémoire aurait sous-compté certaines
+  catégories silencieusement — exactement le genre d'erreur que ce projet
+  cherche à éviter. **Télécharge le CSV et passe son chemin à
+  `load_lm_dictionary()`.**
+- **`scorer.py`** — comptage de mots par catégorie (Negative, Positive,
+  Uncertainty, Litigious, Strong/Weak Modal, Constraining), proportions
+  normalisées par le nombre de mots, et un score de tonalité nette
+  `net_tone = (positive - negative) / (positive + negative)`. Approche
+  "bag-of-words" standard (celle de l'article original Loughran & McDonald
+  2011) — pas de gestion de la négation ("not profitable" compte quand
+  même "profitable" comme positif), documenté comme limite connue plutôt
+  que caché.
+- **`sections.py`** — wrappers spécifiques à Item 7 (MD&A, toujours scoré)
+  et Item 1A (Risk Factors), avec le même traitement explicite du
+  boilerplate 10-Q que le Module 3 : scorer une phrase de disclaimer
+  donnerait un résultat valide mais dénué de sens, donc c'est skip
+  explicite plutôt que faux score neutre.
+- `compare_sentiment()` — variation de tonalité entre deux textes déjà
+  scorés (`tone_shift`), utile pour suivre l'évolution trimestre sur
+  trimestre du MD&A.
+
+### Tests
+
+Les tests utilisent un **petit fixture CSV fait main** (15 mots,
+`tests/fixtures/sample_lm_dictionary.csv`) — ce n'est PAS le vrai
+dictionnaire, seulement de quoi valider la logique du loader et du
+scorer. Un test d'intégration fait tourner le pipeline complet Module 1 →
+Module 4 sur `sample_10k.html`, suivant la même discipline que le
+Module 3 (valider contre du texte réellement extrait, pas seulement des
+exemples synthétiques).
+
+```bash
+python -m pytest tests/sentiment -v
+```
+
+### Utiliser le module (avec le vrai dictionnaire)
+
+```python
+from equity_analyzer.sentiment import load_lm_dictionary, score_mdna_sentiment
+
+dictionary = load_lm_dictionary("Loughran-McDonald_MasterDictionary_2024.csv")
+result = score_mdna_sentiment(filing.text_sections, dictionary)
+print(result.net_tone, result.proportions)
+```
+
 ## Prochaine étape
 
-Module 4 : Sentiment (score de tonalité Loughran-McDonald), appliqué sur
-les mêmes sections de texte que ce module.
+Module 5 : Report Builder (assemblage HTML → PDF), qui rassemble les
+sorties des Modules 1 à 4 en un rapport structuré.
