@@ -8,7 +8,7 @@ compilés dans un rapport PDF structuré.
 
 | Module | Statut | Description |
 |---|---|---|
-| 1. Data Layer | ✅ Terminé (29 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
+| 1. Data Layer | ✅ Terminé (36 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
 | 3. Diff textuel | ✅ Terminé (16 tests) | Comparaison Item 1A / Item 7 entre deux filings |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
@@ -28,12 +28,38 @@ compilés dans un rapport PDF structuré.
 - **`xbrl_normalizer.py`** : transforme les données XBRL brutes en
   `FinancialPeriod` normalisé. Gère explicitement :
   - la variation des tags GAAP selon les émetteurs (liste de tags candidats
-    par métrique, avec fallback ordonné)
+    par métrique, avec fallback ordonné) — étendue après le test multi-tickers
+    sur la vraie API (`sga_expense`, `cogs`, `ppe_net`, `receivables`,
+    `long_term_debt`, `depreciation_amortization`, `shares_outstanding` ont
+    chacun reçu des tags alternatifs supplémentaires). **Ces ajouts sont du
+    "best-effort"** basé sur la connaissance générale de la taxonomie
+    US-GAAP, pas vérifiés contre les vrais filings qui avaient le manque
+    (accès réseau toujours bloqué depuis mon environnement) — à valider en
+    relançant le workflow GitHub Actions.
   - la sélection de la valeur **telle que déclarée dans le filing d'origine**
     (par `accession_number`), pour ne jamais mélanger une valeur avec une
     restatement ultérieure
   - la classification de durée (instant / 3M / 6M / 9M / 12M) pour ne
     jamais comparer un trimestre seul à un cumul year-to-date
+  - **deux manques structurels identifiés avec certitude** (pas de simples
+    tags alternatifs à ajouter) :
+    - `shares_outstanding` est très souvent disponible **uniquement** en
+      tant que fait de première page (`dei:EntityCommonStockSharesOutstanding`,
+      espace de nommage `dei`, pas `us-gaap`) — fallback ajouté, utilisé
+      seulement si aucun tag `us-gaap` ne matche
+    - certains émetteurs (ex: Amazon) ne déclarent jamais de ligne "Total
+      liabilities" à part entière — le bilan va directement à "Total
+      liabilities and stockholders' equity". `total_liabilities` est alors
+      **calculé** (`LiabilitiesAndStockholdersEquity - StockholdersEquity`),
+      marqué explicitement `derived:...` dans `resolved_tags` pour rester
+      traçable et distinct d'une valeur réellement déclarée
+  - **limite documentée, pas corrigée** : les institutions financières
+    (banques, assureurs) déposent un bilan non classifié en courant/non
+    courant — `current_assets`/`current_liabilities` n'existe simplement
+    pas pour elles, sous aucun tag. C'est aussi la pratique standard en
+    finance de ne pas appliquer Altman Z / Beneish M / Piotroski F aux
+    institutions financières pour cette même raison — ce n'est pas un bug
+    à corriger, c'est une limite de portée de ces modèles.
 - **`text_sections.py`** : extrait Item 1A (Risk Factors), Item 7/Item 2
   (MD&A), Item 9A/Item 4 (Controls) du HTML brut d'un filing. Gère :
   - la désambiguïsation table des matières vs section réelle (la TOC
@@ -315,7 +341,7 @@ save_pdf(html, "rapport.pdf")
 
 ## Statut : projet complet, validé contre de vraies données
 
-Les 5 modules sont terminés et testés (110 tests). Le pipeline a été validé
+Les 5 modules sont terminés et testés (117 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,
