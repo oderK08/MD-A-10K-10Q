@@ -9,7 +9,7 @@ compilés dans un rapport PDF structuré.
 | Module | Statut | Description |
 |---|---|---|
 | 1. Data Layer | ✅ Terminé (26 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
-| 2. Red Flags | ⏳ À venir | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
+| 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
 | 3. Diff textuel | ⏳ À venir | Comparaison Item 1A / Item 7 entre deux filings |
 | 4. Sentiment | ⏳ À venir | Score de tonalité Loughran-McDonald |
 | 5. Report Builder | ⏳ À venir | Génération du rapport PDF |
@@ -97,7 +97,48 @@ Tous les tests du Data Layer tournent sur des fixtures locales
 (`tests/fixtures/`) qui reproduisent fidèlement les schémas JSON/HTML réels
 de SEC EDGAR — aucun appel réseau réel n'est nécessaire pour les tests.
 
+## Module 2 — Red Flags
+
+### Ce qu'il fait
+
+Trois scores quantitatifs, construits directement sur les `FinancialPeriod`
+du Module 1 (jamais sur du XBRL brut) :
+
+- **`altman_z.py`** — risque de faillite/détresse financière. Deux variantes
+  explicites, jamais mélangées silencieusement :
+  - **`original`** (Altman 1968, entreprises cotées) : utilise la valeur de
+    **marché** des capitaux propres. SEC XBRL ne fournit pas de cours de
+    bourse — il faut passer `market_value_of_equity` explicitement pour
+    déclencher cette variante.
+  - **`book_value`** (variante entreprises privées) : utilisée par défaut,
+    coefficients et seuils de zone différents (pas juste la même formule
+    avec une autre entrée).
+  - Exige un `FinancialPeriod` annuel (12M) : appliqué tel quel sur un
+    trimestre, le ratio Sales/Total Assets serait sous-estimé d'un facteur
+    ~4, donc la fonction rejette explicitement les périodes trimestrielles.
+- **`beneish_m.py`** — probabilité de manipulation comptable (modèle à 8
+  variables). Nécessite une paire (current, prior) comparable YoY.
+- **`piotroski_f.py`** — solidité fondamentale (9 signaux binaires,
+  score 0-9). Nécessite également une paire (current, prior) comparable YoY.
+- **`comparability.py`** — garde partagée (`require_comparable_yoy`) qui
+  impose : même `duration`, année fiscale strictement postérieure, et même
+  trimestre fiscal si la période n'est pas annuelle (Q2 vs Q2, jamais Q2 vs
+  Q1) — pour ne jamais confondre saisonnalité et vrai signal.
+
+Toutes les fonctions échouent explicitement (`InsufficientDataError`,
+`IncomparablePeriodsError`) plutôt que de deviner une valeur manquante ou de
+comparer silencieusement des périodes incompatibles.
+
+### Lancer les tests
+
+```bash
+python -m pytest tests/redflags -v
+```
+
+23 tests, vérifiant notamment les formules à la main (valeurs attendues
+calculées indépendamment, pas juste "ça tourne sans erreur").
+
 ## Prochaine étape
 
-Module 2 : Red Flags (Altman Z-Score, Beneish M-Score, Piotroski F-Score),
-construit directement sur les `FinancialPeriod` produits par ce module.
+Module 3 : Diff textuel (comparaison Item 1A / Item 7 entre deux filings),
+construit sur `FilingTextSections` du Module 1.
