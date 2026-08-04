@@ -80,3 +80,43 @@ def test_word_counts_reflect_whole_text_not_just_diffed_paragraphs():
     result = diff_text(prior, current)
     assert result.prior_word_count == len(f"{PARA_A} {PARA_B}".split())
     assert result.current_word_count == len(f"{PARA_A} {PARA_B} {PARA_C}".split())
+
+
+def test_single_p_tag_with_line_wrapped_sentences_diffs_at_sentence_level():
+    """
+    Real SEC filings routinely put several sentences in ONE <p> tag,
+    line-wrapped with bare newlines for source readability (see
+    tests/fixtures/sample_10k.html). If only one sentence in that block
+    changes, the diff must flag just that sentence -- not the whole
+    block -- otherwise a one-word revenue update looks like the entire
+    MD&A was rewritten.
+    """
+    prior = (
+        "Revenue increased 12% year over year, driven primarily by strong\n"
+        "demand in our core product lines.\n"
+        "Gross margin improved by 150 basis points due to favorable input\n"
+        "cost trends and manufacturing efficiencies.\n"
+        "Operating expenses grew slower than revenue, reflecting continued\n"
+        "discipline in discretionary spending."
+    )
+    current = (
+        "Revenue increased 5% year over year, driven primarily by strong\n"
+        "demand in our core product lines.\n"
+        "Gross margin improved by 150 basis points due to favorable input\n"
+        "cost trends and manufacturing efficiencies.\n"
+        "Operating expenses grew slower than revenue, reflecting continued\n"
+        "discipline in discretionary spending."
+    )
+
+    result = diff_text(prior, current)
+    kinds = [seg.kind for seg in result.segments]
+
+    # exactly one sentence replaced, the other two untouched -- not a
+    # wholesale removal/re-addition of the entire block.
+    assert kinds.count("removed") == 1
+    assert kinds.count("added") == 1
+    assert kinds.count("equal") == 2
+    removed = next(seg.text for seg in result.segments if seg.kind == "removed")
+    added = next(seg.text for seg in result.segments if seg.kind == "added")
+    assert "12%" in removed
+    assert "5%" in added

@@ -10,7 +10,7 @@ compilés dans un rapport PDF structuré.
 |---|---|---|
 | 1. Data Layer | ✅ Terminé (26 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
-| 3. Diff textuel | ✅ Terminé (14 tests) | Comparaison Item 1A / Item 7 entre deux filings |
+| 3. Diff textuel | ✅ Terminé (16 tests) | Comparaison Item 1A / Item 7 entre deux filings |
 | 4. Sentiment | ⏳ À venir | Score de tonalité Loughran-McDonald |
 | 5. Report Builder | ⏳ À venir | Génération du rapport PDF |
 
@@ -142,15 +142,27 @@ calculées indépendamment, pas juste "ça tourne sans erreur").
 
 ### Ce qu'il fait
 
-Diff au niveau paragraphe (via `difflib.SequenceMatcher`), construit sur les
+Diff au niveau phrase (via `difflib.SequenceMatcher`), construit sur les
 `FilingTextSections` du Module 1 :
 
-- **`text_diff.py`** — le diff générique : découpe le texte en paragraphes,
-  produit une liste de segments `equal` / `added` / `removed`, un ratio de
-  similarité et des compteurs de mots ajoutés/supprimés. Granularité
-  paragraphe (pas mot ni caractère) car c'est ce qui se lit comme "ce
-  paragraphe est nouveau / a disparu / n'a pas changé" pour un usage
-  advisory, plutôt qu'un diff bruyant au niveau mot.
+- **`text_diff.py`** — le diff générique : sépare d'abord le texte sur les
+  vraies lignes vides (frontières de bloc réelles), puis, **à l'intérieur**
+  de chaque bloc, découpe en phrases plutôt qu'en gardant tout le bloc
+  d'un seul tenant.
+  **Correction post-validation** : la première version découpait
+  uniquement sur les lignes vides ("paragraphe"). En testant contre les
+  vraies fixtures du Module 1 (pas des exemples synthétiques), on a
+  découvert que beaucoup de filings SEC réels mettent tout un MD&A ou tout
+  un risk factor dans **une seule balise `<p>`**, avec de simples retours
+  à la ligne internes pour le formatage source — pas une balise par
+  phrase. Résultat avec l'ancien découpage : si une seule phrase changeait
+  (ex: "Revenue increased 12%" → "5%"), tout le bloc de 4 phrases était
+  signalé comme entièrement supprimé + entièrement réécrit — un faux
+  signal "gros changement". Le découpage par phrase à l'intérieur des
+  blocs corrige ça (test de régression :
+  `test_single_p_tag_with_line_wrapped_sentences_diffs_at_sentence_level`,
+  + `tests/diff/test_integration_real_fixtures.py` qui fait tourner le
+  pipeline complet Module 1 → Module 3 sur `sample_10k.html`).
 - **`risk_factors.py`** — diff d'Item 1A, avec le cas boilerplate des 10-Q
   géré explicitement : si la section actuelle est la formule standard
   "aucun changement matériel", le module **refuse de calculer un diff**
