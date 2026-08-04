@@ -1,0 +1,54 @@
+name: Test contre la vraie API SEC EDGAR
+
+# Déclenché manuellement depuis l'onglet "Actions" du repo sur github.com
+# (bouton "Run workflow") -- aucun terminal nécessaire. Tourne sur les
+# serveurs de GitHub, qui ont un accès internet normal, donc peut
+# atteindre data.sec.gov contrairement aux sandbox de développement.
+"on":
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Ticker à tester (ex: AAPL, MSFT, TSLA)"
+        required: false
+        default: "AAPL"
+      user_agent:
+        description: "User-Agent SEC EDGAR (nom d'app + email de contact, exigé par la SEC)"
+        required: false
+        default: "EquityAnalyzer/1.0 contact@example.com"
+
+jobs:
+  test-real-api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: equity-analyzer
+    steps:
+      - name: Checkout du repo
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer les dépendances
+        run: |
+          pip install -r requirements.txt || true
+          pip install -e .
+          # xhtml2pdf peut entrer en conflit avec un paquet cryptography
+          # préinstallé sur certaines images -- filet de sécurité.
+          python -c "import xhtml2pdf" || pip install --ignore-installed cryptography xhtml2pdf
+
+      - name: Lancer le pipeline complet contre la vraie API SEC
+        env:
+          TICKER: ${{ inputs.ticker }}
+          SEC_USER_AGENT: ${{ inputs.user_agent }}
+        run: python scripts/test_real_sec_pipeline.py
+
+      - name: Publier le rapport PDF généré
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-${{ inputs.ticker }}
+          path: equity-analyzer/rapport_genere.pdf
+          if-no-files-found: ignore
