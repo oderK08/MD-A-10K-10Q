@@ -14,12 +14,28 @@ rendered page.
 
 from __future__ import annotations
 
+import re
 from html import escape as _e
 
+from .charts import bar_chart_data_uri
 from .report_data import ReportData, SectionResult
 from .trend import TrendAnalysis, TrendPoint
 
+# @page / @frame is xhtml2pdf's (non-standard, pisa-specific) mechanism
+# for a footer that repeats on every page -- confirmed by rendering a
+# real test PDF and inspecting every page, not assumed from docs. A
+# plain in-flow <pdf:pagenumber/> only appears once, at whatever point
+# in the document flow it's placed; wrapping it in the #footer_content
+# frame target is what makes it repeat.
 _CSS = """
+  @page {
+    size: a4 portrait;
+    margin: 2.4cm 2cm 2cm 2cm;
+    @frame footer_frame {
+      -pdf-frame-content: footer_content;
+      bottom: 1cm; margin-left: 2cm; margin-right: 2cm; height: 1cm;
+    }
+  }
   body { font-family: Helvetica, Arial, sans-serif; color: #1a1a1a; font-size: 11pt; }
   h1 { font-size: 18pt; margin-bottom: 2pt; }
   h2 { font-size: 13pt; margin-top: 20pt; border-bottom: 1px solid #ccc; padding-bottom: 4pt; }
@@ -39,6 +55,22 @@ _CSS = """
   .segment-removed { background: #ffeef0; color: #cf222e; text-decoration: line-through; padding: 2pt 4pt; display: block; margin: 2pt 0; }
   .skip-note { color: #9a6700; background: #fff8e6; padding: 6pt; border-radius: 4pt; }
   .footer { margin-top: 24pt; color: #888; font-size: 8pt; border-top: 1px solid #ccc; padding-top: 6pt; }
+  #footer_content { text-align: center; font-size: 8pt; color: #999; }
+  .cover { text-align: center; margin-top: 200pt; }
+  .cover .cover-kicker { font-size: 11pt; color: #888; letter-spacing: 1pt; text-transform: uppercase; }
+  .cover .cover-title { font-size: 28pt; font-weight: bold; margin-top: 8pt; }
+  .cover .cover-subtitle { font-size: 13pt; color: #555; margin-top: 6pt; }
+  .cover .cover-meta { font-size: 9pt; color: #999; margin-top: 70pt; }
+  .exec-summary { background: #f5f8fa; border-left: 3pt solid #2a6f97; padding: 8pt 12pt; margin: 10pt 0; }
+  .exec-summary h2 { margin-top: 0; border-bottom: none; padding-bottom: 0; }
+  .exec-summary ul { margin: 4pt 0; padding-left: 16pt; }
+  .exec-summary li { margin: 3pt 0; }
+  .exec-summary .warn { color: #9a6700; font-weight: bold; }
+  .page-break { page-break-before: always; }
+  .chart-row { margin: 3pt 0; }
+  .chart-label { display: inline-block; width: 40pt; font-size: 9pt; vertical-align: middle; }
+  .chart-value { display: inline-block; width: 46pt; font-size: 9pt; text-align: right;
+                 vertical-align: middle; padding-right: 6pt; }
 """
 
 
@@ -56,6 +88,84 @@ def _fmt_pct(value):
 
 def _unavailable_html(section: SectionResult) -> str:
     return f'<p class="unavailable">Indisponible — {_e(section.unavailable_reason)}</p>'
+
+
+_CAMEL_CASE_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+
+def _humanize_xbrl_tag(concept: str) -> str:
+    """
+    Inserts spaces at camelCase boundaries in an XBRL concept name (e.g.
+    "RevenueFromContractWithCustomerExcludingAssessedTax" -> "Revenue
+    From Contract With Customer Excluding Assessed Tax") so it wraps
+    across multiple lines in a table cell instead of overflowing the
+    page edge.
+
+    Confirmed necessary, and confirmed to be the only technique that
+    actually works, by rendering real reports and inspecting the pages:
+    xhtml2pdf respects neither `word-break: break-all` nor `<wbr>` (both
+    left a long unbroken tag name running off the page), but DOES wrap
+    normally at real spaces -- so inserting them is what's used here,
+    not word-break or wbr.
+    """
+    return _CAMEL_CASE_BOUNDARY_RE.sub(" ", concept)
+
+
+def _executive_summary_lines(report: ReportData) -> list:
+    """
+    Plain-language synthesis lines shown at the very top of the report,
+    before any detail section -- a reader should be able to grasp the
+    headline facts and any warning signs without reading all seven
+    sections first. Each line only appears when the underlying data was
+    actually available; this never fabricates a summary from missing
+    data.
+    """
+    lines = []
+    highlights_by_label = {h.label: h.value for h in report.financial_highlights}
+    revenue = highlights_by_label.get("Revenue")
+    net_income = highlights_by_label.get("Net Income")
+    if revenue is not None and net_income is not None:
+        lines.append(
+            f"Revenue de {_fmt_currency(revenue)} et résultat net de "
+            f"{_fmt_currency(net_income)} pour l'exercice {report.filing.fiscal_year}."
+        )
+    elif revenue is not None:
+        lines.append(f"Revenue de {_fmt_currency(revenue)} pour l'exercice {report.filing.fiscal_year}.")
+
+    red_flag_sections = [
+        ("Altman Z-Score", report.altman_z),
+        ("Beneish M-Score", report.beneish_m),
+        ("Piotroski F-Score", report.piotroski_f),
+    ]
+    computed = [name for name, section in red_flag_sections if section.available]
+    if computed:
+        lines.append(f"{len(computed)}/3 indicateurs de red flags calculés ({', '.join(computed)}).")
+    else:
+        lines.append("Aucun indicateur de red flags calculable pour cette période (données insuffisantes).")
+    if report.altman_z.available and report.altman_z.value.zone == "distress":
+        lines.append('<span class="warn">⚠ Altman Z-Score en zone de détresse financière.</span>')
+    if report.beneish_m.available and report.beneish_m.value.flagged:
+        lines.append('<span class="warn">⚠ Beneish M-Score signale un risque de manipulation comptable.</span>')
+
+    if report.mdna_diff.available:
+        added = sum(1 for seg in report.mdna_diff.value.segments if seg.kind == "added")
+        removed = sum(1 for seg in report.mdna_diff.value.segments if seg.kind == "removed")
+        lines.append(f"MD&amp;A : {added} ajout(s), {removed} suppression(s) vs la période précédente.")
+
+    if report.mdna_sentiment.available:
+        tone = report.mdna_sentiment.value.net_tone
+        direction = "positive" if tone > 0.1 else "négative" if tone < -0.1 else "neutre"
+        lines.append(f"Tonalité du MD&amp;A : {direction} ({_fmt_ratio(tone)}).")
+
+    return lines
+
+
+def _render_executive_summary(report: ReportData) -> str:
+    lines = _executive_summary_lines(report)
+    if not lines:
+        return ""
+    items = "\n".join(f"<li>{line}</li>" for line in lines)
+    return f'<div class="exec-summary"><h2>Résumé exécutif</h2><ul>{items}</ul></div>'
 
 
 def _render_header(report: ReportData) -> str:
@@ -79,7 +189,7 @@ def _render_financial_highlights(report: ReportData) -> str:
         return '<h2>Chiffres clés</h2><p class="unavailable">Aucune donnée financière extraite pour ce filing.</p>'
     rows = "\n".join(
         f"<tr><td>{_e(h.label)}</td><td>{_fmt_currency(h.value)}</td>"
-        f"<td>{_e(h.concept) if h.concept else '—'}</td></tr>"
+        f"<td>{_e(_humanize_xbrl_tag(h.concept)) if h.concept else '—'}</td></tr>"
         for h in report.financial_highlights
     )
     completeness_note = ""
@@ -169,7 +279,12 @@ def _render_text_diff(title: str, diff_result) -> str:
 def _render_mdna_diff(section: SectionResult) -> str:
     if not section.available:
         return f"<h3>MD&amp;A (Item 7)</h3>{_unavailable_html(section)}"
-    return _render_text_diff("MD&amp;A (Item 7)", section.value)
+    # NOTE: plain "&", not "&amp;" -- this goes through _render_text_diff's
+    # own _e(title) call, which would otherwise double-escape it into
+    # "&amp;amp;A", rendering as the literal text "MD&amp;A" in the PDF
+    # instead of "MD&A" (caught by visually inspecting a real rendered
+    # report, not just running the tests).
+    return _render_text_diff("MD&A (Item 7)", section.value)
 
 
 def _render_risk_factors_diff(section: SectionResult) -> str:
@@ -209,7 +324,8 @@ def _render_sentiment_result(title: str, result) -> str:
 def _render_mdna_sentiment(section: SectionResult) -> str:
     if not section.available:
         return f"<h3>MD&amp;A (Item 7)</h3>{_unavailable_html(section)}"
-    return _render_sentiment_result("MD&amp;A (Item 7)", section.value)
+    # plain "&" here too -- see the matching note in _render_mdna_diff.
+    return _render_sentiment_result("MD&A (Item 7)", section.value)
 
 
 def _render_risk_factors_sentiment(section: SectionResult) -> str:
@@ -242,7 +358,9 @@ def render_html(report: ReportData) -> str:
   <style>{_CSS}</style>
 </head>
 <body>
+  <div id="footer_content">Page <pdf:pagenumber /> / <pdf:pagecount /></div>
   {_render_header(report)}
+  {_render_executive_summary(report)}
   {_render_financial_highlights(report)}
   {_render_red_flags(report)}
   {_render_diff_section(report)}
@@ -309,6 +427,128 @@ def _render_trend_row(point: TrendPoint) -> str:
     """
 
 
+def _render_trend_cover(trend: TrendAnalysis) -> str:
+    last_filing = trend.points[-1].filing
+    years_span = f"{trend.points[0].fiscal_year}–{trend.points[-1].fiscal_year}"
+    return f"""
+    <div class="cover">
+      <div class="cover-kicker">Analyse de tendance</div>
+      <div class="cover-title">{_e(last_filing.company_name)} ({_e(last_filing.ticker)})</div>
+      <div class="cover-subtitle">Exercices {years_span}</div>
+      <div class="cover-meta">
+        Généré automatiquement à partir des données SEC EDGAR — {len(trend.points)} exercice(s) analysé(s)
+      </div>
+    </div>
+    """
+
+
+def _trend_executive_summary_lines(trend: TrendAnalysis) -> list:
+    """Same spirit as _executive_summary_lines: only states what the data actually supports."""
+    lines = []
+    first, last = trend.points[0], trend.points[-1]
+
+    def _revenue(point: TrendPoint):
+        financials = point.filing.financials
+        return financials.revenue.value if financials and financials.revenue else None
+
+    first_revenue, last_revenue = _revenue(first), _revenue(last)
+    if first_revenue is not None and last_revenue is not None and first_revenue != 0:
+        growth = (last_revenue - first_revenue) / first_revenue
+        direction = "hausse" if growth >= 0 else "baisse"
+        lines.append(
+            f"Revenue en {direction} de {_fmt_pct(abs(growth))} entre "
+            f"{first.fiscal_year} et {last.fiscal_year} "
+            f"({_fmt_currency(first_revenue)} → {_fmt_currency(last_revenue)})."
+        )
+
+    piotroski_scores = [
+        (p.fiscal_year, p.report.piotroski_f.value.score)
+        for p in trend.points if p.report.piotroski_f.available
+    ]
+    if len(piotroski_scores) >= 2:
+        (fy0, s0), (fy1, s1) = piotroski_scores[0], piotroski_scores[-1]
+        direction = "amélioré" if s1 > s0 else "dégradé" if s1 < s0 else "resté stable"
+        lines.append(f"Piotroski F-Score {direction} : {s0}/9 en {fy0} → {s1}/9 en {fy1}.")
+
+    flagged_years = [
+        str(p.fiscal_year) for p in trend.points
+        if p.report.beneish_m.available and p.report.beneish_m.value.flagged
+    ]
+    if flagged_years:
+        lines.append(
+            f'<span class="warn">⚠ Beneish M-Score a signalé un risque de manipulation '
+            f"comptable pour : {', '.join(flagged_years)}.</span>"
+        )
+
+    distress_years = [
+        str(p.fiscal_year) for p in trend.points
+        if p.report.altman_z.available and p.report.altman_z.value.zone == "distress"
+    ]
+    if distress_years:
+        lines.append(
+            f'<span class="warn">⚠ Altman Z-Score en zone de détresse pour : '
+            f"{', '.join(distress_years)}.</span>"
+        )
+
+    return lines
+
+
+def _render_trend_executive_summary(trend: TrendAnalysis) -> str:
+    lines = _trend_executive_summary_lines(trend)
+    if not lines:
+        return ""
+    items = "\n".join(f"<li>{line}</li>" for line in lines)
+    return f'<div class="exec-summary"><h2>Résumé exécutif</h2><ul>{items}</ul></div>'
+
+
+def _render_trend_charts(trend: TrendAnalysis) -> str:
+    fiscal_years = [str(p.fiscal_year) for p in trend.points]
+
+    def _revenue(point: TrendPoint):
+        financials = point.filing.financials
+        return financials.revenue.value if financials and financials.revenue else None
+
+    revenue_values = [_revenue(p) for p in trend.points]
+    revenue_chart = ""
+    if any(v is not None for v in revenue_values):
+        revenue_uri = bar_chart_data_uri(
+            revenue_values,
+            labels=fiscal_years,
+            value_labels=[_fmt_currency(v) for v in revenue_values],
+            width=220,
+        )
+        revenue_chart = f"""
+        <h3>Revenue</h3>
+        <img src="{revenue_uri}" />
+        """
+
+    piotroski_values = [
+        p.report.piotroski_f.value.score if p.report.piotroski_f.available else None
+        for p in trend.points
+    ]
+    piotroski_chart = ""
+    if any(v is not None for v in piotroski_values):
+        piotroski_uri = bar_chart_data_uri(
+            piotroski_values,
+            labels=fiscal_years,
+            value_labels=[f"{v} / 9" if v is not None else "—" for v in piotroski_values],
+            max_value=9,
+            width=220,
+        )
+        piotroski_chart = f"""
+        <h3>Piotroski F-Score</h3>
+        <img src="{piotroski_uri}" />
+        """
+
+    if not revenue_chart and not piotroski_chart:
+        return ""
+    return f"""
+    <h2>Graphiques</h2>
+    <div class="card">{revenue_chart}</div>
+    <div class="card">{piotroski_chart}</div>
+    """
+
+
 def render_trend_html(trend: TrendAnalysis) -> str:
     """
     Renders a TrendAnalysis (see trend.py) into a complete,
@@ -330,25 +570,32 @@ def render_trend_html(trend: TrendAnalysis) -> str:
   <style>{_CSS}</style>
 </head>
 <body>
-  <h1>{_e(last_filing.company_name)} ({_e(last_filing.ticker)}) — historique {years_span}</h1>
-  <p class="subtitle">
-    Chaque exercice est comparé à celui immédiatement précédent dans la série
-    (jamais une année sautée) — Beneish M, Piotroski F et la tonalité MD&amp;A
-    reflètent donc toujours une vraie comparaison année sur année.
-  </p>
-  <table>
-    <tr>
-      <th>Exercice</th><th>Revenue</th><th>Net Income</th>
-      <th>Complétude</th><th>Altman Z</th><th>Beneish M</th>
-      <th>Piotroski F</th><th>Tonalité MD&amp;A</th><th>Source</th>
-    </tr>
-    {rows}
-  </table>
-  <p class="footer">
-    Rapport de tendance généré automatiquement à partir des données SEC EDGAR.
-    Pas de comparaison sectorielle dans cette vue — voir le rapport détaillé
-    de chaque exercice pour le détail complet de chaque section.
-  </p>
+  <div id="footer_content">Page <pdf:pagenumber /> / <pdf:pagecount /></div>
+  {_render_trend_cover(trend)}
+  <div class="page-break">
+    <h1>{_e(last_filing.company_name)} ({_e(last_filing.ticker)}) — historique {years_span}</h1>
+    <p class="subtitle">
+      Chaque exercice est comparé à celui immédiatement précédent dans la série
+      (jamais une année sautée) — Beneish M, Piotroski F et la tonalité MD&amp;A
+      reflètent donc toujours une vraie comparaison année sur année.
+    </p>
+    {_render_trend_executive_summary(trend)}
+    {_render_trend_charts(trend)}
+    <h2>Détail par exercice</h2>
+    <table>
+      <tr>
+        <th>Exercice</th><th>Revenue</th><th>Net Income</th>
+        <th>Data %</th><th>Altman Z</th><th>Beneish M</th>
+        <th>Piotroski F</th><th>Ton. MD&amp;A</th><th>Source</th>
+      </tr>
+      {rows}
+    </table>
+    <p class="footer">
+      Rapport de tendance généré automatiquement à partir des données SEC EDGAR.
+      Pas de comparaison sectorielle dans cette vue — voir le rapport détaillé
+      de chaque exercice pour le détail complet de chaque section.
+    </p>
+  </div>
 </body>
 </html>
 """

@@ -1,7 +1,7 @@
 from datetime import date, datetime, timezone
 
 from equity_analyzer.data_layer.models import FilingTextSections, FormType, PeriodDuration
-from equity_analyzer.report.html_renderer import render_html, render_trend_html
+from equity_analyzer.report.html_renderer import _humanize_xbrl_tag, render_html, render_trend_html
 from equity_analyzer.report.report_data import build_report_data
 from equity_analyzer.report.trend import build_trend_analysis
 from equity_analyzer.sentiment.lm_dictionary import LMDictionary
@@ -192,3 +192,101 @@ def test_render_trend_html_shows_unavailable_for_first_year_yoy_sections():
     # Beneish/Piotroski show "—" for the first (oldest) year specifically,
     # not a crash or a fabricated score.
     assert 'class="unavailable">—' in html
+
+
+# --- Regression tests for two bugs only caught by rendering a real PDF
+# and visually inspecting it (not by any of the string-matching tests
+# above, which is exactly why this pass happened) ---
+
+def test_mdna_heading_is_not_double_escaped():
+    """
+    _render_text_diff / _render_sentiment_result already call _e() on
+    their `title` argument -- passing a pre-escaped "MD&amp;A" string
+    into them re-escapes the "&" a second time, so the PDF renders the
+    literal text "MD&amp;A" instead of "MD&A". Confirmed by rendering an
+    actual report and reading the output PDF, not by running the test
+    suite (which was green the whole time this bug existed).
+    """
+    current = _filing()
+    prior = _filing(
+        accession_number="acc-prior",
+        financials=make_financial_period(
+            fiscal_year=2023, fiscal_period="FY", duration=PeriodDuration.TWELVE_MONTH,
+            accession_number="acc-prior", period_end=date(2023, 12, 31), **_METRICS,
+        ),
+        text_sections=FilingTextSections(
+            item_1a_risk_factors="our revenue could decline due to weak demand",
+            item_7_mdna="revenue was flat this year",
+            is_risk_factors_boilerplate=False,
+        ),
+        fiscal_year=2023,
+    )
+    report = build_report_data(current, prior, DICTIONARY)
+    html = render_html(report)
+    assert "MD&amp;amp;A" not in html
+    assert "MD&amp;A" in html  # the correctly-escaped, single-encoded form
+
+
+def test_long_xbrl_tag_names_are_humanized_for_wrapping():
+    """
+    A raw camelCase XBRL concept name (e.g.
+    "RevenueFromContractWithCustomerExcludingAssessedTax") runs off the
+    page edge in the rendered PDF: xhtml2pdf respects neither
+    `word-break: break-all` nor `<wbr>`, confirmed by rendering real test
+    PDFs, so a long unbroken identifier has nowhere to wrap. Inserting
+    real spaces at camelCase boundaries is the fix that was actually
+    confirmed to work the same way.
+    """
+    assert _humanize_xbrl_tag("RevenueFromContractWithCustomerExcludingAssessedTax") == (
+        "Revenue From Contract With Customer Excluding Assessed Tax"
+    )
+    # the report factories tag every fact with the placeholder concept
+    # "TestConcept" -- still camelCase, so it's enough to confirm the
+    # humanizer is actually wired into the rendered table, not just
+    # correct in isolation.
+    report = build_report_data(_filing(), None, DICTIONARY)
+    html = render_html(report)
+    assert ">TestConcept<" not in html
+    assert ">Test Concept<" in html
+
+
+def test_trend_report_has_cover_page_and_page_break():
+    filings = [_trend_filing(y) for y in (2021, 2022)]
+    trend = build_trend_analysis(filings, DICTIONARY)
+    html = render_trend_html(trend)
+    assert 'class="cover"' in html
+    assert 'class="page-break"' in html
+
+
+def test_trend_report_includes_revenue_chart_as_embedded_svg():
+    filings = [_trend_filing(y) for y in (2021, 2022)]
+    trend = build_trend_analysis(filings, DICTIONARY)
+    html = render_trend_html(trend)
+    assert "data:image/svg+xml;base64," in html
+
+
+def test_single_report_and_trend_report_have_pagination_footer():
+    report = build_report_data(_filing(), None, DICTIONARY)
+    html = render_html(report)
+    assert '<pdf:pagenumber' in html
+    assert '<pdf:pagecount' in html
+
+    filings = [_trend_filing(y) for y in (2021, 2022)]
+    trend = build_trend_analysis(filings, DICTIONARY)
+    trend_html = render_trend_html(trend)
+    assert '<pdf:pagenumber' in trend_html
+    assert '<pdf:pagecount' in trend_html
+
+
+def test_single_report_executive_summary_present():
+    report = build_report_data(_filing(), None, DICTIONARY)
+    html = render_html(report)
+    assert "Résumé exécutif" in html
+
+
+def test_trend_executive_summary_mentions_revenue_growth():
+    filings = [_trend_filing(y) for y in (2021, 2022)]
+    trend = build_trend_analysis(filings, DICTIONARY)
+    html = render_trend_html(trend)
+    assert "Résumé exécutif" in html
+    assert "Revenue en hausse" in html or "Revenue en baisse" in html
