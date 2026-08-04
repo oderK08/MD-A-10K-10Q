@@ -8,11 +8,11 @@ compilés dans un rapport PDF structuré.
 
 | Module | Statut | Description |
 |---|---|---|
-| 1. Data Layer | ✅ Terminé (36 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
+| 1. Data Layer | ✅ Terminé (39 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
 | 3. Diff textuel | ✅ Terminé (16 tests) | Comparaison Item 1A / Item 7 entre deux filings |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
-| 5. Report Builder | ✅ Terminé (31 tests) | Génération du rapport PDF + tendance multi-année |
+| 5. Report Builder | ✅ Terminé (47 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
 
 ## Module 1 — Data Layer
 
@@ -337,14 +337,64 @@ Assemble les sorties des Modules 1 à 4 en un rapport HTML → PDF.
   données depuis cet environnement de dev — mieux vaut ne pas livrer un
   résultat non vérifié que de prétendre que c'est fiable.
 
+### Mise en forme du rapport
+
+Passe dédiée à la lisibilité du PDF final, faite en générant de vrais
+rapports (fixtures réelles AAPL + dictionnaire Loughran-McDonald complet)
+et en **relisant visuellement les pages rendues** (outil `Read` sur le
+PDF, pas seulement la suite de tests) — c'est cette relecture, et non la
+suite de tests qui restait verte, qui a trouvé deux vrais bugs de rendu
+(détaillés plus bas).
+
+- **`charts.py`** — mini-générateur de graphiques en barres. `xhtml2pdf`
+  ignore silencieusement les techniques CSS habituelles pour des barres
+  (div imbriquées en largeur %, largeur fixe en pt — testé et confirmé
+  cassé avant d'écrire quoi que ce soit dessus) ; la seule technique
+  fiable trouvée est un **SVG unique encodé en `data:image/svg+xml;base64,...`**
+  dans une balise `<img>` (svglib, embarqué par `xhtml2pdf` justement pour
+  ce cas). Les libellés, barres et valeurs sont des éléments `<text>`/`<rect>`
+  du même SVG, dans le même repère — ça évite les problèmes d'alignement
+  qu'on aurait entre du texte HTML et une image générée séparément.
+- **Page de garde + résumé exécutif** — chaque rapport (single-période et
+  tendance) commence par une page de garde (`page-break-before: always`)
+  puis un résumé exécutif de 3-4 puces qui synthétise revenue/résultat
+  net, nombre de red flags, direction du diff MD&A et de la tonalité — les
+  avertissements (zone de détresse Altman, Beneish suspect) sont mis en
+  évidence visuellement.
+- **Pagination** — pied de page "Page X / Y" répété sur chaque page, via
+  la syntaxe propriétaire `@page { @frame footer_frame { ... } }` +
+  `<pdf:pagenumber/>`/`<pdf:pagecount/>` de `xhtml2pdf` (pas du CSS
+  standard).
+- **Deux vrais bugs trouvés uniquement par relecture visuelle du PDF**
+  (la suite de tests était verte pendant que ces deux bugs existaient — ce
+  sont des bugs de rendu, pas de contenu de chaîne) :
+  1. **Double échappement de "MD&A"** — le PDF affichait littéralement
+     "MD&amp;A" au lieu de "MD&A". Cause : le titre `"MD&amp;A (Item 7)"`
+     (déjà échappé) était passé à une fonction qui appelle `html.escape()`
+     une seconde fois. Corrigé en passant un titre en clair aux points
+     d'appel concernés.
+  2. **Débordement des noms de tags XBRL** — un identifiant camelCase
+     brut (ex: `RevenueFromContractWithCustomerExcludingAssessedTax`) sort
+     de la page. Essayé et confirmé **non fonctionnel** dans `xhtml2pdf` :
+     `word-break: break-all`, `<wbr>`, espace de largeur nulle U+200B
+     (s'affiche comme un glyphe "tofu" visible, pas un point de coupure
+     invisible). Seule technique confirmée qui fonctionne : insérer de
+     vrais espaces aux frontières camelCase (`_humanize_xbrl_tag()`), ce
+     qui laisse au moteur de mise en page de vrais points de coupure de
+     mots.
+
 ### Tests
 
-31 tests, dont deux tests d'intégration bout-en-bout qui font tourner
+47 tests, dont deux tests d'intégration bout-en-bout qui font tourner
 **Module 1 → Module 5** sur les vraies fixtures (XBRL + HTML) jusqu'à un
 vrai PDF généré (vérifie les octets magiques `%PDF-`) — un pour un rapport
 single-période, un pour une tendance sur 2 exercices. Avec cette fixture
 précise, les Red Flags ressortent "indisponibles" (tags XBRL manquants,
-données trimestrielles) — comportement voulu, pas un échec de test.
+données trimestrielles) — comportement voulu, pas un échec de test. Les
+deux bugs de rendu ci-dessus ont chacun leur test de régression
+(`test_mdna_heading_is_not_double_escaped`,
+`test_long_xbrl_tag_names_are_humanized_for_wrapping`), écrits après coup
+pour figer le comportement corrigé.
 
 ```bash
 python -m pytest tests/report -v
@@ -369,7 +419,7 @@ save_pdf(render_trend_html(trend), "tendance.pdf")
 
 ## Statut : projet complet, validé contre de vraies données
 
-Les 5 modules sont terminés et testés (131 tests). Le pipeline a été validé
+Les 5 modules sont terminés et testés (149 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,
