@@ -1,24 +1,30 @@
 # data/
 
-Ce dossier accueille les fichiers de données externes que le projet
-utilise mais n'embarque pas dans le dépôt Git (licence tierce, ou fichier
-trop volumineux pour être versionné).
+Ce dossier accueille les fichiers de données externes du projet.
 
 ## Loughran-McDonald Master Dictionary
 
 Requis par le Module 4 (`equity_analyzer.sentiment`).
 
-1. Télécharge le CSV le plus récent ici :
-   👉 https://sraf.nd.edu/loughranmcdonald-master-dictionary/
-   (section "Master Dictionary", fichier `.csv`, gratuit — juste un
-   formulaire à remplir sur le site de l'université Notre Dame)
-2. Place le fichier téléchargé dans ce dossier, par exemple :
-   `data/Loughran-McDonald_MasterDictionary.csv`
-3. Charge-le dans ton code :
-   ```python
-   from equity_analyzer.sentiment import load_lm_dictionary
-   dictionary = load_lm_dictionary("data/Loughran-McDonald_MasterDictionary.csv")
-   ```
+`Loughran-McDonald_MasterDictionary_1993-2025.csv` est déjà présent dans
+ce dossier et **suivi par Git** (choix délibéré, voir `.gitignore`) —
+téléchargé depuis la source officielle :
+👉 https://sraf.nd.edu/loughranmcdonald-master-dictionary/
 
-Tout le contenu de ce dossier (sauf ce README) est ignoré par Git — voir
-`.gitignore` à la racine du projet.
+Utilisation :
+```python
+from equity_analyzer.sentiment import load_lm_dictionary
+dictionary = load_lm_dictionary(
+    "data/Loughran-McDonald_MasterDictionary_1993-2025.csv"
+)
+```
+
+Validé contre 86 553 mots réels — les comptages par catégorie
+correspondent aux chiffres publiés (négatif: 2355, positif: 354,
+incertitude: 297, litigieux: 905, modal fort: 19, modal faible: 27,
+contraignant: 184). Voir
+`tests/sentiment/test_integration_production_dictionary.py`.
+
+Si tu remplaces ce fichier par une version plus récente, garde le même
+nom (ou mets à jour la référence dans le code et cette doc) — n'importe
+quel autre fichier déposé ici reste ignoré par Git par défaut.

@@ -26,7 +26,9 @@ env/
 .idea/
 .DS_Store
 
-# External data files (third-party license, e.g. the Loughran-McDonald
-# Master Dictionary) -- see data/README.md for where to get them.
+# External data files -- see data/README.md. The Loughran-McDonald Master
+# Dictionary is tracked (below) since it's committed for convenience;
+# anything else dropped in data/ stays untracked by default.
 data/*
 !data/README.md
+!data/Loughran-McDonald_MasterDictionary_1993-2025.csv
