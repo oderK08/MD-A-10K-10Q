@@ -1,5 +1,5 @@
 from .cik_lookup import CikLookup, FilingNotFoundError, FilingRef, list_filings
-from .edgar_client import EdgarClient, EdgarClientConfig, EdgarClientError
+from .edgar_client import EdgarClient, EdgarClientConfig, EdgarClientError, filing_index_url
 from .models import (
     FactValue,
     Filing,
@@ -19,6 +19,7 @@ __all__ = [
     "EdgarClient",
     "EdgarClientConfig",
     "EdgarClientError",
+    "filing_index_url",
     "FactValue",
     "Filing",
     "FilingTextSections",

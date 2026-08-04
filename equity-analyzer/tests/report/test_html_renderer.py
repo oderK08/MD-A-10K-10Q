@@ -1,8 +1,9 @@
 from datetime import date, datetime, timezone
 
 from equity_analyzer.data_layer.models import FilingTextSections, FormType, PeriodDuration
-from equity_analyzer.report.html_renderer import render_html
+from equity_analyzer.report.html_renderer import render_html, render_trend_html
 from equity_analyzer.report.report_data import build_report_data
+from equity_analyzer.report.trend import build_trend_analysis
 from equity_analyzer.sentiment.lm_dictionary import LMDictionary
 
 from .factories import make_filing, make_financial_period
@@ -136,3 +137,58 @@ def test_output_is_a_complete_html_document():
     assert html.strip().startswith("<!doctype html>")
     assert "</html>" in html
     assert "2025-01-01" in html
+
+
+def test_renders_source_filing_traceability_link():
+    report = build_report_data(_filing(cik="0000320193", accession_number="0000320193-24-000010"), None, DICTIONARY)
+    html = render_html(report)
+    assert "source SEC EDGAR" in html
+    assert "sec.gov/Archives/edgar/data/320193/" in html
+    assert "0000320193-24-000010-index.htm" in html
+
+
+def test_renders_data_completeness_percentage():
+    report = build_report_data(_filing(), None, DICTIONARY)
+    html = render_html(report)
+    assert "Complétude des données" in html
+    assert "%" in html
+
+
+def _trend_filing(year, **overrides):
+    financials = make_financial_period(
+        fiscal_year=year, fiscal_period="FY", duration=PeriodDuration.TWELVE_MONTH,
+        accession_number=f"acc-{year}", period_end=date(year, 12, 31), **_METRICS,
+    )
+    text_sections = FilingTextSections(
+        item_1a_risk_factors="our revenue could decline due to competition",
+        item_7_mdna="revenue grew due to strong growth this year",
+        is_risk_factors_boilerplate=False,
+    )
+    kwargs = dict(
+        fiscal_year=year, fiscal_period="FY", form_type=FormType.TEN_K,
+        accession_number=f"acc-{year}", period_end=date(year, 12, 31),
+        financials=financials, text_sections=text_sections,
+    )
+    kwargs.update(overrides)
+    return make_filing(**kwargs)
+
+
+def test_render_trend_html_shows_one_row_per_year():
+    filings = [_trend_filing(y) for y in (2021, 2022, 2023)]
+    trend = build_trend_analysis(filings, DICTIONARY)
+    html = render_trend_html(trend)
+
+    assert html.strip().startswith("<!doctype html>")
+    assert "2021" in html
+    assert "2022" in html
+    assert "2023" in html
+    assert "2021–2023" in html
+
+
+def test_render_trend_html_shows_unavailable_for_first_year_yoy_sections():
+    filings = [_trend_filing(y) for y in (2021, 2022)]
+    trend = build_trend_analysis(filings, DICTIONARY)
+    html = render_trend_html(trend)
+    # Beneish/Piotroski show "—" for the first (oldest) year specifically,
+    # not a crash or a fabricated score.
+    assert 'class="unavailable">—' in html
