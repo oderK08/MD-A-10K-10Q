@@ -12,7 +12,7 @@ compilés dans un rapport PDF structuré.
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
 | 3. Diff textuel | ✅ Terminé (16 tests) | Comparaison Item 1A / Item 7 entre deux filings |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
-| 5. Report Builder | ⏳ À venir | Génération du rapport PDF |
+| 5. Report Builder | ✅ Terminé (18 tests) | Génération du rapport PDF |
 
 ## Module 1 — Data Layer
 
@@ -248,7 +248,63 @@ result = score_mdna_sentiment(filing.text_sections, dictionary)
 print(result.net_tone, result.proportions)
 ```
 
-## Prochaine étape
+## Module 5 — Report Builder
 
-Module 5 : Report Builder (assemblage HTML → PDF), qui rassemble les
-sorties des Modules 1 à 4 en un rapport structuré.
+### Ce qu'il fait
+
+Assemble les sorties des Modules 1 à 4 en un rapport HTML → PDF.
+
+- **`report_data.py`** — construit un `ReportData` à partir d'un `Filing`
+  courant, d'un `Filing` précédent (optionnel), et d'un dictionnaire
+  Loughran-McDonald (optionnel). **Changement de philosophie assumé par
+  rapport aux Modules 2-4** : ceux-ci échouent bruyamment sur la moindre
+  donnée manquante (`InsufficientDataError`, etc.) — c'est le bon
+  comportement pour un calcul isolé. Mais un rapport qui agrège 7
+  analyses ne doit pas planter entièrement parce qu'une seule (ex: Beneish
+  M, faute de période précédente) n'est pas calculable. Chaque section est
+  donc enveloppée dans un `SectionResult` : soit la valeur calculée, soit
+  une raison en clair ("indisponible — aucune donnée financière extraite
+  pour ce filing"). Seules les erreurs *attendues* de chaque module sont
+  interceptées (`RedFlagError`, `DiffError`, `SentimentError`) — un vrai
+  bug de programmation (`AttributeError` etc.) continue de remonter
+  normalement, pour ne jamais se faire passer pour un simple manque de
+  donnée.
+- **`html_renderer.py`** — génère un document HTML autonome (CSS inline,
+  aucune ressource externe — le renderer PDF n'a pas d'accès réseau).
+  Tout texte issu d'un filing (nom de société, segments de diff...) passe
+  par `html.escape()`.
+- **`pdf_renderer.py`** — convertit le HTML en PDF via **`xhtml2pdf`**
+  (pur Python, aucune dépendance système type Cairo/Pango/wkhtmltopdf —
+  portable sur n'importe quel environnement). Note d'installation : si
+  `pip install xhtml2pdf` échoue avec *"Cannot uninstall cryptography...,
+  RECORD file not found"* (paquet système sans métadonnées pip), utilise
+  `pip install --ignore-installed cryptography xhtml2pdf`.
+
+### Tests
+
+18 tests, dont un test d'intégration bout-en-bout qui fait tourner
+**Module 1 → Module 5** sur les vraies fixtures (XBRL + HTML), jusqu'à un
+vrai PDF généré (vérifie les octets magiques `%PDF-`). Avec cette fixture
+précise, les Red Flags ressortent "indisponibles" (tags XBRL manquants,
+données trimestrielles) — comportement voulu, pas un échec de test.
+
+```bash
+python -m pytest tests/report -v
+```
+
+### Utiliser le module
+
+```python
+from equity_analyzer.report import build_report_data, render_html, save_pdf
+
+report = build_report_data(filing, prior_filing, lm_dictionary)
+html = render_html(report)
+save_pdf(html, "rapport.pdf")
+```
+
+## Statut : projet complet
+
+Les 5 modules sont terminés et testés (107 tests). Reste à valider en
+conditions réelles : lancer le Data Layer (Module 1) contre l'API SEC
+EDGAR réelle depuis un environnement avec accès réseau — voir la section
+Module 1 ci-dessus.
