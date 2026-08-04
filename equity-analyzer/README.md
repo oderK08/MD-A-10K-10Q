@@ -10,7 +10,7 @@ compilés dans un rapport PDF structuré.
 |---|---|---|
 | 1. Data Layer | ✅ Terminé (26 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
-| 3. Diff textuel | ⏳ À venir | Comparaison Item 1A / Item 7 entre deux filings |
+| 3. Diff textuel | ✅ Terminé (14 tests) | Comparaison Item 1A / Item 7 entre deux filings |
 | 4. Sentiment | ⏳ À venir | Score de tonalité Loughran-McDonald |
 | 5. Report Builder | ⏳ À venir | Génération du rapport PDF |
 
@@ -138,7 +138,40 @@ python -m pytest tests/redflags -v
 23 tests, vérifiant notamment les formules à la main (valeurs attendues
 calculées indépendamment, pas juste "ça tourne sans erreur").
 
+## Module 3 — Diff textuel
+
+### Ce qu'il fait
+
+Diff au niveau paragraphe (via `difflib.SequenceMatcher`), construit sur les
+`FilingTextSections` du Module 1 :
+
+- **`text_diff.py`** — le diff générique : découpe le texte en paragraphes,
+  produit une liste de segments `equal` / `added` / `removed`, un ratio de
+  similarité et des compteurs de mots ajoutés/supprimés. Granularité
+  paragraphe (pas mot ni caractère) car c'est ce qui se lit comme "ce
+  paragraphe est nouveau / a disparu / n'a pas changé" pour un usage
+  advisory, plutôt qu'un diff bruyant au niveau mot.
+- **`risk_factors.py`** — diff d'Item 1A, avec le cas boilerplate des 10-Q
+  géré explicitement : si la section actuelle est la formule standard
+  "aucun changement matériel", le module **refuse de calculer un diff**
+  (`skipped=True` + `skip_reason` explicite) plutôt que de renvoyer un
+  faux signal "0% de changement". Si seule la période *précédente* était
+  du boilerplate (ex: le 10-K annuel vient de réécrire la section), le
+  diff est calculé normalement — c'est un vrai changement, pas un artefact.
+- **`mdna.py`** — diff d'Item 7/2 (MD&A), sans notion de boilerplate : le
+  MD&A est toujours réécrit chaque trimestre, donc diff direct avec juste
+  la garde "section manquante".
+
+Toutes les fonctions lèvent `MissingSectionError` si une section n'a pas
+été extraite par le Module 1, plutôt que de comparer `None` silencieusement.
+
+### Lancer les tests
+
+```bash
+python -m pytest tests/diff -v
+```
+
 ## Prochaine étape
 
-Module 3 : Diff textuel (comparaison Item 1A / Item 7 entre deux filings),
-construit sur `FilingTextSections` du Module 1.
+Module 4 : Sentiment (score de tonalité Loughran-McDonald), appliqué sur
+les mêmes sections de texte que ce module.
