@@ -7,10 +7,10 @@ name: Test contre la vraie API SEC EDGAR
 "on":
   workflow_dispatch:
     inputs:
-      ticker:
-        description: "Ticker à tester (ex: AAPL, MSFT, TSLA)"
+      tickers:
+        description: "Tickers à tester, séparés par des virgules (secteurs variés recommandé)"
         required: false
-        default: "AAPL"
+        default: "AAPL,MSFT,GOOGL,AMZN,NVDA,JPM,XOM,JNJ,PG,KO,WMT,DIS,BA,CAT,NFLX"
       user_agent:
         description: "User-Agent SEC EDGAR (nom d'app + email de contact, exigé par la SEC)"
         required: false
@@ -39,16 +39,32 @@ jobs:
           # préinstallé sur certaines images -- filet de sécurité.
           python -c "import xhtml2pdf" || pip install --ignore-installed cryptography xhtml2pdf
 
-      - name: Lancer le pipeline complet contre la vraie API SEC
+      - name: Lancer le pipeline complet contre la vraie API SEC (plusieurs tickers)
         env:
-          TICKER: ${{ inputs.ticker }}
+          TICKERS: ${{ inputs.tickers }}
           SEC_USER_AGENT: ${{ inputs.user_agent }}
         run: python scripts/test_real_sec_pipeline.py
 
-      - name: Publier le rapport PDF généré
+      - name: Publier le tableau récapitulatif (résultats par ticker)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rapport-${{ inputs.ticker }}
-          path: equity-analyzer/rapport_genere.pdf
+          name: resultats-pipeline
+          path: equity-analyzer/summary.csv
+          if-no-files-found: ignore
+
+      - name: Publier les rapports PDF générés (un par ticker)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapports-pdf
+          path: equity-analyzer/rapports/
+          if-no-files-found: ignore
+
+      - name: Publier les diagnostics d'extraction (uniquement pour les échecs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-extraction
+          path: equity-analyzer/debug/
           if-no-files-found: ignore

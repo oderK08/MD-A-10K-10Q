@@ -8,7 +8,7 @@ compilés dans un rapport PDF structuré.
 
 | Module | Statut | Description |
 |---|---|---|
-| 1. Data Layer | ✅ Terminé (26 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
+| 1. Data Layer | ✅ Terminé (29 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
 | 3. Diff textuel | ✅ Terminé (16 tests) | Comparaison Item 1A / Item 7 entre deux filings |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
@@ -41,6 +41,17 @@ compilés dans un rapport PDF structuré.
   - la détection du boilerplate "no material changes" utilisé dans les
     10-Q pour Item 1A, afin de ne pas le traiter comme un vrai changement
     (ou une vraie absence de changement) de fond
+  - **(trouvé via le test de fiabilité multi-tickers sur la vraie API)**
+    les mots coupés par une balise en plein milieu (ex: un vrai 10-K
+    Microsoft contient littéralement "RIS\<span>K\</span> FACTORS") — la
+    balise n'est effacée sans laisser d'espace que si elle est strictement
+    entre deux caractères alphanumériques, pour ne pas recoller des
+    éléments distincts (ex: cellules de tableau adjacentes)
+  - **(idem)** le décodage complet des entités HTML numériques (ex:
+    `&#160;`, pas seulement `&nbsp;`) via `html.unescape` — un vrai 10-K
+    Coca-Cola utilise la forme numérique entre "Item 7." et "Management's
+    Discussion", ce qui faisait échouer silencieusement l'extraction tant
+    que ce n'était pas décodé
 
 ### Ce qu'il ne fait PAS encore
 
@@ -302,9 +313,15 @@ html = render_html(report)
 save_pdf(html, "rapport.pdf")
 ```
 
-## Statut : projet complet
+## Statut : projet complet, validé contre de vraies données
 
-Les 5 modules sont terminés et testés (107 tests). Reste à valider en
-conditions réelles : lancer le Data Layer (Module 1) contre l'API SEC
-EDGAR réelle depuis un environnement avec accès réseau — voir la section
-Module 1 ci-dessus.
+Les 5 modules sont terminés et testés (110 tests). Le pipeline a été validé
+contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
+et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
+secteurs variés (tech, finance, énergie, santé, biens de consommation,
+industriel). Deux vrais bugs d'extraction HTML ont été trouvés et corrigés
+grâce à ce test (voir Module 1 ci-dessus : mots coupés par une balise,
+entités HTML numériques non décodées). D'autres écarts réels et attendus
+subsistent (tags XBRL non couverts selon l'émetteur, ex: `sga_expense`
+manquant chez Microsoft/Amazon) — le Module 5 les affiche explicitement
+comme "indisponible" plutôt que de planter ou de deviner.
