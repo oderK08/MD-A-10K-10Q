@@ -236,7 +236,7 @@ python -m pytest tests/sentiment -v
 ```python
 from equity_analyzer.sentiment import load_lm_dictionary, score_mdna_sentiment
 
-dictionary = load_lm_dictionary("Loughran-McDonald_MasterDictionary_2024.csv")
+dictionary = load_lm_dictionary("data/Loughran-McDonald_MasterDictionary.csv")
 result = score_mdna_sentiment(filing.text_sections, dictionary)
 print(result.net_tone, result.proportions)
 ```

@@ -25,3 +25,8 @@ env/
 .vscode/
 .idea/
 .DS_Store
+
+# External data files (third-party license, e.g. the Loughran-McDonald
+# Master Dictionary) -- see data/README.md for where to get them.
+data/*
+!data/README.md
