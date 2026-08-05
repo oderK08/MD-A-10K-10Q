@@ -120,6 +120,97 @@ def _recover_reordered_matches(segments: list[DiffSegment]) -> list[DiffSegment]
     return result
 
 
+# How similar two "removed"/"added" sentences must be (as a difflib ratio
+# over their WORDS, not characters -- see _recover_near_duplicate_matches)
+# to be treated as unchanged rather than a real edit. 0.99 means at most
+# ~1% of the words differ. Deliberately conservative: this is a tolerance
+# for presentation noise (whitespace/encoding artifacts between two
+# filings, HTML entity differences, a stray typo fix), not a licence to
+# ignore real content changes.
+_NEAR_DUPLICATE_RATIO_THRESHOLD = 0.99
+
+
+def _recover_near_duplicate_matches(
+    segments: list[DiffSegment], threshold: float = _NEAR_DUPLICATE_RATIO_THRESHOLD
+) -> list[DiffSegment]:
+    """
+    Recovers sentence pairs that are NEARLY identical (>= `threshold`
+    word-level similarity) but not byte-identical, so `_recover_reordered_
+    matches` (exact match only) didn't catch them.
+
+    Real user feedback on a Netflix report: a sentence showed up as both
+    "removed" and "added" even though it read as exactly the same
+    sentence. The two filings likely differ in something invisible on the
+    page -- a non-breaking space, a smart vs. straight quote, an HTML
+    entity that decoded slightly differently between two filing years --
+    not in the actual content. Chasing every possible byte-level encoding
+    mismatch individually isn't tractable; a similarity tolerance catches
+    this whole class of noise at once, which is what was asked for.
+
+    Method: for every remaining removed/added pair, a difflib ratio over
+    their WORDS (not characters -- a word-level ratio is a much closer
+    proxy for "how many words actually differ" than a character ratio,
+    which a single word insertion/deletion can swing disproportionately).
+    Pairs are matched greedily, highest ratio first, each sentence used at
+    most once, so a removed sentence with two similar-but-different added
+    candidates pairs with its closest match, not an arbitrary one.
+
+    Known trade-off, accepted deliberately per this ratio-based approach:
+    a single-word factual change (e.g. one figure) inside a very long
+    sentence can push the ratio above threshold and get swallowed as "no
+    change" -- the same risk any fixed-percentage tolerance carries. The
+    threshold is kept high (99%) specifically to limit that blast radius,
+    not eliminate it.
+    """
+    removed_idxs = [i for i, seg in enumerate(segments) if seg.kind == "removed"]
+    added_idxs = [i for i, seg in enumerate(segments) if seg.kind == "added"]
+    if not removed_idxs or not added_idxs:
+        return segments
+
+    removed_words = {i: segments[i].text.split() for i in removed_idxs}
+    added_words = {i: segments[i].text.split() for i in added_idxs}
+
+    candidates = []
+    for ri in removed_idxs:
+        r_words = removed_words[ri]
+        r_len = len(r_words)
+        for ai in added_idxs:
+            a_words = added_words[ai]
+            a_len = len(a_words)
+            # Cheap length-based prefilter before the costlier
+            # SequenceMatcher call: two sequences whose lengths already
+            # differ by more than the allowed error margin cannot reach
+            # `threshold`, whatever their content.
+            longer = max(r_len, a_len)
+            if longer == 0 or abs(r_len - a_len) > longer * (1 - threshold):
+                continue
+            ratio = difflib.SequenceMatcher(a=r_words, b=a_words, autojunk=False).ratio()
+            if ratio >= threshold:
+                candidates.append((ratio, ri, ai))
+
+    if not candidates:
+        return segments
+
+    candidates.sort(key=lambda c: c[0], reverse=True)
+    matched_removed: set[int] = set()
+    matched_added: set[int] = set()
+    for _ratio, ri, ai in candidates:
+        if ri in matched_removed or ai in matched_added:
+            continue
+        matched_removed.add(ri)
+        matched_added.add(ai)
+
+    result: list[DiffSegment] = []
+    for i, seg in enumerate(segments):
+        if i in matched_removed:
+            continue  # dropped: the matched "added" version below represents it
+        if i in matched_added:
+            result.append(DiffSegment(kind="equal", text=seg.text))
+        else:
+            result.append(seg)
+    return result
+
+
 @dataclass(frozen=True)
 class TextDiffResult:
     segments: list  # list[DiffSegment], in document order
@@ -148,10 +239,11 @@ def diff_text(prior_text: str, current_text: str) -> TextDiffResult:
         else:
             # "delete" and "replace" both remove prior units;
             # "insert" and "replace" both add current units. Any
-            # reordered-but-identical text hiding across these is
-            # recovered afterwards, globally, by
-            # _recover_reordered_matches -- see its docstring for why
-            # that has to happen after the fact rather than per-opcode.
+            # reordered-but-identical or merely near-identical text
+            # hiding across these is recovered afterwards, globally, by
+            # _recover_reordered_matches / _recover_near_duplicate_matches
+            # -- see their docstrings for why that has to happen after
+            # the fact rather than per-opcode.
             if tag in ("delete", "replace"):
                 for unit in prior_units[a_start:a_end]:
                     segments.append(DiffSegment(kind="removed", text=unit))
@@ -160,6 +252,7 @@ def diff_text(prior_text: str, current_text: str) -> TextDiffResult:
                     segments.append(DiffSegment(kind="added", text=unit))
 
     segments = _recover_reordered_matches(segments)
+    segments = _recover_near_duplicate_matches(segments)
     added_words = sum(_word_count(seg.text) for seg in segments if seg.kind == "added")
     removed_words = sum(_word_count(seg.text) for seg in segments if seg.kind == "removed")
 
