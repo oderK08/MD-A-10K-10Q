@@ -314,6 +314,19 @@ _GROUP_STATUS_NOTE = {
     "matched": "",
 }
 
+# How many re-worded ("matched") sub-themes get their full before/after text
+# reproduced. A real filing can restructure a dozen+ sub-themes in a single
+# revision; showing every one of them in full made the report too long to
+# actually read (real user feedback on a Micron 10-K report). Total changed
+# word count -- already computed per group, and the same proxy this project
+# already uses elsewhere as a stand-in for "how substantial is this change"
+# -- ranks them; only the top ones get the full treatment.
+_MAX_DETAILED_GROUPS = 5
+
+
+def _group_change_weight(group) -> int:
+    return group.diff.added_word_count + group.diff.removed_word_count
+
 
 def _render_text_diff(title: str, grouped) -> str:
     """
@@ -328,6 +341,15 @@ def _render_text_diff(title: str, grouped) -> str:
     breakdown only appears for a section that's actually structured
     that way in the real filing (confirmed against a real NVIDIA 10-K's
     Item 1A, whose "Risks Related to X" headings this was built for).
+
+    Two things are deliberately never shown in full, per user feedback on
+    a real report: (1) a sub-theme that was wholesale added or removed --
+    its "diff" body is by construction 100% one-sided (all-added or
+    all-removed), so reproducing it teaches the reader nothing the
+    heading + status note doesn't already say; (2) a re-worded sub-theme
+    outside the `_MAX_DETAILED_GROUPS` most heavily changed ones. Both
+    still get a compact one-line mention -- this project never drops
+    content silently, it only condenses it.
     """
     overall = grouped.overall
     added = [seg for seg in overall.segments if seg.kind == "added"]
@@ -345,7 +367,7 @@ def _render_text_diff(title: str, grouped) -> str:
     if len(groups) == 1 and groups[0].heading == "":
         return header + _diff_body_html(groups[0].diff.segments)
 
-    parts = [header]
+    changed_groups = []
     unchanged_group_count = 0
     for group in groups:
         g_added = sum(1 for seg in group.diff.segments if seg.kind == "added")
@@ -353,16 +375,46 @@ def _render_text_diff(title: str, grouped) -> str:
         if not g_added and not g_removed:
             unchanged_group_count += 1
             continue
+        changed_groups.append((group, g_added, g_removed))
+
+    matched_groups = sorted(
+        (item for item in changed_groups if item[0].status == "matched"),
+        key=lambda item: _group_change_weight(item[0]),
+        reverse=True,
+    )
+    detailed_ids = {id(item[0]) for item in matched_groups[:_MAX_DETAILED_GROUPS]}
+
+    parts = [header]
+    compact_count = 0
+    for group, g_added, g_removed in changed_groups:
         heading_label = _e(group.heading) if group.heading else "Introduction"
+        status_note = _GROUP_STATUS_NOTE[group.status]
+        if group.status != "matched" or id(group) not in detailed_ids:
+            compact_count += 1
+            parts.append(
+                f'<p class="group-stats"><strong>{heading_label}</strong>{status_note}'
+                f" — {g_added} ajout(s), {g_removed} suppression(s)</p>"
+            )
+            continue
         parts.append(f"""
-        <h4>{heading_label}{_GROUP_STATUS_NOTE[group.status]}</h4>
+        <h4>{heading_label}{status_note}</h4>
         <p class="group-stats">{g_added} ajout(s), {g_removed} suppression(s)</p>
         {_diff_body_html(group.diff.segments)}
         """)
+
+    notes = []
     if unchanged_group_count:
+        notes.append(f"{unchanged_group_count} sous-thème(s) sans changement")
+    if compact_count:
+        notes.append(
+            f"{compact_count} sous-thème(s) résumé(s) sans le texte complet "
+            f"(sous-thématique entièrement ajoutée/supprimée, ou en dehors des "
+            f"{_MAX_DETAILED_GROUPS} sous-thèmes les plus modifiés)"
+        )
+    if notes:
         parts.append(
-            f'<p class="muted">{unchanged_group_count} sous-thème(s) sans changement '
-            f"(déjà compté(s) dans le résumé ci-dessus, non détaillé(s) ci-dessous).</p>"
+            f'<p class="muted">{" ; ".join(notes)} '
+            f"(déjà compté(s) dans le résumé ci-dessus).</p>"
         )
     return "\n".join(parts)
 

@@ -82,6 +82,65 @@ def test_word_counts_reflect_whole_text_not_just_diffed_paragraphs():
     assert result.current_word_count == len(f"{PARA_A} {PARA_B} {PARA_C}".split())
 
 
+def test_reordered_sentences_within_a_block_are_recognized_as_equal():
+    """
+    Real feedback from a Micron 10-K report: a sub-theme reshuffled the
+    order of the same risk-factor sentences without changing their
+    wording, and the diff showed the whole block as removed+re-added.
+    That's the LCS ordering limitation this test guards against -- two
+    sentences that swap places within the same block must both come back
+    "equal", not "removed" + "added".
+    """
+    prior = f"{PARA_A}\n{PARA_B}\n{PARA_C}"
+    current = f"{PARA_C}\n{PARA_A}\n{PARA_B}"
+
+    result = diff_text(prior, current)
+
+    assert all(seg.kind == "equal" for seg in result.segments)
+    assert {seg.text for seg in result.segments} == {PARA_A, PARA_B, PARA_C}
+    assert result.added_word_count == 0
+    assert result.removed_word_count == 0
+
+
+def test_reordered_pair_straddling_an_equal_block_is_recognized():
+    """
+    A plain two-item swap doesn't even produce a single "replace" opcode
+    -- difflib emits insert/equal/delete instead, with the swapped pair
+    on either side of an unrelated "equal" block (confirmed against
+    difflib.SequenceMatcher directly). The fix has to work globally
+    across the whole diff, not just within one opcode's block.
+    """
+    prior = f"{PARA_A}\n\n{PARA_B}"
+    current = f"{PARA_B}\n\n{PARA_A}"
+
+    result = diff_text(prior, current)
+
+    assert all(seg.kind == "equal" for seg in result.segments)
+    assert result.added_word_count == 0
+    assert result.removed_word_count == 0
+
+
+def test_reordering_does_not_hide_a_genuine_change_alongside_it():
+    """
+    A block can be partly reordered AND partly genuinely rewritten at the
+    same time. The reordered sentences should still resolve to "equal";
+    the truly new/removed content must still show up.
+    """
+    rewritten = "The company faces intense competition from many new entrants."
+    prior = f"{PARA_A}\n{PARA_B}\n{PARA_C}"
+    current = f"{PARA_C}\n{rewritten}\n{PARA_B}"
+
+    result = diff_text(prior, current)
+    kinds = [(seg.kind, seg.text) for seg in result.segments]
+
+    assert ("equal", PARA_B) in kinds
+    assert ("equal", PARA_C) in kinds
+    assert ("removed", PARA_A) in kinds
+    assert ("added", rewritten) in kinds
+    assert result.removed_word_count == len(PARA_A.split())
+    assert result.added_word_count == len(rewritten.split())
+
+
 def test_single_p_tag_with_line_wrapped_sentences_diffs_at_sentence_level():
     """
     Real SEC filings routinely put several sentences in ONE <p> tag,

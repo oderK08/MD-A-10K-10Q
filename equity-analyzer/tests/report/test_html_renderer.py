@@ -1,7 +1,9 @@
 from datetime import date, datetime, timezone
 
 from equity_analyzer.data_layer.models import FilingTextSections, FormType, PeriodDuration
-from equity_analyzer.report.html_renderer import _humanize_xbrl_tag, render_html, render_trend_html
+from equity_analyzer.diff.grouped_diff import DiffGroup, GroupedTextDiffResult
+from equity_analyzer.diff.text_diff import DiffSegment, TextDiffResult
+from equity_analyzer.report.html_renderer import _humanize_xbrl_tag, _render_text_diff, render_html, render_trend_html
 from equity_analyzer.report.report_data import build_report_data
 from equity_analyzer.report.trend import build_trend_analysis
 from equity_analyzer.sentiment.lm_dictionary import LMDictionary
@@ -332,3 +334,89 @@ def test_ai_summary_renders_text_model_badge_and_disclaimer():
     assert "Le risque X a été retiré cette année." in html
     assert "claude-haiku-4-5-20251001" in html
     assert "ne constitue pas un conseil en investissement" in html
+
+
+# --- Regression tests for real user feedback on a Micron 10-K report:
+# the grouped diff report was too long, and reproduced the full text of
+# sub-themes that had been wholesale added or removed ---
+
+def _diff_result(segments):
+    added_words = sum(len(s.text.split()) for s in segments if s.kind == "added")
+    removed_words = sum(len(s.text.split()) for s in segments if s.kind == "removed")
+    return TextDiffResult(
+        segments=segments,
+        similarity_ratio=0.5,
+        prior_word_count=10,
+        current_word_count=10,
+        added_word_count=added_words,
+        removed_word_count=removed_words,
+    )
+
+
+def test_wholesale_removed_subtheme_does_not_reproduce_its_text():
+    removed_text = "This entire risk factor about supply chain has been removed from the filing."
+    group = DiffGroup(
+        heading="Supply Chain Risk",
+        status="removed",
+        diff=_diff_result([DiffSegment(kind="removed", text=removed_text)]),
+    )
+    grouped = GroupedTextDiffResult(overall=group.diff, groups=[group])
+
+    html = _render_text_diff("Risk Factors (Item 1A)", grouped)
+
+    assert "Supply Chain Risk" in html
+    assert "sous-thématique supprimée" in html
+    assert removed_text not in html
+
+
+def test_wholesale_added_subtheme_does_not_reproduce_its_text():
+    added_text = "A brand new risk factor about cybersecurity has been introduced this year."
+    group = DiffGroup(
+        heading="Cybersecurity Risk",
+        status="added",
+        diff=_diff_result([DiffSegment(kind="added", text=added_text)]),
+    )
+    grouped = GroupedTextDiffResult(overall=group.diff, groups=[group])
+
+    html = _render_text_diff("Risk Factors (Item 1A)", grouped)
+
+    assert "Cybersecurity Risk" in html
+    assert "nouvelle sous-thématique" in html
+    assert added_text not in html
+
+
+def test_only_the_most_changed_matched_subthemes_show_full_text():
+    """
+    A filing can restructure a dozen+ sub-themes at once. Only the
+    _MAX_DETAILED_GROUPS most heavily reworded ones (by total changed
+    word count) should be reproduced in full; the rest still get a
+    one-line mention -- never a silent drop.
+    """
+    def _matched_group(heading, weight_words):
+        slug = heading.replace(" ", "")
+        text = " ".join(f"{slug}word{i}" for i in range(weight_words))
+        return DiffGroup(
+            heading=heading,
+            status="matched",
+            diff=_diff_result([DiffSegment(kind="added", text=text)]),
+        )
+
+    # 5 heavily-changed groups, 2 lightly-changed ones -- 7 total.
+    weights = {"Theme A": 100, "Theme B": 90, "Theme C": 80, "Theme D": 70,
+               "Theme E": 60, "Theme F": 10, "Theme G": 5}
+    groups = [_matched_group(h, w) for h, w in weights.items()]
+    all_segments = [seg for g in groups for seg in g.diff.segments]
+    grouped = GroupedTextDiffResult(overall=_diff_result(all_segments), groups=groups)
+
+    html = _render_text_diff("Risk Factors (Item 1A)", grouped)
+
+    for heading in ["Theme A", "Theme B", "Theme C", "Theme D", "Theme E"]:
+        slug = heading.replace(" ", "")
+        assert f"{slug}word0" in html, f"{heading} should be shown in full"
+
+    for heading in ["Theme F", "Theme G"]:
+        slug = heading.replace(" ", "")
+        assert f"{slug}word0" not in html, f"{heading} should be compact-only"
+        assert heading in html, f"{heading} must still be mentioned, not silently dropped"
+
+    assert "2 sous-thème(s) résumé(s)" in html
