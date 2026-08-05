@@ -72,6 +72,12 @@ def _fmt(value, suffix: str = "") -> str:
 _EXAMPLE_EXCERPT_MAX_CHARS = 160
 
 
+def _truncate(text: str) -> str:
+    if len(text) > _EXAMPLE_EXCERPT_MAX_CHARS:
+        return text[:_EXAMPLE_EXCERPT_MAX_CHARS].rsplit(" ", 1)[0] + "..."
+    return text
+
+
 def _diff_group_lines(groups: list) -> list:
     """
     One line per DiffGroup (see diff/grouped_diff.py) that actually
@@ -82,7 +88,8 @@ def _diff_group_lines(groups: list) -> list:
     for g in groups:
         added = [seg for seg in g.diff.segments if seg.kind == "added"]
         removed = [seg for seg in g.diff.segments if seg.kind == "removed"]
-        if not added and not removed:
+        modified = [seg for seg in g.diff.segments if seg.kind == "modified"]
+        if not added and not removed and not modified:
             continue
         status_label = {
             "added": "nouvelle sous-thematique",
@@ -90,11 +97,16 @@ def _diff_group_lines(groups: list) -> list:
             "matched": "modifiee",
         }[g.status]
         heading = g.heading or "(introduction, sans titre)"
-        line = f'  - "{heading}" ({status_label}) : {len(added)} ajout(s), {len(removed)} suppression(s)'
-        example = (added or removed)[0].text
-        if len(example) > _EXAMPLE_EXCERPT_MAX_CHARS:
-            example = example[:_EXAMPLE_EXCERPT_MAX_CHARS].rsplit(" ", 1)[0] + "..."
-        line += f'. Exemple : "{example}"'
+        line = (
+            f'  - "{heading}" ({status_label}) : {len(added)} ajout(s), '
+            f'{len(removed)} suppression(s), {len(modified)} phrase(s) reformulee(s)'
+        )
+        if added or removed:
+            example = _truncate((added or removed)[0].text)
+            line += f'. Exemple : "{example}"'
+        elif modified:
+            seg = modified[0]
+            line += f'. Exemple : "{_truncate(seg.text)}" -> "{_truncate(seg.replacement)}"'
         lines.append(line)
     return lines
 

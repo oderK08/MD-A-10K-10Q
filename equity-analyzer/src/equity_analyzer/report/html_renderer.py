@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from html import escape as _e
 
+from ..diff.text_diff import word_level_diff
 from .charts import bar_chart_data_uri
 from .report_data import ReportData, SectionResult
 from .trend import TrendAnalysis, TrendPoint
@@ -57,6 +58,9 @@ _CSS = """
   .flagged-false { color: #1a7f37; font-weight: bold; }
   .segment-added { background: #e6ffed; color: #1a7f37; padding: 2pt 4pt; display: block; margin: 2pt 0; }
   .segment-removed { background: #ffeef0; color: #cf222e; text-decoration: line-through; padding: 2pt 4pt; display: block; margin: 2pt 0; }
+  .segment-modified { border-left: 2pt solid #9a6700; padding: 2pt 4pt 2pt 6pt; margin: 2pt 0; }
+  .word-removed { color: #cf222e; text-decoration: line-through; }
+  .word-added { color: #1a7f37; }
   .skip-note { color: #9a6700; background: #fff8e6; padding: 6pt; border-radius: 4pt; }
   .footer { margin-top: 24pt; color: #888; font-size: 8pt; border-top: 1px solid #ccc; padding-top: 6pt; }
   #footer_content { text-align: center; font-size: 8pt; color: #999; }
@@ -157,9 +161,14 @@ def _executive_summary_lines(report: ReportData) -> list:
         lines.append('<span class="warn">⚠ Beneish M-Score signale un risque de manipulation comptable.</span>')
 
     if report.mdna_diff.available:
-        added = sum(1 for seg in report.mdna_diff.value.overall.segments if seg.kind == "added")
-        removed = sum(1 for seg in report.mdna_diff.value.overall.segments if seg.kind == "removed")
-        lines.append(f"MD&amp;A : {added} ajout(s), {removed} suppression(s) vs la période précédente.")
+        mdna_segments = report.mdna_diff.value.overall.segments
+        added = sum(1 for seg in mdna_segments if seg.kind == "added")
+        removed = sum(1 for seg in mdna_segments if seg.kind == "removed")
+        modified = sum(1 for seg in mdna_segments if seg.kind == "modified")
+        lines.append(
+            f"MD&amp;A : {added} ajout(s), {removed} suppression(s), "
+            f"{modified} phrase(s) reformulée(s) vs la période précédente."
+        )
 
     if report.mdna_sentiment.available:
         tone = report.mdna_sentiment.value.net_tone
@@ -300,12 +309,37 @@ def _render_red_flags(report: ReportData) -> str:
     """
 
 
+def _modified_segment_html(seg) -> str:
+    """
+    Inline word-level diff for a "modified" segment: the old wording with
+    just the changed words struck through, the replacement words right
+    next to them in green and in parentheses -- real user feedback:
+    reading a whole sentence struck through immediately above the whole
+    new sentence in green took longer to scan than seeing inline what
+    actually changed. Unchanged words stay plain text, in their original
+    place, so the sentence still reads naturally.
+    """
+    parts = []
+    for tag, text in word_level_diff(seg.text, seg.replacement):
+        if tag == "equal":
+            parts.append(_e(text))
+        elif tag == "removed":
+            parts.append(f'<span class="word-removed">{_e(text)}</span>')
+        elif tag == "added":
+            parts.append(f'<span class="word-added">({_e(text)})</span>')
+    return " ".join(parts)
+
+
 def _diff_body_html(segments) -> str:
-    removed = [seg for seg in segments if seg.kind == "removed"]
-    added = [seg for seg in segments if seg.kind == "added"]
-    body = "".join(f'<span class="segment-removed">{_e(seg.text)}</span>' for seg in removed)
-    body += "".join(f'<span class="segment-added">{_e(seg.text)}</span>' for seg in added)
-    return body
+    parts = []
+    for seg in segments:
+        if seg.kind == "removed":
+            parts.append(f'<span class="segment-removed">{_e(seg.text)}</span>')
+        elif seg.kind == "added":
+            parts.append(f'<span class="segment-added">{_e(seg.text)}</span>')
+        elif seg.kind == "modified":
+            parts.append(f'<div class="segment-modified">{_modified_segment_html(seg)}</div>')
+    return "".join(parts)
 
 
 _GROUP_STATUS_NOTE = {
@@ -354,13 +388,15 @@ def _render_text_diff(title: str, grouped) -> str:
     overall = grouped.overall
     added = [seg for seg in overall.segments if seg.kind == "added"]
     removed = [seg for seg in overall.segments if seg.kind == "removed"]
+    modified = [seg for seg in overall.segments if seg.kind == "modified"]
     equal_count = sum(1 for seg in overall.segments if seg.kind == "equal")
     header = f"""
     <h3>{_e(title)}</h3>
     <p>Similarité : {_fmt_pct(overall.similarity_ratio)}
-       — {len(added)} ajout(s), {len(removed)} suppression(s), {equal_count} inchangé(s)</p>
+       — {len(added)} ajout(s), {len(removed)} suppression(s), {len(modified)} phrase(s)
+       reformulée(s), {equal_count} inchangé(s)</p>
     """
-    if not added and not removed:
+    if not added and not removed and not modified:
         return header + "<p>Aucun changement détecté.</p>"
 
     groups = grouped.groups
@@ -372,10 +408,11 @@ def _render_text_diff(title: str, grouped) -> str:
     for group in groups:
         g_added = sum(1 for seg in group.diff.segments if seg.kind == "added")
         g_removed = sum(1 for seg in group.diff.segments if seg.kind == "removed")
-        if not g_added and not g_removed:
+        g_modified = sum(1 for seg in group.diff.segments if seg.kind == "modified")
+        if not g_added and not g_removed and not g_modified:
             unchanged_group_count += 1
             continue
-        changed_groups.append((group, g_added, g_removed))
+        changed_groups.append((group, g_added, g_removed, g_modified))
 
     matched_groups = sorted(
         (item for item in changed_groups if item[0].status == "matched"),
@@ -386,19 +423,20 @@ def _render_text_diff(title: str, grouped) -> str:
 
     parts = [header]
     compact_count = 0
-    for group, g_added, g_removed in changed_groups:
+    for group, g_added, g_removed, g_modified in changed_groups:
         heading_label = _e(group.heading) if group.heading else "Introduction"
         status_note = _GROUP_STATUS_NOTE[group.status]
+        stats = f"{g_added} ajout(s), {g_removed} suppression(s), {g_modified} reformulation(s)"
         if group.status != "matched" or id(group) not in detailed_ids:
             compact_count += 1
             parts.append(
                 f'<p class="group-stats"><strong>{heading_label}</strong>{status_note}'
-                f" — {g_added} ajout(s), {g_removed} suppression(s)</p>"
+                f" — {stats}</p>"
             )
             continue
         parts.append(f"""
         <h4>{heading_label}{status_note}</h4>
-        <p class="group-stats">{g_added} ajout(s), {g_removed} suppression(s)</p>
+        <p class="group-stats">{stats}</p>
         {_diff_body_html(group.diff.segments)}
         """)
 

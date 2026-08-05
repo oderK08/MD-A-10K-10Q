@@ -12,7 +12,7 @@ from .errors import DiffError, MissingSectionError
 from .grouped_diff import DiffGroup, GroupedTextDiffResult, diff_text_grouped
 from .mdna import diff_mdna
 from .risk_factors import RiskFactorsDiffResult, diff_risk_factors
-from .text_diff import DiffSegment, TextDiffResult, diff_text
+from .text_diff import DiffSegment, TextDiffResult, diff_text, word_level_diff
 
 __all__ = [
     "DiffError",
@@ -23,6 +23,7 @@ __all__ = [
     "DiffSegment",
     "TextDiffResult",
     "diff_text",
+    "word_level_diff",
     "DiffGroup",
     "GroupedTextDiffResult",
     "diff_text_grouped",

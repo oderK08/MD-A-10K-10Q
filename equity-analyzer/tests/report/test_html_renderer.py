@@ -90,9 +90,25 @@ def test_renders_altman_zone_and_piotroski_score():
 
 
 def test_renders_diff_segments_for_mdna():
-    from .factories import make_filing as _mk
+    """
+    Two genuinely UNRELATED sentences (near-zero word overlap, well below
+    the modified-pairing threshold) must still render as real separate
+    removed/added blocks -- checked via the actual opening tag, not a
+    bare substring, since ".segment-added"/".segment-removed" are also
+    CSS selector names that appear in every report's <style> block
+    regardless of whether anything actually uses them.
 
-    current = _filing()
+    Both texts end in a period deliberately: a short line with NO
+    trailing punctuation is exactly what `grouped_diff.py`'s heading
+    heuristic looks for, and this test isn't exercising that.
+    """
+    current = _filing(
+        text_sections=FilingTextSections(
+            item_1a_risk_factors="our revenue could decline due to competition",
+            item_7_mdna="Revenue grew due to strong demand this year.",
+            is_risk_factors_boilerplate=False,
+        ),
+    )
     prior = _filing(
         accession_number="acc-prior",
         financials=make_financial_period(
@@ -100,16 +116,60 @@ def test_renders_diff_segments_for_mdna():
             accession_number="acc-prior", period_end=date(2023, 12, 31), **_METRICS,
         ),
         text_sections=FilingTextSections(
-            item_1a_risk_factors="our revenue could decline due to weak demand",
-            item_7_mdna="revenue was flat this year",
+            item_1a_risk_factors="our revenue could decline due to competition",
+            item_7_mdna="Our manufacturing facility experienced unrelated water damage last quarter.",
             is_risk_factors_boilerplate=False,
         ),
         fiscal_year=2023,
     )
     report = build_report_data(current, prior, DICTIONARY)
     html = render_html(report)
-    assert "segment-added" in html
-    assert "segment-removed" in html
+    assert '<span class="segment-added">' in html
+    assert '<span class="segment-removed">' in html
+
+
+def test_renders_modified_segment_as_inline_word_diff():
+    """
+    A sentence recognizably reworded (not wholesale replaced) renders as
+    ONE inline diff -- unchanged words in place, the old wording struck
+    through, the new wording right next to it in green parentheses --
+    not two full duplicated blocks. Real user feedback: reading a whole
+    sentence struck through immediately above the whole new sentence in
+    green took longer to scan than seeing inline what actually changed.
+
+    Both texts end in a period deliberately -- see the note in
+    test_renders_diff_segments_for_mdna about the heading heuristic.
+    """
+    current = _filing(
+        text_sections=FilingTextSections(
+            item_1a_risk_factors="our revenue could decline due to competition",
+            item_7_mdna="Revenue grew due to strong growth this year.",
+            is_risk_factors_boilerplate=False,
+        ),
+    )
+    prior = _filing(
+        accession_number="acc-prior",
+        financials=make_financial_period(
+            fiscal_year=2023, fiscal_period="FY", duration=PeriodDuration.TWELVE_MONTH,
+            accession_number="acc-prior", period_end=date(2023, 12, 31), **_METRICS,
+        ),
+        text_sections=FilingTextSections(
+            item_1a_risk_factors="our revenue could decline due to competition",
+            # differs from `current`'s MD&A by only one word -- recognizably
+            # the same sentence, genuinely reworded.
+            item_7_mdna="Revenue fell due to strong growth this year.",
+            is_risk_factors_boilerplate=False,
+        ),
+        fiscal_year=2023,
+    )
+    report = build_report_data(current, prior, DICTIONARY)
+    html = render_html(report)
+    assert '<div class="segment-modified">' in html
+    assert '<span class="word-removed">fell</span>' in html
+    assert '<span class="word-added">(grew)</span>' in html
+    # the unchanged words stay in place, in plain text.
+    assert "Revenue" in html
+    assert "due to strong growth this year" in html
 
 
 def test_renders_boilerplate_skip_note():

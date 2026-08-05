@@ -1,6 +1,6 @@
 import pytest
 
-from equity_analyzer.diff.text_diff import diff_text
+from equity_analyzer.diff.text_diff import diff_text, word_level_diff
 
 PARA_A = "The company faces competition from larger rivals."
 PARA_B = "Supply chain disruptions could affect our margins."
@@ -50,19 +50,51 @@ def test_removed_paragraph_is_detected():
     assert result.added_word_count == 0
 
 
-def test_replaced_paragraph_shows_both_removed_and_added():
+def test_replaced_paragraph_becomes_a_single_modified_segment():
+    """
+    A sentence recognizably reworded into another (not just noise, a real
+    edit) is shown as ONE "modified" segment carrying both versions, not
+    two full, separately-duplicated removed+added blocks -- real user
+    feedback: reading two near-identical paragraphs stacked on top of
+    each other (one struck through, one green) took longer than seeing
+    what actually changed inline.
+    """
     rewritten = "The company faces intense competition from many new entrants."
     prior = f"{PARA_A}\n\n{PARA_B}"
     current = f"{rewritten}\n\n{PARA_B}"
 
     result = diff_text(prior, current)
-    kinds = [(seg.kind, seg.text) for seg in result.segments]
+    kinds = [seg.kind for seg in result.segments]
 
-    assert ("removed", PARA_A) in kinds
-    assert ("added", rewritten) in kinds
-    assert ("equal", PARA_B) in kinds
-    assert result.removed_word_count == len(PARA_A.split())
-    assert result.added_word_count == len(rewritten.split())
+    assert kinds.count("modified") == 1
+    assert "removed" not in kinds
+    assert "added" not in kinds
+    modified = next(seg for seg in result.segments if seg.kind == "modified")
+    assert modified.text == PARA_A
+    assert modified.replacement == rewritten
+    # Only the words that actually changed count -- not the whole
+    # sentence on each side (see test_word_level_diff.py-style checks in
+    # test_modified_word_counts_reflect_only_the_changed_words below).
+    assert result.removed_word_count < len(PARA_A.split())
+    assert result.added_word_count < len(rewritten.split())
+
+
+def test_modified_word_counts_reflect_only_the_changed_words():
+    """
+    A "modified" segment's contribution to added/removed_word_count must
+    be the actually-differing words (via word_level_diff), not the whole
+    sentence on either side -- otherwise a report's "N mots changes"
+    summary would overstate a small edit as if the whole sentence had
+    been rewritten from scratch.
+    """
+    rewritten = "The company faces intense competition from many new entrants."
+    # word_level_diff(PARA_A, rewritten) == "larger rivals." removed (2
+    # words), "intense" + "many new entrants." added (4 words) --
+    # confirmed directly against word_level_diff, not assumed.
+    result = diff_text(PARA_A, rewritten)
+
+    assert result.removed_word_count == 2
+    assert result.added_word_count == 4
 
 
 def test_similarity_ratio_drops_for_mostly_new_text():
@@ -135,10 +167,15 @@ def test_reordering_does_not_hide_a_genuine_change_alongside_it():
 
     assert ("equal", PARA_B) in kinds
     assert ("equal", PARA_C) in kinds
-    assert ("removed", PARA_A) in kinds
-    assert ("added", rewritten) in kinds
-    assert result.removed_word_count == len(PARA_A.split())
-    assert result.added_word_count == len(rewritten.split())
+    # PARA_A wasn't just reordered -- it was genuinely reworded into
+    # `rewritten`, so it must survive as a "modified" segment carrying
+    # both versions, not disappear and not show as two full blocks.
+    modified = [seg for seg in result.segments if seg.kind == "modified"]
+    assert len(modified) == 1
+    assert modified[0].text == PARA_A
+    assert modified[0].replacement == rewritten
+    assert result.removed_word_count > 0
+    assert result.added_word_count > 0
 
 
 def test_near_duplicate_sentence_is_recognized_as_equal():
@@ -205,17 +242,27 @@ def test_5_percent_threshold_tolerates_more_than_a_single_word_difference():
 
 def test_genuinely_different_sentences_still_show_as_a_real_change():
     """
-    The near-duplicate tolerance must not swallow real content changes --
-    a sentence with several actually-different words stays removed/added.
+    Neither the near-duplicate tolerance NOR the modified-pairing must
+    swallow a real content change: this sentence is similar enough
+    overall to be recognized as "the same sentence, reworded" (a single
+    "modified" segment, not two full duplicated blocks -- that's the
+    point of this feature), but the actually-different words ("grow
+    modestly"/"decline sharply", "strong"/"weak") must still be visible
+    in its word-level diff, not silently dropped.
     """
     prior = "We expect revenue to grow modestly due to strong demand across our core markets this year."
     current = "We expect revenue to decline sharply due to weak demand across our core markets this year."
 
     result = diff_text(prior, current)
-    kinds = {seg.kind for seg in result.segments}
 
-    assert "removed" in kinds
-    assert "added" in kinds
+    assert len(result.segments) == 1
+    modified = result.segments[0]
+    assert modified.kind == "modified"
+    word_ops = word_level_diff(modified.text, modified.replacement)
+    assert ("removed", "grow modestly") in word_ops
+    assert ("added", "decline sharply") in word_ops
+    assert ("removed", "strong") in word_ops
+    assert ("added", "weak") in word_ops
     assert result.removed_word_count > 0
     assert result.added_word_count > 0
 
@@ -249,12 +296,10 @@ def test_single_p_tag_with_line_wrapped_sentences_diffs_at_sentence_level():
     result = diff_text(prior, current)
     kinds = [seg.kind for seg in result.segments]
 
-    # exactly one sentence replaced, the other two untouched -- not a
+    # exactly one sentence reworded, the other two untouched -- not a
     # wholesale removal/re-addition of the entire block.
-    assert kinds.count("removed") == 1
-    assert kinds.count("added") == 1
+    assert kinds.count("modified") == 1
     assert kinds.count("equal") == 2
-    removed = next(seg.text for seg in result.segments if seg.kind == "removed")
-    added = next(seg.text for seg in result.segments if seg.kind == "added")
-    assert "12%" in removed
-    assert "5%" in added
+    modified = next(seg for seg in result.segments if seg.kind == "modified")
+    assert "12%" in modified.text
+    assert "5%" in modified.replacement
