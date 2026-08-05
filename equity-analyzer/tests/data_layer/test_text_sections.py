@@ -23,6 +23,41 @@ def test_extracts_mdna_section():
     assert "Revenue increased 12%" in sections.item_7_mdna
 
 
+def test_mdna_extraction_survives_inline_cross_reference_to_item_1a():
+    """
+    Regression test for a real bug found on a real NVIDIA 10-K (not a
+    hand-written fixture): the MD&A almost always opens with a sentence
+    like "...should be read in conjunction with 'Item 1A. Risk
+    Factors,' our Consolidated Financial Statements..." -- a reference
+    to another item sitting mid-sentence. ANY_ITEM_HEADER, which only
+    checks the shape "item <n>[letter]. <words>", used to treat that
+    reference as the section's end boundary, cutting NVIDIA's real
+    ~40,000-word MD&A down to 27 words. Since this exact boilerplate
+    opens nearly every 10-K's MD&A, this wasn't NVIDIA-specific.
+    """
+    html = """
+    <html><body>
+    <p>Item 7. Management's Discussion and Analysis of Financial Condition and Results of Operations</p>
+    <p>The following discussion should be read in conjunction with
+    &#8220;Item 1A. Risk Factors,&#8221; our Consolidated Financial
+    Statements and related Notes thereto.</p>
+    <p>Revenue increased 12% year over year driven by strong demand
+    across all segments, with gross margin expansion of 200 basis
+    points.</p>
+    <p>Item 7A. Quantitative and Qualitative Disclosures About Market Risk</p>
+    <p>We are exposed to market risk in the ordinary course of business.</p>
+    </body></html>
+    """
+    sections = extract_sections(html)
+    assert sections.item_7_mdna is not None
+    # The cross-reference sentence must not have truncated the section --
+    # content from *after* it (the real financial discussion) must still
+    # be present, and content from the next real section must not be.
+    assert "Revenue increased 12%" in sections.item_7_mdna
+    assert "Item 1A. Risk Factors" in sections.item_7_mdna  # the reference itself is real MD&A prose
+    assert "market risk in the ordinary course" not in sections.item_7_mdna
+
+
 def test_extracts_controls_section():
     html = (FIXTURES / "sample_10k.html").read_text()
     sections = extract_sections(html)
