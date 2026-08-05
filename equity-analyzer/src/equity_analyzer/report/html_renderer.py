@@ -40,6 +40,10 @@ _CSS = """
   h1 { font-size: 18pt; margin-bottom: 2pt; }
   h2 { font-size: 13pt; margin-top: 20pt; border-bottom: 1px solid #ccc; padding-bottom: 4pt; }
   h3 { font-size: 11pt; margin-top: 12pt; }
+  h4 { font-size: 10pt; margin-top: 10pt; margin-bottom: 2pt; color: #2a2a2a;
+       border-left: 3pt solid #ccc; padding-left: 6pt; }
+  .group-stats { font-size: 9pt; color: #666; margin-top: 0; margin-bottom: 4pt; }
+  .muted { font-size: 9pt; color: #888; font-style: italic; }
   .subtitle { color: #555; margin-top: 0; }
   table { border-collapse: collapse; width: 100%; margin-top: 6pt; }
   th, td { text-align: left; padding: 4pt 8pt; border-bottom: 1px solid #ddd; font-size: 10pt; }
@@ -148,8 +152,8 @@ def _executive_summary_lines(report: ReportData) -> list:
         lines.append('<span class="warn">⚠ Beneish M-Score signale un risque de manipulation comptable.</span>')
 
     if report.mdna_diff.available:
-        added = sum(1 for seg in report.mdna_diff.value.segments if seg.kind == "added")
-        removed = sum(1 for seg in report.mdna_diff.value.segments if seg.kind == "removed")
+        added = sum(1 for seg in report.mdna_diff.value.overall.segments if seg.kind == "added")
+        removed = sum(1 for seg in report.mdna_diff.value.overall.segments if seg.kind == "removed")
         lines.append(f"MD&amp;A : {added} ajout(s), {removed} suppression(s) vs la période précédente.")
 
     if report.mdna_sentiment.available:
@@ -260,20 +264,71 @@ def _render_red_flags(report: ReportData) -> str:
     """
 
 
-def _render_text_diff(title: str, diff_result) -> str:
-    added = [seg for seg in diff_result.segments if seg.kind == "added"]
-    removed = [seg for seg in diff_result.segments if seg.kind == "removed"]
-    equal_count = sum(1 for seg in diff_result.segments if seg.kind == "equal")
+def _diff_body_html(segments) -> str:
+    removed = [seg for seg in segments if seg.kind == "removed"]
+    added = [seg for seg in segments if seg.kind == "added"]
     body = "".join(f'<span class="segment-removed">{_e(seg.text)}</span>' for seg in removed)
     body += "".join(f'<span class="segment-added">{_e(seg.text)}</span>' for seg in added)
-    if not added and not removed:
-        body = "<p>Aucun changement détecté.</p>"
-    return f"""
-    <h3>{_e(title)}</h3>
-    <p>Similarité : {_fmt_pct(diff_result.similarity_ratio)}
-       — {len(added)} ajout(s), {len(removed)} suppression(s), {equal_count} inchangé(s)</p>
-    {body}
+    return body
+
+
+_GROUP_STATUS_NOTE = {
+    "added": " (nouvelle sous-thématique)",
+    "removed": " (sous-thématique supprimée)",
+    "matched": "",
+}
+
+
+def _render_text_diff(title: str, grouped) -> str:
     """
+    Renders a GroupedTextDiffResult (see diff/grouped_diff.py). The
+    overall similarity/added/removed summary line is always the exact
+    same aggregate the flat diff would have shown.
+
+    When the section has no internal sub-headings (`grouped.groups` is
+    a single unheaded group -- the common case), the body renders
+    exactly as the old flat diff always did: no sub-heading wrapper is
+    introduced where the source document didn't have one. Sub-theme
+    breakdown only appears for a section that's actually structured
+    that way in the real filing (confirmed against a real NVIDIA 10-K's
+    Item 1A, whose "Risks Related to X" headings this was built for).
+    """
+    overall = grouped.overall
+    added = [seg for seg in overall.segments if seg.kind == "added"]
+    removed = [seg for seg in overall.segments if seg.kind == "removed"]
+    equal_count = sum(1 for seg in overall.segments if seg.kind == "equal")
+    header = f"""
+    <h3>{_e(title)}</h3>
+    <p>Similarité : {_fmt_pct(overall.similarity_ratio)}
+       — {len(added)} ajout(s), {len(removed)} suppression(s), {equal_count} inchangé(s)</p>
+    """
+    if not added and not removed:
+        return header + "<p>Aucun changement détecté.</p>"
+
+    groups = grouped.groups
+    if len(groups) == 1 and groups[0].heading == "":
+        return header + _diff_body_html(groups[0].diff.segments)
+
+    parts = [header]
+    unchanged_group_count = 0
+    for group in groups:
+        g_added = sum(1 for seg in group.diff.segments if seg.kind == "added")
+        g_removed = sum(1 for seg in group.diff.segments if seg.kind == "removed")
+        if not g_added and not g_removed:
+            unchanged_group_count += 1
+            continue
+        heading_label = _e(group.heading) if group.heading else "Introduction"
+        parts.append(f"""
+        <h4>{heading_label}{_GROUP_STATUS_NOTE[group.status]}</h4>
+        <p class="group-stats">{g_added} ajout(s), {g_removed} suppression(s)</p>
+        {_diff_body_html(group.diff.segments)}
+        """)
+    if unchanged_group_count:
+        parts.append(
+            f'<p class="muted">{unchanged_group_count} sous-thème(s) sans changement '
+            f"(déjà compté(s) dans le résumé ci-dessus, non détaillé(s) ci-dessous).</p>"
+        )
+    return "\n".join(parts)
 
 
 def _render_mdna_diff(section: SectionResult) -> str:

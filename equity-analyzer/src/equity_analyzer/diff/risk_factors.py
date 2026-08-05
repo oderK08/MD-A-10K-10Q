@@ -25,14 +25,14 @@ from typing import Optional
 
 from ..data_layer.models import FilingTextSections
 from .errors import MissingSectionError
-from .text_diff import TextDiffResult, diff_text
+from .grouped_diff import GroupedTextDiffResult, diff_text_grouped
 
 
 @dataclass(frozen=True)
 class RiskFactorsDiffResult:
     skipped: bool
     skip_reason: Optional[str]
-    diff: Optional[TextDiffResult]
+    diff: Optional[GroupedTextDiffResult]
     prior_was_boilerplate: bool
 
 
@@ -68,6 +68,6 @@ def diff_risk_factors(
     return RiskFactorsDiffResult(
         skipped=False,
         skip_reason=None,
-        diff=diff_text(prior.item_1a_risk_factors, current.item_1a_risk_factors),
+        diff=diff_text_grouped(prior.item_1a_risk_factors, current.item_1a_risk_factors),
         prior_was_boilerplate=prior_was_boilerplate,
     )

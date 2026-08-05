@@ -2,10 +2,11 @@
 Extracts the sections we care about (Risk Factors, MD&A, Controls) from the
 raw HTML of a 10-K or 10-Q.
 
-Four rigor problems solved here, all real and all silent-failure-prone
-if ignored -- the last two were only discovered by running against real
-filings (a Microsoft and a Coca-Cola 10-K) via the project's GitHub
-Actions reliability run, not against the hand-written test fixtures:
+Six rigor problems solved here, all real and all silent-failure-prone
+if ignored -- all but the first two were only discovered by running
+against real filings (Microsoft, Coca-Cola, NVIDIA) via the project's
+GitHub Actions reliability run, not against the hand-written test
+fixtures:
 
 1. TABLE OF CONTENTS FALSE POSITIVES: every 10-K/10-Q has a table of
    contents near the top that also contains the literal text "Item 1A."
@@ -42,6 +43,29 @@ Actions reliability run, not against the hand-written test fixtures:
    use the standard library's `html.unescape`, which decodes every named
    AND numeric entity, instead of a hand-rolled list that only covered a
    handful of named ones.
+
+5. SENTENCE-INTERNAL CROSS-REFERENCES TO OTHER ITEMS: a real NVIDIA
+   10-K's MD&A opens with almost universal boilerplate -- "...should be
+   read in conjunction with 'Item 1A. Risk Factors,' our Consolidated
+   Financial Statements..." -- a reference to another item sitting
+   mid-sentence. `ANY_ITEM_HEADER`, which only checks the shape "item
+   <n>[letter]. <words>", can't tell that apart from a real heading, so
+   it used to end the section right there: NVIDIA's real ~40,000-word
+   MD&A came back as 27 words. `_find_next_real_header` only accepts a
+   header-shaped match as a section boundary when it's preceded by a
+   newline (i.e. sits on its own line, like a real block-level heading)
+   rather than mid-paragraph like a cross-reference.
+
+6. PAGE FURNITURE INSIDE SENTENCES: a lone page number and a repeated
+   "Table of Contents" jump-link marker, inserted by the financial
+   printer at every page boundary, land INSIDE the extracted text with
+   no other whitespace cue -- verbatim from a real NVIDIA 10-K:
+   "...cause our stock \n 13 \n\n Table of Contents \n\n price to
+   decline." Left in, this pollutes diff and sentiment scoring with
+   spurious tokens, and the blank line it introduces fools the diff
+   module's paragraph splitter into treating one real sentence as two.
+   `_PAGE_FURNITURE_RUN_RE` drops these runs (and the newlines around
+   them) before anything downstream sees the text.
 """
 
 from __future__ import annotations
@@ -122,6 +146,21 @@ _TAG_RE = re.compile(r"<[^>]+>")
 _WHITESPACE_RE = re.compile(r"[ \t\xa0]+")
 _MULTI_NEWLINE_RE = re.compile(r"\n{3,}")
 
+# A financial printer inserts a lone page number and a repeated "Table
+# of Contents" jump-link marker at every page boundary -- found verbatim
+# in a real NVIDIA 10-K, sitting INSIDE a sentence with no other
+# whitespace cue: "...cause our stock \n 13 \n\n Table of Contents \n\n
+# price to decline." Left in, each occurrence becomes its own spurious
+# diff/sentiment token, AND the blank line it introduces (the "\n\n"
+# before/after "Table of Contents") fools the diff module's paragraph
+# splitter into treating one real sentence as two separate blocks.
+# Matched and dropped, together with the newlines around it, before
+# anything downstream sees the text.
+_PAGE_FURNITURE_RUN_RE = re.compile(
+    r"\n\s*(?:(?:\d{1,4}|table of contents)\s*\n\s*)+",
+    re.IGNORECASE,
+)
+
 
 def _replace_tag(match: re.Match) -> str:
     """
@@ -168,6 +207,13 @@ def html_to_text(html: str) -> str:
     # "Management's Discussion", which silently defeated the section
     # header match when only a handful of named entities were decoded.
     text = _html_unescape(text)
+    text = _WHITESPACE_RE.sub(" ", text)
+    # Collapse page furniture (page numbers, repeated "Table of
+    # Contents") to a single space BEFORE the multi-newline collapse
+    # below, since a removed furniture run can itself leave behind a
+    # stray "\n\n" that would otherwise be mistaken for a real paragraph
+    # break by the multi-newline collapse.
+    text = _PAGE_FURNITURE_RUN_RE.sub(" ", text)
     text = _WHITESPACE_RE.sub(" ", text)
     text = _MULTI_NEWLINE_RE.sub("\n\n", text)
     return text.strip()

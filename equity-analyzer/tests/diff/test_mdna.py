@@ -35,7 +35,7 @@ def test_diffs_mdna_normally_no_boilerplate_concept():
 
     result = diff_mdna(current, prior)
 
-    kinds = {seg.kind for seg in result.segments}
+    kinds = {seg.kind for seg in result.overall.segments}
     assert "added" in kinds
     assert "removed" in kinds  # the rewritten "5%" -> "12%" sentence
     assert "equal" in kinds

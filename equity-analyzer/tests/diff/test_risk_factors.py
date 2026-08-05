@@ -56,7 +56,7 @@ def test_diffs_normally_when_neither_is_boilerplate():
     assert result.skipped is False
     assert result.skip_reason is None
     assert result.diff is not None
-    assert any(seg.kind == "added" for seg in result.diff.segments)
+    assert any(seg.kind == "added" for seg in result.diff.overall.segments)
 
 
 def test_diffs_when_only_prior_was_boilerplate():

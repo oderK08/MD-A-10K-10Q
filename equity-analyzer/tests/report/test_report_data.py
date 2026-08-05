@@ -177,4 +177,4 @@ def test_boilerplate_risk_factors_thread_through_skip_not_unavailable():
     assert report.risk_factors_sentiment.available
     assert report.risk_factors_sentiment.value.skipped is True
     # MD&A is unaffected by Item 1A being boilerplate
-    assert report.mdna_diff.value.segments  # still a real diff
+    assert report.mdna_diff.value.overall.segments  # still a real diff
