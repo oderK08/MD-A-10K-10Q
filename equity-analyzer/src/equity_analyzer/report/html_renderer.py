@@ -362,11 +362,37 @@ def _group_change_weight(group) -> int:
     return group.diff.added_word_count + group.diff.removed_word_count
 
 
-def _render_text_diff(title: str, grouped) -> str:
+def _text_diff_summary_html(title: str, grouped) -> str:
     """
-    Renders a GroupedTextDiffResult (see diff/grouped_diff.py). The
-    overall similarity/added/removed summary line is always the exact
-    same aggregate the flat diff would have shown.
+    Just the headline line for a GroupedTextDiffResult (see
+    diff/grouped_diff.py) -- similarity % and ajout/suppression/
+    reformulation/inchangé counts, the exact same aggregate the flat
+    diff would have shown. Deliberately separate from
+    `_text_diff_detail_html`: the summary sits with the report's other
+    quick-scan numbers (financials, red flags, sentiment), while the
+    full text detail -- the longest, most detailed reading material in
+    the report -- is rendered near the end instead (see render_html).
+    """
+    overall = grouped.overall
+    added = [seg for seg in overall.segments if seg.kind == "added"]
+    removed = [seg for seg in overall.segments if seg.kind == "removed"]
+    modified = [seg for seg in overall.segments if seg.kind == "modified"]
+    equal_count = sum(1 for seg in overall.segments if seg.kind == "equal")
+    return f"""
+    <h3>{_e(title)}</h3>
+    <p>Similarité : {_fmt_pct(overall.similarity_ratio)}
+       — {len(added)} ajout(s), {len(removed)} suppression(s), {len(modified)} phrase(s)
+       reformulée(s), {equal_count} inchangé(s)</p>
+    """
+
+
+def _text_diff_detail_html(title: str, grouped) -> str:
+    """
+    The full text detail for a GroupedTextDiffResult -- everything
+    `_text_diff_summary_html` doesn't already say. Rendered as its own
+    section near the end of the report (see render_html): this is the
+    longest, most detailed reading material a report has, so it comes
+    after every quick-scan number, not interleaved with them.
 
     When the section has no internal sub-headings (`grouped.groups` is
     a single unheaded group -- the common case), the body renders
@@ -389,19 +415,13 @@ def _render_text_diff(title: str, grouped) -> str:
     added = [seg for seg in overall.segments if seg.kind == "added"]
     removed = [seg for seg in overall.segments if seg.kind == "removed"]
     modified = [seg for seg in overall.segments if seg.kind == "modified"]
-    equal_count = sum(1 for seg in overall.segments if seg.kind == "equal")
-    header = f"""
-    <h3>{_e(title)}</h3>
-    <p>Similarité : {_fmt_pct(overall.similarity_ratio)}
-       — {len(added)} ajout(s), {len(removed)} suppression(s), {len(modified)} phrase(s)
-       reformulée(s), {equal_count} inchangé(s)</p>
-    """
+    title_html = f"<h3>{_e(title)}</h3>"
     if not added and not removed and not modified:
-        return header + "<p>Aucun changement détecté.</p>"
+        return title_html + "<p>Aucun changement détecté.</p>"
 
     groups = grouped.groups
     if len(groups) == 1 and groups[0].heading == "":
-        return header + _diff_body_html(groups[0].diff.segments)
+        return title_html + _diff_body_html(groups[0].diff.segments)
 
     changed_groups = []
     unchanged_group_count = 0
@@ -421,7 +441,7 @@ def _render_text_diff(title: str, grouped) -> str:
     )
     detailed_ids = {id(item[0]) for item in matched_groups[:_MAX_DETAILED_GROUPS]}
 
-    parts = [header]
+    parts = [title_html]
     compact_count = 0
     for group, g_added, g_removed, g_modified in changed_groups:
         heading_label = _e(group.heading) if group.heading else "Introduction"
@@ -457,18 +477,27 @@ def _render_text_diff(title: str, grouped) -> str:
     return "\n".join(parts)
 
 
-def _render_mdna_diff(section: SectionResult) -> str:
+def _render_mdna_diff_summary(section: SectionResult) -> str:
     if not section.available:
         return f"<h3>MD&amp;A (Item 7)</h3>{_unavailable_html(section)}"
-    # NOTE: plain "&", not "&amp;" -- this goes through _render_text_diff's
-    # own _e(title) call, which would otherwise double-escape it into
-    # "&amp;amp;A", rendering as the literal text "MD&amp;A" in the PDF
-    # instead of "MD&A" (caught by visually inspecting a real rendered
-    # report, not just running the tests).
-    return _render_text_diff("MD&A (Item 7)", section.value)
+    # NOTE: plain "&", not "&amp;" -- this goes through _text_diff_summary_
+    # html's own _e(title) call, which would otherwise double-escape it
+    # into "&amp;amp;A", rendering as the literal text "MD&amp;A" in the
+    # PDF instead of "MD&A" (caught by visually inspecting a real
+    # rendered report, not just running the tests).
+    return _text_diff_summary_html("MD&A (Item 7)", section.value)
 
 
-def _render_risk_factors_diff(section: SectionResult) -> str:
+def _render_mdna_diff_detail(section: SectionResult) -> str:
+    # Unavailable is already explained in the summary section above (see
+    # render_html's section order) -- nothing to add here, not a silent
+    # drop of information the reader hasn't already seen.
+    if not section.available:
+        return ""
+    return _text_diff_detail_html("MD&A (Item 7)", section.value)
+
+
+def _render_risk_factors_diff_summary(section: SectionResult) -> str:
     if not section.available:
         return f"<h3>Risk Factors (Item 1A)</h3>{_unavailable_html(section)}"
     rf_result = section.value  # RiskFactorsDiffResult
@@ -477,14 +506,43 @@ def _render_risk_factors_diff(section: SectionResult) -> str:
             f"<h3>Risk Factors (Item 1A)</h3>"
             f'<p class="skip-note">{_e(rf_result.skip_reason)}</p>'
         )
-    return _render_text_diff("Risk Factors (Item 1A)", rf_result.diff)
+    return _text_diff_summary_html("Risk Factors (Item 1A)", rf_result.diff)
 
 
-def _render_diff_section(report: ReportData) -> str:
+def _render_risk_factors_diff_detail(section: SectionResult) -> str:
+    if not section.available:
+        return ""
+    rf_result = section.value
+    if rf_result.skipped:
+        return ""
+    return _text_diff_detail_html("Risk Factors (Item 1A)", rf_result.diff)
+
+
+def _render_diff_summary_section(report: ReportData) -> str:
     return f"""
     <h2>Changements textuels vs période précédente</h2>
-    <div class="card">{_render_risk_factors_diff(report.risk_factors_diff)}</div>
-    <div class="card">{_render_mdna_diff(report.mdna_diff)}</div>
+    <div class="card">{_render_risk_factors_diff_summary(report.risk_factors_diff)}</div>
+    <div class="card">{_render_mdna_diff_summary(report.mdna_diff)}</div>
+    """
+
+
+def _render_diff_detail_section(report: ReportData) -> str:
+    """
+    The full removed/added/modified text -- the longest, most detailed
+    reading material in the report -- rendered as its own section near
+    the end (see render_html), after every quick-scan number. Renders
+    nothing at all (not even the "<h2>") when there's genuinely no detail
+    to show for either section (both unavailable/skipped), rather than
+    an empty heading followed by nothing.
+    """
+    rf_detail = _render_risk_factors_diff_detail(report.risk_factors_diff)
+    mdna_detail = _render_mdna_diff_detail(report.mdna_diff)
+    if not rf_detail and not mdna_detail:
+        return ""
+    cards = "".join(f'<div class="card">{detail}</div>' for detail in (rf_detail, mdna_detail) if detail)
+    return f"""
+    <h2>Détail des changements textuels</h2>
+    {cards}
     """
 
 
@@ -530,7 +588,19 @@ def _render_sentiment_section(report: ReportData) -> str:
 
 
 def render_html(report: ReportData) -> str:
-    """Renders `report` into a complete, self-contained HTML document."""
+    """
+    Renders `report` into a complete, self-contained HTML document.
+
+    Section order, per user feedback on a real report: every quick-scan
+    number (financials, red flags, the Risk Factors/MD&A diff SUMMARY,
+    sentiment) comes first; the detailed diff TEXT -- by far the
+    longest, most detailed reading material in the report -- comes last,
+    right before the closing footer. Sentiment (Loughran-McDonald) was
+    moved up to sit right after the diff summary rather than at the very
+    end of the report: both are analyses of the same two text sections
+    (Risk Factors, MD&A), so reading them together makes more sense than
+    having sentiment isolated after everything else.
+    """
     return f"""<!doctype html>
 <html>
 <head>
@@ -545,8 +615,9 @@ def render_html(report: ReportData) -> str:
   {_render_ai_summary(report)}
   {_render_financial_highlights(report)}
   {_render_red_flags(report)}
-  {_render_diff_section(report)}
+  {_render_diff_summary_section(report)}
   {_render_sentiment_section(report)}
+  {_render_diff_detail_section(report)}
   <p class="footer">
     Rapport généré automatiquement le {report.generated_at.isoformat()} à partir des
     données SEC EDGAR. Voir le code source du projet pour la méthodologie complète
