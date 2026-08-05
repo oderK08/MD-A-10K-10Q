@@ -280,7 +280,14 @@ def main() -> int:
         _warn(f"Dictionnaire non trouvé à {DICTIONARY_PATH} -- sentiment indisponible pour tous les tickers.")
 
     if ANTHROPIC_API_KEY:
-        _ok("Synthèse IA activée (ANTHROPIC_API_KEY présente) -- un appel Claude par ticker.")
+        # Report the model actually in effect rather than assuming the
+        # default: it's selectable per workflow run (ANTHROPIC_MODEL),
+        # and the run log is the only place the reader can confirm which
+        # one produced the summaries in the generated PDFs.
+        from equity_analyzer.report.ai_summary import DEFAULT_MODEL
+
+        model_in_use = os.environ.get("ANTHROPIC_MODEL", "").strip() or DEFAULT_MODEL
+        _ok(f"Synthèse IA activée (modèle : {model_in_use}) -- un appel Claude par ticker.")
     else:
         _warn("Synthèse IA non demandée (case décochée ou pas de clé) -- aucun appel Claude ne sera fait.")
     print()

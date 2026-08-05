@@ -208,11 +208,12 @@ def _render_ai_summary(report: ReportData) -> str:
     model = _e(report.ai_summary.value["model"])
     return f"""
     <div class="ai-summary">
-      <h2>Synthèse générée par IA <span class="ai-badge">{model}</span></h2>
+      <h2>Lecture bullish / bearish par IA <span class="ai-badge">{model}</span></h2>
       <p>{text}</p>
-      <p class="ai-disclaimer">Générée automatiquement à partir des données déjà
-      calculées dans ce rapport (aucune connaissance externe sur la société) —
-      à vérifier, ne constitue pas un conseil en investissement.</p>
+      <p class="ai-disclaimer">Verdict directionnel généré automatiquement à partir
+      des seules données calculées dans ce rapport (aucune connaissance externe sur
+      la société) — porte sur la balance des changements de ce filing, pas sur la
+      valorisation du titre. À vérifier ; ne constitue pas un conseil en investissement.</p>
     </div>
     """
 
