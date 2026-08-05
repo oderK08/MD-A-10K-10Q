@@ -75,6 +75,39 @@ ANY_ITEM_HEADER = re.compile(
     re.IGNORECASE,
 )
 
+def _find_next_real_header(text: str, start: int) -> re.Match | None:
+    """
+    Finds the next occurrence of ANY_ITEM_HEADER after `start` that looks
+    like an actual section heading, not a sentence-internal cross-
+    reference to another item.
+
+    Confirmed against a real NVIDIA 10-K: its MD&A opens with the almost
+    universal boilerplate "...should be read in conjunction with 'Item
+    1A. Risk Factors,' our Consolidated Financial Statements..." -- a
+    reference to Item 1A sitting mid-sentence, which ANY_ITEM_HEADER
+    (which only checks the shape "item <n>[letter]. <words>") cannot
+    tell apart from a real heading. Left unfiltered, this cut the
+    extracted MD&A off after 27 words instead of the real ~40,000+.
+    Because this exact phrasing opens the MD&A of nearly every 10-K, this
+    almost certainly isn't NVIDIA-specific.
+
+    The distinguishing signal: `html_to_text` turns block-level tag
+    closings (</p>, </div>, </tr>, </li>, <br>) into newlines, so a real
+    heading -- a block element on its own -- is preceded by a newline
+    (ignoring spaces/tabs); a cross-reference sits inside a paragraph's
+    running prose, preceded by ordinary sentence text.
+    """
+    pos = start
+    while True:
+        match = ANY_ITEM_HEADER.search(text, pos=pos)
+        if match is None:
+            return None
+        before = text[:match.start()].rstrip(" \t")
+        if not before or before.endswith("\n"):
+            return match
+        pos = match.end()
+
+
 BOILERPLATE_PATTERNS = [
     r"no\s+material\s+change",
     r"not\s+been\s+any\s+material\s+change",
@@ -159,7 +192,7 @@ def _find_best_header_match(text: str, patterns: list[str]) -> re.Match | None:
         # entry is followed almost immediately by the next TOC entry
         # (a short gap); a real section is followed by substantial prose
         # before the next header, or by the end of the document.
-        next_header = ANY_ITEM_HEADER.search(text, pos=start)
+        next_header = _find_next_real_header(text, start)
         end = next_header.start() if next_header else len(text)
         return end - start
 
@@ -168,7 +201,7 @@ def _find_best_header_match(text: str, patterns: list[str]) -> re.Match | None:
 
 def _extract_section_text(text: str, match: re.Match) -> str:
     start = match.end()
-    next_header = ANY_ITEM_HEADER.search(text, pos=start)
+    next_header = _find_next_real_header(text, start)
     end = next_header.start() if next_header else len(text)
     return text[start:end].strip()
 
