@@ -10,7 +10,7 @@ compilés dans un rapport PDF structuré.
 |---|---|---|
 | 1. Data Layer | ✅ Terminé (42 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
-| 3. Diff textuel | ✅ Terminé (25 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
+| 3. Diff textuel | ✅ Terminé (28 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
 | 5. Report Builder | ✅ Terminé (50 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
 | 6. Synthèse IA (opt-in) | ✅ Terminé (8 tests) | Résumé factuel généré par l'API Claude, ancré strictement sur les données déjà calculées |
@@ -238,6 +238,35 @@ Diff au niveau phrase (via `difflib.SequenceMatcher`), construit sur les
   régression : `test_reordered_sentences_within_a_block_are_recognized_as_equal`,
   `test_reordered_pair_straddling_an_equal_block_is_recognized`,
   `test_reordering_does_not_hide_a_genuine_change_alongside_it`.
+  **Correction #3, trouvée sur un vrai rapport Netflix** : une phrase
+  ressortait à la fois en "removed" et en "added", en lisant exactement
+  le même texte. Deux filings publiés à des années d'écart peuvent
+  différer sur quelque chose d'invisible à la lecture (espace
+  insécable U+00A0, guillemet typographique vs droit, entité HTML
+  décodée légèrement différemment) sans que le contenu ait réellement
+  changé — le cas testé (`test_non_breaking_space_artifact_does_not_
+  show_as_a_change`) reproduit exactement ça : l'espace insécable
+  n'est pas touché par la normalisation `[ \t]+` existante dans
+  `_split_paragraphs`, contrairement à un espace normal. Plutôt que de
+  traquer chaque variante d'encodage une par une, `_recover_near_
+  duplicate_matches()` ajoute une tolérance : après la passe exacte
+  ci-dessus, les paires "removed"/"added" restantes sont comparées par
+  un ratio `difflib` calculé **sur les mots** (pas les caractères —
+  plus proche de "combien de mots diffèrent réellement" qu'un ratio par
+  caractère, que l'ajout/suppression d'un seul mot peut fausser
+  disproportionnellement). Au-delà de 99% de similarité (marge
+  d'erreur ~1%), la paire est considérée comme non-changée ; les
+  appariements sont faits par ordre de similarité décroissante, chaque
+  phrase utilisée au plus une fois (évite qu'une phrase supprimée avec
+  deux candidats "added" proches s'apparie au mauvais). **Compromis
+  assumé** : un changement factuel d'un seul mot (ex: un chiffre) au
+  milieu d'une très longue phrase peut en théorie repasser sous le
+  seuil de 99% et disparaître — risque inhérent à toute tolérance en
+  pourcentage fixe, limité (pas éliminé) en gardant le seuil haut.
+  Tests de régression : `test_near_duplicate_sentence_is_recognized_as_equal`,
+  `test_non_breaking_space_artifact_does_not_show_as_a_change`,
+  `test_genuinely_different_sentences_still_show_as_a_real_change`
+  (garde-fou : un vrai changement de contenu reste affiché).
 - **`risk_factors.py`** — diff d'Item 1A, avec le cas boilerplate des 10-Q
   géré explicitement : si la section actuelle est la formule standard
   "aucun changement matériel", le module **refuse de calculer un diff**
@@ -590,7 +619,7 @@ python -m pytest tests/report/test_ai_summary.py -v
 ## Statut : projet complet, validé contre de vraies données
 
 Les 5 modules principaux (+ le module 6 optionnel) sont terminés et
-testés (172 tests). Le pipeline a été validé
+testés (175 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,

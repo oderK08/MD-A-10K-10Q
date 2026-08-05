@@ -141,6 +141,63 @@ def test_reordering_does_not_hide_a_genuine_change_alongside_it():
     assert result.added_word_count == len(rewritten.split())
 
 
+def test_near_duplicate_sentence_is_recognized_as_equal():
+    """
+    Real feedback from a Netflix report: a sentence showed up as BOTH
+    removed and added, even though it read as exactly the same sentence.
+    Two filings a year apart can differ in something invisible on the
+    page (a non-breaking space, a smart vs. straight quote...) without
+    the actual wording changing at all -- close enough that showing it
+    as a real edit is noise, not signal.
+    """
+    base_words = [f"word{i}" for i in range(150)]
+    prior_sentence = " ".join(base_words) + "."
+    current_words = list(base_words)
+    current_words[75] = "wordX"  # exactly one word out of 150 differs
+    current_sentence = " ".join(current_words) + "."
+
+    result = diff_text(prior_sentence, current_sentence)
+
+    assert all(seg.kind == "equal" for seg in result.segments)
+    assert result.added_word_count == 0
+    assert result.removed_word_count == 0
+
+
+def test_non_breaking_space_artifact_does_not_show_as_a_change():
+    """
+    A non-breaking space (U+00A0) isn't touched by the plain `[ \\t]+`
+    whitespace collapsing in `_split_paragraphs` -- exactly the kind of
+    invisible-on-the-page byte difference between two real filings that
+    prompted this fix. The sentence must not show up as removed+added
+    just because one copy used a regular space and the other didn't.
+    """
+    prior = "Our supply chain spans multiple countries and depend on third parties."
+    current = prior.replace("multiple countries", "multiple countries")
+
+    result = diff_text(prior, current)
+
+    assert all(seg.kind == "equal" for seg in result.segments)
+    assert result.added_word_count == 0
+    assert result.removed_word_count == 0
+
+
+def test_genuinely_different_sentences_still_show_as_a_real_change():
+    """
+    The near-duplicate tolerance must not swallow real content changes --
+    a sentence with several actually-different words stays removed/added.
+    """
+    prior = "We expect revenue to grow modestly due to strong demand across our core markets this year."
+    current = "We expect revenue to decline sharply due to weak demand across our core markets this year."
+
+    result = diff_text(prior, current)
+    kinds = {seg.kind for seg in result.segments}
+
+    assert "removed" in kinds
+    assert "added" in kinds
+    assert result.removed_word_count > 0
+    assert result.added_word_count > 0
+
+
 def test_single_p_tag_with_line_wrapped_sentences_diffs_at_sentence_level():
     """
     Real SEC filings routinely put several sentences in ONE <p> tag,
