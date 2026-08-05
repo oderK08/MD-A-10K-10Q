@@ -10,9 +10,9 @@ compilés dans un rapport PDF structuré.
 |---|---|---|
 | 1. Data Layer | ✅ Terminé (42 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
-| 3. Diff textuel | ✅ Terminé (22 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
+| 3. Diff textuel | ✅ Terminé (25 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
-| 5. Report Builder | ✅ Terminé (47 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
+| 5. Report Builder | ✅ Terminé (50 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
 | 6. Synthèse IA (opt-in) | ✅ Terminé (8 tests) | Résumé factuel généré par l'API Claude, ancré strictement sur les données déjà calculées |
 
 ## Module 1 — Data Layer
@@ -219,6 +219,25 @@ Diff au niveau phrase (via `difflib.SequenceMatcher`), construit sur les
   `test_single_p_tag_with_line_wrapped_sentences_diffs_at_sentence_level`,
   + `tests/diff/test_integration_real_fixtures.py` qui fait tourner le
   pipeline complet Module 1 → Module 3 sur `sample_10k.html`).
+  **Correction #2, trouvée sur un vrai 10-K Micron** : `SequenceMatcher`
+  est basé sur la plus longue sous-séquence commune (LCS), qui n'aligne
+  deux unités que si leur ordre relatif est préservé des deux côtés. Une
+  section réorganisée (mêmes phrases, ordre différent — ce qui arrive
+  quand un émetteur réécrit un sous-thème sans changer son contenu)
+  déjoue ça : chaque phrase déplacée ressortait comme une suppression +
+  un ajout, alors que rien n'avait réellement changé. Pire, ce n'est même
+  pas toujours un seul opcode "replace" : un simple échange de deux
+  phrases produit une séquence `insert` / `equal` / `delete` chez
+  `difflib`, la paire réordonnée encadrant un bloc `equal` sans rapport.
+  Fix : `_recover_reordered_matches()` fait une passe globale, après
+  construction du diff, sur *tous* les segments "removed"/"added" du
+  document — une intersection multiset (`collections.Counter`) retrouve
+  le texte identique des deux côtés indépendamment de sa position ; les
+  occurrences appariées deviennent "equal", seul le texte réellement
+  différent (au-delà des doublons) reste marqué removed/added. Tests de
+  régression : `test_reordered_sentences_within_a_block_are_recognized_as_equal`,
+  `test_reordered_pair_straddling_an_equal_block_is_recognized`,
+  `test_reordering_does_not_hide_a_genuine_change_alongside_it`.
 - **`risk_factors.py`** — diff d'Item 1A, avec le cas boilerplate des 10-Q
   géré explicitement : si la section actuelle est la formule standard
   "aucun changement matériel", le module **refuse de calculer un diff**
@@ -422,9 +441,38 @@ suite de tests qui restait verte, qui a trouvé deux vrais bugs de rendu
      qui laisse au moteur de mise en page de vrais points de coupure de
      mots.
 
+### Rendu du diff par sous-thème : condenser sans jamais cacher
+
+Retour utilisateur sur un vrai rapport Micron généré en conditions
+réelles : le rendu par sous-thème (voir `grouped_diff.py` ci-dessus)
+restait trop long. Deux causes, corrigées dans `_render_text_diff()`
+(`html_renderer.py`), toutes deux en préservant le principe déjà en place
+dans le projet — condenser, jamais supprimer silencieusement une info :
+
+1. **Sous-thème entièrement ajouté ou supprimé** — son "diff" est par
+   construction 100% d'un seul sens (tout removed, ou tout added) ; en
+   reproduire le texte intégral n'apporte rien que le titre + la note de
+   statut ("nouvelle sous-thématique" / "sous-thématique supprimée") ne
+   disent déjà, et gonfle le rapport pour rien. Ces groupes n'affichent
+   plus que leur ligne titre + compteur, jamais leur corps.
+2. **Trop de sous-thèmes réellement réécrits ("matched") à la fois** —
+   un seul filing peut réorganiser une douzaine de sous-thèmes en même
+   temps. Seuls les `_MAX_DETAILED_GROUPS` (5) les plus modifiés — classés
+   par nombre de mots changés (`added_word_count + removed_word_count`,
+   déjà calculé, même proxy d'"importance" qu'ailleurs dans le projet) —
+   sont montrés en détail avec leur texte complet. Les autres gardent une
+   ligne compacte (titre + compteur), et une note en bas du rapport
+   ("N sous-thème(s) résumé(s) sans le texte complet") explique pourquoi,
+   plutôt que de les faire disparaître sans trace.
+
+Tests de régression :
+`test_wholesale_removed_subtheme_does_not_reproduce_its_text`,
+`test_wholesale_added_subtheme_does_not_reproduce_its_text`,
+`test_only_the_most_changed_matched_subthemes_show_full_text`.
+
 ### Tests
 
-47 tests, dont deux tests d'intégration bout-en-bout qui font tourner
+50 tests, dont deux tests d'intégration bout-en-bout qui font tourner
 **Module 1 → Module 5** sur les vraies fixtures (XBRL + HTML) jusqu'à un
 vrai PDF généré (vérifie les octets magiques `%PDF-`) — un pour un rapport
 single-période, un pour une tendance sur 2 exercices. Avec cette fixture
@@ -542,7 +590,7 @@ python -m pytest tests/report/test_ai_summary.py -v
 ## Statut : projet complet, validé contre de vraies données
 
 Les 5 modules principaux (+ le module 6 optionnel) sont terminés et
-testés (166 tests). Le pipeline a été validé
+testés (172 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,

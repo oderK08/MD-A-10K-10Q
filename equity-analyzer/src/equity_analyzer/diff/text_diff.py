@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import difflib
 import re
+from collections import Counter
 from dataclasses import dataclass
 
 _BLOCK_SPLIT_RE = re.compile(r"\n\s*\n+")
@@ -72,6 +73,53 @@ class DiffSegment:
     text: str
 
 
+def _recover_reordered_matches(segments: list[DiffSegment]) -> list[DiffSegment]:
+    """
+    Recovers sentences that are byte-identical but merely REORDERED.
+
+    `SequenceMatcher.get_opcodes()` is LCS-based: it only reports two units
+    as "equal" when their relative order is preserved on both sides. A
+    filing that reshuffles the same risk-factor sentences into a new order
+    (common when a company reorganizes a section without changing its
+    content) defeats that -- every reordered sentence comes back as a
+    spurious removed+added pair, even though nothing actually changed.
+    This isn't confined to a single "replace" opcode either: e.g. swapping
+    the order of just two sentences produces an ("insert", ...), ("equal",
+    ...), ("delete", ...) sequence -- the reordered pair straddles an
+    unrelated "equal" opcode in between.
+
+    Fix: applied globally across the WHOLE already-built segment list (not
+    opcode-by-opcode), a Counter (multiset) intersection between all
+    "removed" and all "added" texts finds content that appears on both
+    sides regardless of position. For each matched occurrence, the
+    "removed" one is reclassified as "equal" and its paired "added"
+    counterpart is dropped outright (it's the same sentence -- reporting
+    it a second time would double-count it). Only genuine leftover text
+    (present on one side but with no available match on the other, even
+    after accounting for duplicates) stays removed/added.
+    """
+    removed_counts = Counter(seg.text for seg in segments if seg.kind == "removed")
+    added_counts = Counter(seg.text for seg in segments if seg.kind == "added")
+    common = removed_counts & added_counts
+    if not common:
+        return segments
+
+    convert_remaining = Counter(common)
+    drop_remaining = Counter(common)
+    result: list[DiffSegment] = []
+    for seg in segments:
+        if seg.kind == "removed" and convert_remaining[seg.text] > 0:
+            result.append(DiffSegment(kind="equal", text=seg.text))
+            convert_remaining[seg.text] -= 1
+        elif seg.kind == "added" and drop_remaining[seg.text] > 0:
+            drop_remaining[seg.text] -= 1
+            # Dropped, not appended: already represented by the "equal"
+            # segment its matched "removed" counterpart became above.
+        else:
+            result.append(seg)
+    return result
+
+
 @dataclass(frozen=True)
 class TextDiffResult:
     segments: list  # list[DiffSegment], in document order
@@ -92,8 +140,6 @@ def diff_text(prior_text: str, current_text: str) -> TextDiffResult:
     )
 
     segments: list[DiffSegment] = []
-    added_words = 0
-    removed_words = 0
 
     for tag, a_start, a_end, b_start, b_end in matcher.get_opcodes():
         if tag == "equal":
@@ -101,15 +147,21 @@ def diff_text(prior_text: str, current_text: str) -> TextDiffResult:
                 segments.append(DiffSegment(kind="equal", text=unit))
         else:
             # "delete" and "replace" both remove prior units;
-            # "insert" and "replace" both add current units.
+            # "insert" and "replace" both add current units. Any
+            # reordered-but-identical text hiding across these is
+            # recovered afterwards, globally, by
+            # _recover_reordered_matches -- see its docstring for why
+            # that has to happen after the fact rather than per-opcode.
             if tag in ("delete", "replace"):
                 for unit in prior_units[a_start:a_end]:
                     segments.append(DiffSegment(kind="removed", text=unit))
-                    removed_words += _word_count(unit)
             if tag in ("insert", "replace"):
                 for unit in current_units[b_start:b_end]:
                     segments.append(DiffSegment(kind="added", text=unit))
-                    added_words += _word_count(unit)
+
+    segments = _recover_reordered_matches(segments)
+    added_words = sum(_word_count(seg.text) for seg in segments if seg.kind == "added")
+    removed_words = sum(_word_count(seg.text) for seg in segments if seg.kind == "removed")
 
     return TextDiffResult(
         segments=segments,
