@@ -20,9 +20,15 @@ Outputs:
 - One PDF report per ticker in rapports/
 - summary.csv: one row per ticker, one column per pipeline stage, so
   gaps across companies are visible at a glance
-- debug/<TICKER>_plaintext.txt + occurrence hints, ONLY for tickers where
-  Item 1A (or Item 7) extraction failed -- for diagnosing the regex
-  against real filing text without needing direct network access here.
+- debug/<TICKER>_plaintext.txt + occurrence hints, for tickers where
+  Item 1A (or Item 7) extraction failed outright OR came back
+  suspiciously short (< MIN_EXPECTED_SECTION_WORDS words -- a real
+  legally-mandated disclosure is never a one-liner, so "found a string"
+  isn't the same as "found the section": a real NVDA run once "found" a
+  26-word item_7_mdna, identical across two different fiscal years,
+  which is exactly this failure mode wearing a found=True disguise) --
+  for diagnosing the regex against real filing text without needing
+  direct network access here.
 """
 
 from __future__ import annotations
@@ -61,9 +67,20 @@ REPORTS_DIR = ROOT / "rapports"
 DEBUG_DIR = ROOT / "debug"
 SUMMARY_CSV = ROOT / "summary.csv"
 
+# A genuine Item 1A / Item 7 section is realistically always at least a
+# few hundred words -- these are legally mandated, heavily lawyered
+# disclosures, never a one-liner. Found-a-string but way too short is
+# the same failure mode as found-nothing (a boundary-detection bug that
+# grabbed a stray "item 7"-shaped phrase instead of the real section),
+# just silent: `is not None` alone reports it as a success. This was
+# missed on a real NVDA run -- item_7_mdna "found" but only 26 words,
+# identical between two different fiscal years -- because the debug
+# dump only fired on outright None.
+MIN_EXPECTED_SECTION_WORDS = 200
+
 SUMMARY_FIELDS = [
     "ticker", "cik", "revenue", "net_income",
-    "risk_factors_found", "mdna_found",
+    "risk_factors_found", "risk_factors_words", "mdna_found", "mdna_words",
     "altman_z", "beneish_m", "piotroski_f",
     "mdna_diff", "risk_factors_diff",
     "mdna_sentiment", "risk_factors_sentiment",
@@ -116,7 +133,11 @@ def _build_filing(client, cik, filing_ref, ticker) -> Filing:
 
     if sections.item_1a_risk_factors is None:
         _dump_extraction_debug(ticker, "item1a", html)
+    elif len(sections.item_1a_risk_factors.split()) < MIN_EXPECTED_SECTION_WORDS:
+        _dump_extraction_debug(ticker, "item1a", html)
     if sections.item_7_mdna is None:
+        _dump_extraction_debug(ticker, "item7", html)
+    elif len(sections.item_7_mdna.split()) < MIN_EXPECTED_SECTION_WORDS:
         _dump_extraction_debug(ticker, "item7", html)
 
     return Filing(
@@ -158,8 +179,12 @@ def run_for_ticker(client, dictionary, ticker: str) -> dict:
         current_filing = _build_filing(client, cik, filings[0], ticker)
         row["revenue"] = current_filing.financials.revenue.value if current_filing.financials.revenue else ""
         row["net_income"] = current_filing.financials.net_income.value if current_filing.financials.net_income else ""
-        row["risk_factors_found"] = current_filing.text_sections.item_1a_risk_factors is not None
-        row["mdna_found"] = current_filing.text_sections.item_7_mdna is not None
+        risk_factors_text = current_filing.text_sections.item_1a_risk_factors
+        mdna_text = current_filing.text_sections.item_7_mdna
+        row["risk_factors_found"] = risk_factors_text is not None
+        row["risk_factors_words"] = len(risk_factors_text.split()) if risk_factors_text else 0
+        row["mdna_found"] = mdna_text is not None
+        row["mdna_words"] = len(mdna_text.split()) if mdna_text else 0
         _ok(f"Filing courant construit (revenue={row['revenue']}, net_income={row['net_income']})")
     except Exception as exc:  # noqa: BLE001 -- diagnostic script, report every failure
         _fail(f"Construction du filing courant: {exc}")
@@ -237,21 +262,38 @@ def main() -> int:
         writer.writerows(results)
 
     print("=== Résumé ===")
-    print(f"{'Ticker':<8}{'Revenue':<18}{'RiskFactors':<13}{'MD&A':<7}{'Altman':<9}{'Beneish':<9}{'Piotroski':<10}")
+    print(
+        f"{'Ticker':<8}{'Revenue':<18}{'RiskFactors':<13}{'(mots)':<8}"
+        f"{'MD&A':<7}{'(mots)':<8}{'Altman':<9}{'Beneish':<9}{'Piotroski':<10}"
+    )
     for r in results:
         print(
             f"{r['ticker']:<8}"
             f"{str(r['revenue'])[:16]:<18}"
             f"{str(r['risk_factors_found']):<13}"
+            f"{str(r['risk_factors_words']):<8}"
             f"{str(r['mdna_found']):<7}"
+            f"{str(r['mdna_words']):<8}"
             f"{('OK' if r['altman_z'] == 'OK' else 'X'):<9}"
             f"{('OK' if r['beneish_m'] == 'OK' else 'X'):<9}"
             f"{('OK' if r['piotroski_f'] == 'OK' else 'X'):<10}"
         )
 
     n_ok = sum(1 for r in results if not r["error"])
+    n_thin = sum(
+        1 for r in results
+        if not r["error"] and (
+            (r["risk_factors_found"] and 0 < r["risk_factors_words"] < MIN_EXPECTED_SECTION_WORDS)
+            or (r["mdna_found"] and 0 < r["mdna_words"] < MIN_EXPECTED_SECTION_WORDS)
+        )
+    )
     print()
     print(f"=== Terminé : {n_ok}/{len(results)} tickers traités sans erreur bloquante ===")
+    if n_thin:
+        print(
+            f"=== ATTENTION : {n_thin} ticker(s) avec une section \"trouvée\" mais "
+            f"suspicieusement courte (< {MIN_EXPECTED_SECTION_WORDS} mots) -- voir debug/ ==="
+        )
     print(f"Détails complets dans {SUMMARY_CSV.name} (artifact 'resultats-pipeline')")
     return 0
 
