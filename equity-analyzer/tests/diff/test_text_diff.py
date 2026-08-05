@@ -181,6 +181,28 @@ def test_non_breaking_space_artifact_does_not_show_as_a_change():
     assert result.removed_word_count == 0
 
 
+def test_5_percent_threshold_tolerates_more_than_a_single_word_difference():
+    """
+    The threshold was raised from an initial 99% (~1% word margin) to 95%
+    (~5%) at the user's explicit request -- a single-word encoding
+    artifact wasn't the only real-world case. This pair differs by 2
+    words out of 60 (ratio ~0.967): below the old 99% bar, so it would
+    NOT have matched before, but above the new 95% one.
+    """
+    base_words = [f"word{i}" for i in range(60)]
+    prior_sentence = " ".join(base_words) + "."
+    current_words = list(base_words)
+    current_words[10] = "wordX"
+    current_words[40] = "wordY"
+    current_sentence = " ".join(current_words) + "."
+
+    result = diff_text(prior_sentence, current_sentence)
+
+    assert all(seg.kind == "equal" for seg in result.segments)
+    assert result.added_word_count == 0
+    assert result.removed_word_count == 0
+
+
 def test_genuinely_different_sentences_still_show_as_a_real_change():
     """
     The near-duplicate tolerance must not swallow real content changes --

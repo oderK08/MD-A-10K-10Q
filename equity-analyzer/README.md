@@ -10,7 +10,7 @@ compilés dans un rapport PDF structuré.
 |---|---|---|
 | 1. Data Layer | ✅ Terminé (42 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
-| 3. Diff textuel | ✅ Terminé (28 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
+| 3. Diff textuel | ✅ Terminé (29 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
 | 5. Report Builder | ✅ Terminé (50 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
 | 6. Synthèse IA (opt-in) | ✅ Terminé (8 tests) | Résumé factuel généré par l'API Claude, ancré strictement sur les données déjà calculées |
@@ -254,17 +254,21 @@ Diff au niveau phrase (via `difflib.SequenceMatcher`), construit sur les
   un ratio `difflib` calculé **sur les mots** (pas les caractères —
   plus proche de "combien de mots diffèrent réellement" qu'un ratio par
   caractère, que l'ajout/suppression d'un seul mot peut fausser
-  disproportionnellement). Au-delà de 99% de similarité (marge
-  d'erreur ~1%), la paire est considérée comme non-changée ; les
-  appariements sont faits par ordre de similarité décroissante, chaque
-  phrase utilisée au plus une fois (évite qu'une phrase supprimée avec
-  deux candidats "added" proches s'apparie au mauvais). **Compromis
-  assumé** : un changement factuel d'un seul mot (ex: un chiffre) au
-  milieu d'une très longue phrase peut en théorie repasser sous le
-  seuil de 99% et disparaître — risque inhérent à toute tolérance en
-  pourcentage fixe, limité (pas éliminé) en gardant le seuil haut.
-  Tests de régression : `test_near_duplicate_sentence_is_recognized_as_equal`,
+  disproportionnellement). Au-delà de 95% de similarité (marge
+  d'erreur ~5%, remontée depuis 99% initial à la demande explicite de
+  l'utilisateur — un artefact d'encodage isolé ne suffisait pas à
+  expliquer tous les cas rencontrés en pratique), la paire est
+  considérée comme non-changée ; les appariements sont faits par ordre
+  de similarité décroissante, chaque phrase utilisée au plus une fois
+  (évite qu'une phrase supprimée avec deux candidats "added" proches
+  s'apparie au mauvais). **Compromis assumé** : un changement factuel
+  d'un ou deux mots (ex: un chiffre) au milieu d'une phrase assez
+  longue peut en théorie repasser sous le seuil de 95% et disparaître
+  — risque inhérent à toute tolérance en pourcentage fixe, plus large
+  qu'à 99% mais toujours documenté et testé, pas caché. Tests de
+  régression : `test_near_duplicate_sentence_is_recognized_as_equal`,
   `test_non_breaking_space_artifact_does_not_show_as_a_change`,
+  `test_5_percent_threshold_tolerates_more_than_a_single_word_difference`,
   `test_genuinely_different_sentences_still_show_as_a_real_change`
   (garde-fou : un vrai changement de contenu reste affiché).
 - **`risk_factors.py`** — diff d'Item 1A, avec le cas boilerplate des 10-Q
@@ -619,7 +623,7 @@ python -m pytest tests/report/test_ai_summary.py -v
 ## Statut : projet complet, validé contre de vraies données
 
 Les 5 modules principaux (+ le module 6 optionnel) sont terminés et
-testés (175 tests). Le pipeline a été validé
+testés (176 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,

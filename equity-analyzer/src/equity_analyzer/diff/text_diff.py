@@ -122,12 +122,14 @@ def _recover_reordered_matches(segments: list[DiffSegment]) -> list[DiffSegment]
 
 # How similar two "removed"/"added" sentences must be (as a difflib ratio
 # over their WORDS, not characters -- see _recover_near_duplicate_matches)
-# to be treated as unchanged rather than a real edit. 0.99 means at most
-# ~1% of the words differ. Deliberately conservative: this is a tolerance
-# for presentation noise (whitespace/encoding artifacts between two
-# filings, HTML entity differences, a stray typo fix), not a licence to
-# ignore real content changes.
-_NEAR_DUPLICATE_RATIO_THRESHOLD = 0.99
+# to be treated as unchanged rather than a real edit. 0.95 means at most
+# ~5% of the words differ. Raised from an initial 0.99 (~1%) at the user's
+# request -- real filings apparently drift by more than a single-word
+# encoding artifact between years. Still a deliberate tolerance for
+# presentation noise (whitespace/encoding artifacts between two filings,
+# HTML entity differences, a stray typo fix), not a licence to ignore
+# real content changes -- see the trade-off note below.
+_NEAR_DUPLICATE_RATIO_THRESHOLD = 0.95
 
 
 def _recover_near_duplicate_matches(
@@ -156,11 +158,12 @@ def _recover_near_duplicate_matches(
     candidates pairs with its closest match, not an arbitrary one.
 
     Known trade-off, accepted deliberately per this ratio-based approach:
-    a single-word factual change (e.g. one figure) inside a very long
+    a small factual change (e.g. one or two figures) inside a long enough
     sentence can push the ratio above threshold and get swallowed as "no
-    change" -- the same risk any fixed-percentage tolerance carries. The
-    threshold is kept high (99%) specifically to limit that blast radius,
-    not eliminate it.
+    change" -- the same risk any fixed-percentage tolerance carries. At
+    95%, that means roughly 1 changed word per 20 in a sentence can be
+    absorbed; the threshold is kept as high as the user's tolerance for
+    presentation noise allows, not eliminated.
     """
     removed_idxs = [i for i, seg in enumerate(segments) if seg.kind == "removed"]
     added_idxs = [i for i, seg in enumerate(segments) if seg.kind == "added"]
