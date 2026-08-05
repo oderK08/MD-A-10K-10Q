@@ -290,3 +290,45 @@ def test_trend_executive_summary_mentions_revenue_growth():
     html = render_trend_html(trend)
     assert "Résumé exécutif" in html
     assert "Revenue en hausse" in html or "Revenue en baisse" in html
+
+
+def test_ai_summary_not_rendered_when_never_requested():
+    """report.ai_summary is None by default (opt-in only, see
+    report/ai_summary.py) -- no placeholder should appear either."""
+    report = build_report_data(_filing(), None, DICTIONARY)
+    assert report.ai_summary is None
+    html = render_html(report)
+    assert "Synthèse générée par IA" not in html
+
+
+def test_ai_summary_shows_unavailable_reason_when_it_failed():
+    import dataclasses
+    from equity_analyzer.report.report_data import SectionResult
+
+    report = build_report_data(_filing(), None, DICTIONARY)
+    report = dataclasses.replace(
+        report,
+        ai_summary=SectionResult(value=None, unavailable_reason="no ANTHROPIC_API_KEY provided"),
+    )
+    html = render_html(report)
+    assert "Synthèse générée par IA" in html
+    assert "Indisponible" in html
+    assert "no ANTHROPIC_API_KEY provided" in html
+
+
+def test_ai_summary_renders_text_model_badge_and_disclaimer():
+    import dataclasses
+    from equity_analyzer.report.report_data import SectionResult
+
+    report = build_report_data(_filing(), None, DICTIONARY)
+    report = dataclasses.replace(
+        report,
+        ai_summary=SectionResult(
+            value={"text": "Le risque X a été retiré cette année.", "model": "claude-haiku-4-5-20251001"},
+            unavailable_reason=None,
+        ),
+    )
+    html = render_html(report)
+    assert "Le risque X a été retiré cette année." in html
+    assert "claude-haiku-4-5-20251001" in html
+    assert "ne constitue pas un conseil en investissement" in html

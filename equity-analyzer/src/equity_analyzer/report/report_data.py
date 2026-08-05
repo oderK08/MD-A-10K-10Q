@@ -88,6 +88,11 @@ class ReportData:
     risk_factors_diff: SectionResult = None
     mdna_sentiment: SectionResult = None
     risk_factors_sentiment: SectionResult = None
+    # Opt-in only -- see report/ai_summary.py. Never set by
+    # build_report_data() itself; a caller attaches it explicitly via
+    # attach_ai_summary(report, api_key=...) after the free,
+    # deterministic report below is already built.
+    ai_summary: SectionResult = None
 
 
 def _ok(value: T) -> SectionResult:

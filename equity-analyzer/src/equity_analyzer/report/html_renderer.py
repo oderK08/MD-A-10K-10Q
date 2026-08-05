@@ -70,6 +70,11 @@ _CSS = """
   .exec-summary ul { margin: 4pt 0; padding-left: 16pt; }
   .exec-summary li { margin: 3pt 0; }
   .exec-summary .warn { color: #9a6700; font-weight: bold; }
+  .ai-summary { background: #f7f5fb; border-left: 3pt solid #6f42c1; padding: 8pt 12pt; margin: 10pt 0; }
+  .ai-summary h2 { margin-top: 0; border-bottom: none; padding-bottom: 0; }
+  .ai-badge { font-size: 8pt; font-weight: normal; color: #6f42c1; border: 1pt solid #6f42c1;
+              border-radius: 3pt; padding: 1pt 5pt; margin-left: 6pt; vertical-align: middle; }
+  .ai-disclaimer { font-size: 8pt; color: #888; font-style: italic; margin-top: 6pt; margin-bottom: 0; }
   .page-break { page-break-before: always; }
   .chart-row { margin: 3pt 0; }
   .chart-label { display: inline-block; width: 40pt; font-size: 9pt; vertical-align: middle; }
@@ -170,6 +175,37 @@ def _render_executive_summary(report: ReportData) -> str:
         return ""
     items = "\n".join(f"<li>{line}</li>" for line in lines)
     return f'<div class="exec-summary"><h2>Résumé exécutif</h2><ul>{items}</ul></div>'
+
+
+def _render_ai_summary(report: ReportData) -> str:
+    """
+    Opt-in only (see report/ai_summary.py): `report.ai_summary` is None
+    unless a caller explicitly called `attach_ai_summary`, in which case
+    this renders nothing at all -- no "indisponible" placeholder either,
+    since most reports simply never requested this section, and showing
+    an empty/failed AI box by default would misleadingly suggest it's a
+    normal part of every report.
+    """
+    if report.ai_summary is None:
+        return ""
+    if not report.ai_summary.available:
+        return f"""
+        <div class="ai-summary">
+          <h2>Synthèse générée par IA</h2>
+          <p class="unavailable">Indisponible — {_e(report.ai_summary.unavailable_reason)}</p>
+        </div>
+        """
+    text = _e(report.ai_summary.value["text"])
+    model = _e(report.ai_summary.value["model"])
+    return f"""
+    <div class="ai-summary">
+      <h2>Synthèse générée par IA <span class="ai-badge">{model}</span></h2>
+      <p>{text}</p>
+      <p class="ai-disclaimer">Générée automatiquement à partir des données déjà
+      calculées dans ce rapport (aucune connaissance externe sur la société) —
+      à vérifier, ne constitue pas un conseil en investissement.</p>
+    </div>
+    """
 
 
 def _render_header(report: ReportData) -> str:
@@ -416,6 +452,7 @@ def render_html(report: ReportData) -> str:
   <div id="footer_content">Page <pdf:pagenumber /> / <pdf:pagecount /></div>
   {_render_header(report)}
   {_render_executive_summary(report)}
+  {_render_ai_summary(report)}
   {_render_financial_highlights(report)}
   {_render_red_flags(report)}
   {_render_diff_section(report)}
