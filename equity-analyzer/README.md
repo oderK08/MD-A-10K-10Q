@@ -10,9 +10,9 @@ compilés dans un rapport PDF structuré.
 |---|---|---|
 | 1. Data Layer | ✅ Terminé (42 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
-| 3. Diff textuel | ✅ Terminé (29 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
+| 3. Diff textuel | ✅ Terminé (30 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
-| 5. Report Builder | ✅ Terminé (50 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
+| 5. Report Builder | ✅ Terminé (51 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
 | 6. Synthèse IA (opt-in) | ✅ Terminé (8 tests) | Résumé factuel généré par l'API Claude, ancré strictement sur les données déjà calculées |
 
 ## Module 1 — Data Layer
@@ -271,6 +271,43 @@ Diff au niveau phrase (via `difflib.SequenceMatcher`), construit sur les
   `test_5_percent_threshold_tolerates_more_than_a_single_word_difference`,
   `test_genuinely_different_sentences_still_show_as_a_real_change`
   (garde-fou : un vrai changement de contenu reste affiché).
+  **Correction #4, demande explicite de l'utilisateur** : même une
+  phrase *réellement* réécrite (pas un artefact de reformatage) se
+  lisait mal en superposant tout l'ancien texte barré puis tout le
+  nouveau texte en vert — plus long à lire, et il fallait comparer les
+  deux blocs à l'œil pour repérer ce qui avait vraiment changé.
+  Demande : garder le texte tel quel, et montrer juste le mot
+  supprimé, avec à côté le mot qui l'a remplacé entre parenthèses.
+  `word_level_diff()` (fonction publique, réutilise le même mécanisme
+  `SequenceMatcher`, appliqué un niveau plus bas — les mots d'une
+  phrase, pas les phrases d'un document) calcule ce diff mot-à-mot.
+  `_reconcile_replace_block()` l'utilise pour transformer un opcode
+  "replace" local (une ou plusieurs phrases supprimées ET ajoutées au
+  même endroit) en un seul segment `DiffSegment(kind="modified", text=
+  ancien, replacement=nouveau)` quand les deux phrases sont assez
+  proches pour être "la même phrase, réécrite" — un ratio `difflib` sur
+  les mots ≥ 40% (`_MODIFIED_PAIR_RATIO_THRESHOLD`), volontairement
+  plus bas que le seuil "quasi-identique" (95%, correction #3 :
+  au-delà, c'est un non-changement, pas une réécriture) mais
+  confortablement au-dessus du chevauchement de mots-outils ("le",
+  "notre", "et"...) entre deux phrases sans rapport, mesuré en pratique
+  autour de 20-30%. **Volontairement local à un seul opcode**, pas
+  global comme les corrections #2/#3 : "cette phrase est devenue
+  celle-là" n'a de sens qu'entre deux phrases adjacentes du même
+  endroit du document — l'appliquer globalement risquerait d'apparier
+  deux phrases sans rapport, situées à des endroits différents du
+  texte, simplement parce qu'elles partagent quelques mots.
+  Les décomptes "mots ajoutés/supprimés" d'un segment "modified" ne
+  comptent que les mots réellement différents (via `word_level_diff`),
+  pas la phrase entière de chaque côté. Tests de régression :
+  `test_replaced_paragraph_becomes_a_single_modified_segment`,
+  `test_modified_word_counts_reflect_only_the_changed_words`,
+  `test_reordering_does_not_hide_a_genuine_change_alongside_it`
+  (mis à jour), `test_single_p_tag_with_line_wrapped_sentences_diffs_
+  at_sentence_level` (mis à jour). Le rendu (`html_renderer.py`, plus
+  bas) affiche ce segment sous la forme `mot supprimé (mot ajouté)`,
+  barré en rouge / vert entre parenthèses, dans la phrase d'origine
+  plutôt qu'en deux blocs dupliqués.
 - **`risk_factors.py`** — diff d'Item 1A, avec le cas boilerplate des 10-Q
   géré explicitement : si la section actuelle est la formule standard
   "aucun changement matériel", le module **refuse de calculer un diff**
@@ -503,9 +540,39 @@ Tests de régression :
 `test_wholesale_added_subtheme_does_not_reproduce_its_text`,
 `test_only_the_most_changed_matched_subthemes_show_full_text`.
 
+### Rendu d'une phrase réécrite : diff mot-à-mot en ligne, pas deux blocs dupliqués
+
+Suite explicite à la demande utilisateur ci-dessus (Module 3, correction
+#4) : un segment `DiffSegment(kind="modified", ...)` (une phrase
+reconnue comme réécrite, pas wholesale remplacée) ne s'affiche plus en
+deux blocs empilés (tout l'ancien texte barré en rouge, puis tout le
+nouveau en vert). `_modified_segment_html()` construit à la place un
+diff mot-à-mot en ligne, dans la phrase d'origine : les mots inchangés
+restent en texte normal à leur place, les mots supprimés sont barrés en
+rouge, et les mots ajoutés apparaissent juste à côté en vert **entre
+parenthèses** — exactement le format demandé. Exemple concret (test
+`test_renders_modified_segment_as_inline_word_diff`) :
+
+> Revenue ~~fell~~ (grew) due to strong growth this year.
+
+Les compteurs "ajout(s)" / "suppression(s)" / "reformulation(s)" (dans
+l'en-tête et par sous-thème) comptent désormais les trois séparément —
+un segment "modified" n'est ni un pur ajout ni une pure suppression, et
+le confondre avec l'un ou l'autre aurait sous-compté les changements
+réels ou, pire, fait passer un sous-thème entièrement composé de
+reformulations pour "sans changement" (bug attrapé et corrigé pendant
+le développement : la condition de saut d'un groupe "inchangé" ne
+regardait à l'origine que `g_added`/`g_removed`, jamais `g_modified`).
+
+Tests de régression :
+`test_renders_modified_segment_as_inline_word_diff`,
+`test_renders_diff_segments_for_mdna` (garde-fou : deux phrases sans
+rapport, en dehors du seuil d'appariement, restent bien deux blocs
+distincts removed/added, pas un "modified" forcé).
+
 ### Tests
 
-50 tests, dont deux tests d'intégration bout-en-bout qui font tourner
+51 tests, dont deux tests d'intégration bout-en-bout qui font tourner
 **Module 1 → Module 5** sur les vraies fixtures (XBRL + HTML) jusqu'à un
 vrai PDF généré (vérifie les octets magiques `%PDF-`) — un pour un rapport
 single-période, un pour une tendance sur 2 exercices. Avec cette fixture
@@ -623,7 +690,7 @@ python -m pytest tests/report/test_ai_summary.py -v
 ## Statut : projet complet, validé contre de vraies données
 
 Les 5 modules principaux (+ le module 6 optionnel) sont terminés et
-testés (176 tests). Le pipeline a été validé
+testés (178 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,

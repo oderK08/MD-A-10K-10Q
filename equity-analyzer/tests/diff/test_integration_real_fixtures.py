@@ -43,8 +43,11 @@ def test_mdna_diff_on_real_extracted_text_isolates_single_sentence_change():
     result = diff_mdna(current_sections, prior_sections)
     kinds = [seg.kind for seg in result.overall.segments]
 
-    assert kinds.count("removed") == 1
-    assert kinds.count("added") == 1
+    # A single figure changed inside an otherwise-identical sentence is
+    # recognized as one reworded sentence, not a full removed+added pair.
+    assert kinds.count("modified") == 1
+    assert "removed" not in kinds
+    assert "added" not in kinds
     # the rest of the MD&A block must be reported as unchanged, not
-    # swallowed into the same removed/added pair.
+    # swallowed into the same modified pair.
     assert kinds.count("equal") >= 1

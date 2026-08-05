@@ -41,11 +41,13 @@ def test_matched_sub_theme_headings_are_diffed_independently():
 
     demand_group = next(g for g in result.groups if g.heading == "Risks Related to Demand")
     assert demand_group.status == "matched"
-    assert any(seg.kind == "added" for seg in demand_group.diff.segments)
+    # the sentence was reworded (clause inserted), not wholly replaced --
+    # recognized as one "modified" segment, not removed+added.
+    assert any(seg.kind == "modified" for seg in demand_group.diff.segments)
 
     regulation_group = next(g for g in result.groups if g.heading == "Risks Related to Regulation")
     assert regulation_group.status == "matched"
-    assert not any(seg.kind in ("added", "removed") for seg in regulation_group.diff.segments)
+    assert not any(seg.kind in ("added", "removed", "modified") for seg in regulation_group.diff.segments)
 
 
 def test_a_sub_theme_present_only_in_current_year_is_reported_as_added():
@@ -132,8 +134,8 @@ def test_real_nvidia_shaped_structure_groups_correctly():
 
     # the summary bullet occurrence (short, unchanged between years)
     assert manufacturing_groups[0].status == "matched"
-    assert not any(seg.kind in ("added", "removed") for seg in manufacturing_groups[0].diff.segments)
+    assert not any(seg.kind in ("added", "removed", "modified") for seg in manufacturing_groups[0].diff.segments)
 
     # the real detailed occurrence (rewritten -- "export controls" is new)
     assert manufacturing_groups[1].status == "matched"
-    assert any(seg.kind == "added" for seg in manufacturing_groups[1].diff.segments)
+    assert any(seg.kind == "modified" for seg in manufacturing_groups[1].diff.segments)

@@ -69,8 +69,140 @@ def _word_count(text: str) -> int:
 
 @dataclass(frozen=True)
 class DiffSegment:
-    kind: str  # "equal" | "added" | "removed"
+    kind: str  # "equal" | "added" | "removed" | "modified"
     text: str
+    # Only set when kind == "modified": the new wording that replaced
+    # `text`. Lets the renderer show a single inline word-level diff
+    # ("old (new)") instead of two full, separately-duplicated blocks --
+    # see word_level_diff() and _reconcile_replace_block().
+    replacement: str | None = None
+
+
+def word_level_diff(old: str, new: str) -> list[tuple[str, str]]:
+    """
+    Word-level diff between two sentences, as a list of (kind, text)
+    runs -- "equal" | "removed" | "added" -- in reading order. Public
+    (not `_`-prefixed): the renderer uses this directly to build the
+    inline "old (new)" markup for a "modified" DiffSegment, so the
+    presentation layer never has to reimplement diff logic, and this
+    module stays the single source of truth for what changed.
+
+    Same SequenceMatcher machinery as the rest of this module, just
+    applied one level down (words within a sentence, not sentences
+    within a document).
+    """
+    old_words = old.split()
+    new_words = new.split()
+    matcher = difflib.SequenceMatcher(a=old_words, b=new_words, autojunk=False)
+    ops: list[tuple[str, str]] = []
+    for tag, a_start, a_end, b_start, b_end in matcher.get_opcodes():
+        if tag == "equal":
+            ops.append(("equal", " ".join(old_words[a_start:a_end])))
+        else:
+            if tag in ("delete", "replace"):
+                ops.append(("removed", " ".join(old_words[a_start:a_end])))
+            if tag in ("insert", "replace"):
+                ops.append(("added", " ".join(new_words[b_start:b_end])))
+    return ops
+
+
+# How similar a removed sentence and an added sentence must be (word-level
+# difflib ratio) within the SAME "replace" opcode to be treated as ONE
+# sentence being reworded (rendered as a single inline "old (new)" diff)
+# rather than two unrelated, fully-duplicated removed/added blocks.
+# Deliberately lower than _NEAR_DUPLICATE_RATIO_THRESHOLD (which means
+# "no real change at all") -- this one means "still recognizably the same
+# sentence, genuinely edited". Kept well above coincidental overlap from
+# shared stopwords ("the", "our", "and"...) between two UNRELATED
+# sentences, which real testing put in the 0.2-0.3 range for ordinary
+# prose -- 0.4 leaves a safety margin above that noise floor.
+_MODIFIED_PAIR_RATIO_THRESHOLD = 0.4
+
+
+def _reconcile_replace_block(removed_units: list[str], added_units: list[str]) -> list[DiffSegment]:
+    """
+    Turns ONE "replace" opcode's local removed/added units into segments,
+    recognizing two things the naive "all removed, then all added" listing
+    doesn't:
+
+    1. Exact duplicates local to this block (a Counter/multiset
+       intersection, same technique as `_recover_reordered_matches` but
+       scoped to just this block) become "equal".
+    2. Remaining removed/added sentences similar enough to plausibly be
+       "the same sentence, reworded" (see _MODIFIED_PAIR_RATIO_THRESHOLD)
+       are paired into a single "modified" segment instead of two
+       full-text removed+added blocks -- real user feedback: reading two
+       near-identical paragraphs stacked on top of each other, one struck
+       through and one green, took longer and was harder to scan than
+       just seeing what actually changed inline. Matched greedily,
+       highest similarity first, each sentence used at most once.
+
+    Deliberately scoped to a single opcode's block, not global like the
+    two recovery passes above: "this sentence was reworded into that one"
+    is a claim about two ADJACENT, contextually-related pieces of text
+    (which is exactly what one replace opcode groups together). Matching
+    it globally across the whole document would risk pairing two
+    unrelated sentences from different parts of a section just because
+    they happen to share a few words.
+    """
+    common = Counter(removed_units) & Counter(added_units)
+    remaining_removed_exact = Counter(common)
+    remaining_added_exact = Counter(common)
+
+    exact_removed_idxs: set[int] = set()
+    for i, unit in enumerate(removed_units):
+        if remaining_removed_exact[unit] > 0:
+            exact_removed_idxs.add(i)
+            remaining_removed_exact[unit] -= 1
+    exact_added_idxs: set[int] = set()
+    for i, unit in enumerate(added_units):
+        if remaining_added_exact[unit] > 0:
+            exact_added_idxs.add(i)
+            remaining_added_exact[unit] -= 1
+
+    leftover_removed = [(i, u) for i, u in enumerate(removed_units) if i not in exact_removed_idxs]
+    leftover_added = [(i, u) for i, u in enumerate(added_units) if i not in exact_added_idxs]
+
+    candidates = []
+    for li, (_ri, r) in enumerate(leftover_removed):
+        r_words = r.split()
+        for lj, (_ai, a) in enumerate(leftover_added):
+            ratio = difflib.SequenceMatcher(a=r_words, b=a.split(), autojunk=False).ratio()
+            if ratio >= _MODIFIED_PAIR_RATIO_THRESHOLD:
+                candidates.append((ratio, li, lj))
+    candidates.sort(key=lambda c: c[0], reverse=True)
+
+    # Two tiers above the pairing floor: near-duplicate-strength matches
+    # (same bar as _recover_near_duplicate_matches) are unchanged text,
+    # not an edit -- "equal", not "modified". Everything else that clears
+    # the pairing floor is a real, worth-showing edit.
+    paired_as_equal: dict[int, int] = {}
+    paired_as_modified: dict[int, int] = {}
+    used_added: set[int] = set()
+    for ratio, li, lj in candidates:
+        if li in paired_as_equal or li in paired_as_modified or lj in used_added:
+            continue
+        if ratio >= _NEAR_DUPLICATE_RATIO_THRESHOLD:
+            paired_as_equal[li] = lj
+        else:
+            paired_as_modified[li] = lj
+        used_added.add(lj)
+
+    segments: list[DiffSegment] = []
+    for i, unit in enumerate(removed_units):
+        if i in exact_removed_idxs:
+            segments.append(DiffSegment(kind="equal", text=unit))
+    for li, (_ri, r) in enumerate(leftover_removed):
+        if li in paired_as_equal:
+            segments.append(DiffSegment(kind="equal", text=r))
+        elif li in paired_as_modified:
+            segments.append(DiffSegment(kind="modified", text=r, replacement=leftover_added[paired_as_modified[li]][1]))
+        else:
+            segments.append(DiffSegment(kind="removed", text=r))
+    for lj, (_ai, a) in enumerate(leftover_added):
+        if lj not in used_added:
+            segments.append(DiffSegment(kind="added", text=a))
+    return segments
 
 
 def _recover_reordered_matches(segments: list[DiffSegment]) -> list[DiffSegment]:
@@ -239,25 +371,47 @@ def diff_text(prior_text: str, current_text: str) -> TextDiffResult:
         if tag == "equal":
             for unit in prior_units[a_start:a_end]:
                 segments.append(DiffSegment(kind="equal", text=unit))
-        else:
-            # "delete" and "replace" both remove prior units;
-            # "insert" and "replace" both add current units. Any
-            # reordered-but-identical or merely near-identical text
-            # hiding across these is recovered afterwards, globally, by
-            # _recover_reordered_matches / _recover_near_duplicate_matches
-            # -- see their docstrings for why that has to happen after
-            # the fact rather than per-opcode.
-            if tag in ("delete", "replace"):
-                for unit in prior_units[a_start:a_end]:
-                    segments.append(DiffSegment(kind="removed", text=unit))
-            if tag in ("insert", "replace"):
-                for unit in current_units[b_start:b_end]:
-                    segments.append(DiffSegment(kind="added", text=unit))
+        elif tag == "replace":
+            # Has units on BOTH sides -- reconciled locally (exact
+            # duplicates -> equal, similar-enough pairs -> a single
+            # inline "modified" segment) rather than dumped as two flat
+            # removed/added lists. See _reconcile_replace_block's
+            # docstring for why this is scoped to the block, not global.
+            segments.extend(_reconcile_replace_block(
+                prior_units[a_start:a_end], current_units[b_start:b_end]
+            ))
+        elif tag == "delete":
+            # Pure one-sided removal -- no added counterpart in this
+            # opcode to pair against.
+            for unit in prior_units[a_start:a_end]:
+                segments.append(DiffSegment(kind="removed", text=unit))
+        elif tag == "insert":
+            for unit in current_units[b_start:b_end]:
+                segments.append(DiffSegment(kind="added", text=unit))
 
+    # Cross-opcode reordering (see each function's docstring for why this
+    # can't be caught opcode-by-opcode) -- both only look at "removed"/
+    # "added" segments, so "modified" ones from the block-local
+    # reconciliation above are untouched.
     segments = _recover_reordered_matches(segments)
     segments = _recover_near_duplicate_matches(segments)
-    added_words = sum(_word_count(seg.text) for seg in segments if seg.kind == "added")
-    removed_words = sum(_word_count(seg.text) for seg in segments if seg.kind == "removed")
+
+    added_words = 0
+    removed_words = 0
+    for seg in segments:
+        if seg.kind == "added":
+            added_words += _word_count(seg.text)
+        elif seg.kind == "removed":
+            removed_words += _word_count(seg.text)
+        elif seg.kind == "modified":
+            # Only the words that actually differ count -- not the whole
+            # sentence on each side -- so a report's "N mots changés"
+            # reflects the size of the real edit, not sentence length.
+            for word_tag, word_text in word_level_diff(seg.text, seg.replacement):
+                if word_tag == "removed":
+                    removed_words += _word_count(word_text)
+                elif word_tag == "added":
+                    added_words += _word_count(word_text)
 
     return TextDiffResult(
         segments=segments,
