@@ -9,6 +9,7 @@ always diffed since it's rewritten every filing.
 """
 
 from .errors import DiffError, MissingSectionError
+from .grouped_diff import DiffGroup, GroupedTextDiffResult, diff_text_grouped
 from .mdna import diff_mdna
 from .risk_factors import RiskFactorsDiffResult, diff_risk_factors
 from .text_diff import DiffSegment, TextDiffResult, diff_text
@@ -22,4 +23,7 @@ __all__ = [
     "DiffSegment",
     "TextDiffResult",
     "diff_text",
+    "DiffGroup",
+    "GroupedTextDiffResult",
+    "diff_text_grouped",
 ]

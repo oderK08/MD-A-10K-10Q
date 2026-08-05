@@ -41,7 +41,7 @@ def test_mdna_diff_on_real_extracted_text_isolates_single_sentence_change():
     current_sections = FilingTextSections(item_7_mdna=current_mdna)
 
     result = diff_mdna(current_sections, prior_sections)
-    kinds = [seg.kind for seg in result.segments]
+    kinds = [seg.kind for seg in result.overall.segments]
 
     assert kinds.count("removed") == 1
     assert kinds.count("added") == 1

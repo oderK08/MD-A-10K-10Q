@@ -10,13 +10,13 @@ from __future__ import annotations
 
 from ..data_layer.models import FilingTextSections
 from .errors import MissingSectionError
-from .text_diff import TextDiffResult, diff_text
+from .grouped_diff import GroupedTextDiffResult, diff_text_grouped
 
 
 def diff_mdna(
     current: FilingTextSections,
     prior: FilingTextSections,
-) -> TextDiffResult:
+) -> GroupedTextDiffResult:
     if current.item_7_mdna is None:
         raise MissingSectionError(
             "current filing has no extracted Item 7 / MD&A section."
@@ -25,4 +25,4 @@ def diff_mdna(
         raise MissingSectionError(
             "prior filing has no extracted Item 7 / MD&A section."
         )
-    return diff_text(prior.item_7_mdna, current.item_7_mdna)
+    return diff_text_grouped(prior.item_7_mdna, current.item_7_mdna)

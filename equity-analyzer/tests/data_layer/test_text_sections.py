@@ -143,3 +143,39 @@ def test_html_to_text_still_separates_adjacent_table_cells():
     text = html_to_text(html)
     assert "Revenue 1000" in text
     assert "Revenue1000" not in text
+
+
+def test_html_to_text_strips_page_furniture_mid_sentence():
+    """
+    Regression test for a real bug found on a real NVIDIA 10-K: a lone
+    page number and a repeated "Table of Contents" jump-link marker land
+    INSIDE the extracted plaintext at every page boundary, with no other
+    whitespace cue -- verbatim: "...cause our stock \n 13 \n\n Table of
+    Contents \n\n price to decline." Left in, "13" and "Table of
+    Contents" become their own spurious diff/sentiment tokens, and the
+    blank line the furniture introduces fools the diff module's
+    paragraph splitter into treating one real sentence as two.
+    """
+    html = (
+        "<p>The following risks could harm our business, which could "
+        "cause our stock</p><p>13</p><p></p><p>Table of Contents</p>"
+        "<p></p><p>price to decline.</p>"
+    )
+    text = html_to_text(html)
+    assert "13" not in text
+    assert "Table of Contents" not in text
+    assert "cause our stock price to decline." in text
+
+
+def test_html_to_text_leaves_a_genuine_bare_number_sentence_fragment_alone():
+    """
+    The page-furniture strip must only fire on a page number sitting
+    ALONE on its own line -- a number that's part of real prose (e.g. a
+    list numbering a filer actually wrote out) shouldn't be touched.
+    Table of Contents boilerplate genuinely never appears embedded in a
+    real sentence like this, so this guards specifically against the
+    bare-page-number half of the pattern being too aggressive.
+    """
+    html = "<p>We identified 13 distinct supply chain risks this year.</p>"
+    text = html_to_text(html)
+    assert "We identified 13 distinct supply chain risks this year." in text

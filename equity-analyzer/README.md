@@ -8,9 +8,9 @@ compilés dans un rapport PDF structuré.
 
 | Module | Statut | Description |
 |---|---|---|
-| 1. Data Layer | ✅ Terminé (39 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
+| 1. Data Layer | ✅ Terminé (42 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
-| 3. Diff textuel | ✅ Terminé (16 tests) | Comparaison Item 1A / Item 7 entre deux filings |
+| 3. Diff textuel | ✅ Terminé (22 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
 | 5. Report Builder | ✅ Terminé (47 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
 
@@ -78,6 +78,24 @@ compilés dans un rapport PDF structuré.
     Coca-Cola utilise la forme numérique entre "Item 7." et "Management's
     Discussion", ce qui faisait échouer silencieusement l'extraction tant
     que ce n'était pas décodé
+  - **(trouvé sur un vrai 10-K NVIDIA, via l'artefact de diagnostic
+    `debug/<TICKER>_item7_plaintext.txt`)** les références internes à un
+    autre item **au milieu d'une phrase** : quasiment tout MD&A commence
+    par "...should be read in conjunction with 'Item 1A. Risk Factors,'
+    our Consolidated Financial Statements..." — un texte qui a exactement
+    la forme d'un titre de section pour le détecteur de frontière, mais
+    qui est en réalité au milieu d'un paragraphe. Sans distinction, le
+    MD&A de NVIDIA (~40 000 mots réels) était coupé à 27 mots.
+    `_find_next_real_header` n'accepte une frontière que si elle est
+    précédée d'un saut de ligne (un vrai titre est seul sur sa ligne).
+  - **(idem)** le bruit de pagination **à l'intérieur d'une phrase** : un
+    numéro de page isolé et un renvoi "Table of Contents" répété,
+    injectés par l'imprimeur financier à chaque saut de page, verbatim
+    depuis un vrai 10-K NVIDIA : *"...cause our stock \n 13 \n\n Table of
+    Contents \n\n price to decline."* Non filtré, ça pollue le diff et le
+    sentiment de tokens parasites, et la ligne vide introduite trompe le
+    découpage en paragraphes du Module 3 (une phrase réelle coupée en
+    deux blocs). Supprimé avant tout traitement en aval.
 
 ### Ce qu'il ne fait PAS encore
 
@@ -210,6 +228,26 @@ Diff au niveau phrase (via `difflib.SequenceMatcher`), construit sur les
 - **`mdna.py`** — diff d'Item 7/2 (MD&A), sans notion de boilerplate : le
   MD&A est toujours réécrit chaque trimestre, donc diff direct avec juste
   la garde "section manquante".
+- **`grouped_diff.py`** — regroupe le diff par sous-thème détecté au lieu
+  d'une seule longue séquence de phrases. Constaté sur un vrai 10-K
+  NVIDIA : l'Item 1A est organisé sous des sous-titres nommés ("Risks
+  Related to Demand, Supply, and Manufacturing", etc.) ; quand la section
+  est fortement réécrite (65,7% de similarité chez NVIDIA), le diff plat
+  produisait des dizaines de pages de rouge-puis-vert ininterrompu, sans
+  moyen de voir quel changement se rattache à quel sujet. `grouped_diff`
+  détecte les lignes qui ressemblent à des titres (courtes, sans
+  ponctuation finale, sur leur propre bloc — pas une phrase de prose ni
+  une puce), aligne les deux séquences de titres (courant vs précédent)
+  avec `difflib.SequenceMatcher` pour gérer sous-thèmes ajoutés/retirés/
+  réordonnés, puis diffe le contenu de chaque sous-thème indépendamment.
+  Résultat sur un cas réel NVIDIA reconstruit : **34 pages → 6 pages**
+  pour un volume de changement comparable, avec un compteur
+  "N sous-thème(s) sans changement" explicite pour ce qui n'est pas
+  détaillé (jamais caché silencieusement).
+  **Dégrade proprement** : un filing sans sous-titres internes (le cas le
+  plus courant) produit un seul groupe non-titré dont le diff est
+  strictement identique au diff plat d'avant — donc pas de chemin de code
+  séparé à maintenir pour ce cas.
 
 Toutes les fonctions lèvent `MissingSectionError` si une section n'a pas
 été extraite par le Module 1, plutôt que de comparer `None` silencieusement.
@@ -419,13 +457,15 @@ save_pdf(render_trend_html(trend), "tendance.pdf")
 
 ## Statut : projet complet, validé contre de vraies données
 
-Les 5 modules sont terminés et testés (149 tests). Le pipeline a été validé
+Les 5 modules sont terminés et testés (158 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,
-industriel). Deux vrais bugs d'extraction HTML ont été trouvés et corrigés
-grâce à ce test (voir Module 1 ci-dessus : mots coupés par une balise,
-entités HTML numériques non décodées). D'autres écarts réels et attendus
+industriel). Quatre vrais bugs d'extraction HTML ont été trouvés et
+corrigés grâce à ce test (voir Module 1 ci-dessus : mots coupés par une
+balise, entités HTML numériques non décodées, référence croisée à un
+autre item au milieu d'une phrase, bruit de pagination au milieu d'une
+phrase — les deux derniers trouvés sur un vrai 10-K NVIDIA). D'autres écarts réels et attendus
 subsistent (tags XBRL non couverts selon l'émetteur, ex: `sga_expense`
 manquant chez Microsoft/Amazon) — le Module 5 les affiche explicitement
 comme "indisponible" plutôt que de planter ou de deviner.
