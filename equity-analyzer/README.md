@@ -12,8 +12,8 @@ compilés dans un rapport PDF structuré.
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
 | 3. Diff textuel | ✅ Terminé (30 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
-| 5. Report Builder | ✅ Terminé (52 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
-| 6. Synthèse IA (opt-in) | ✅ Terminé (9 tests) | Synthèse interprétative générée par l'API Claude, ancrée strictement sur les données déjà calculées |
+| 5. Report Builder | ✅ Terminé (55 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
+| 6. Lecture bullish/bearish IA (opt-in) | ✅ Terminé (11 tests) | Verdict directionnel généré par l'API Claude, ancré strictement sur les données déjà calculées, avec citations verbatim |
 
 ## Module 1 — Data Layer
 
@@ -589,7 +589,7 @@ distincts removed/added, pas un "modified" forcé).
 
 ### Tests
 
-52 tests, dont deux tests d'intégration bout-en-bout qui font tourner
+55 tests, dont deux tests d'intégration bout-en-bout qui font tourner
 **Module 1 → Module 5** sur les vraies fixtures (XBRL + HTML) jusqu'à un
 vrai PDF généré (vérifie les octets magiques `%PDF-`) — un pour un rapport
 single-période, un pour une tendance sur 2 exercices. Avec cette fixture
@@ -621,47 +621,93 @@ trend = build_trend_analysis([filing_2021, filing_2022, filing_2023], lm_diction
 save_pdf(render_trend_html(trend), "tendance.pdf")
 ```
 
-## Module 6 — Synthèse IA (`ai_summary.py`, opt-in)
+## Module 6 — Lecture bullish/bearish par IA (`ai_summary.py`, opt-in)
 
 ### Ce qu'il fait
 
-Ajoute, en tête du rapport, un court résumé en langage clair généré par
-l'API Claude à partir des sections **déjà calculées** par les modules
-1-5 (red flags, tonalité, sous-thèmes du diff Risk Factors/MD&A) — pas
-une nouvelle analyse indépendante.
+Ajoute, en tête du rapport, un **verdict directionnel** (plutôt bullish /
+plutôt bearish / mitigé / neutre) sur la balance des changements du
+filing, généré par l'API Claude à partir des seules données **déjà
+calculées** par les modules 1-5 — pas une nouvelle analyse indépendante.
+La réponse attendue tient en trois temps : le verdict en une phrase, puis
+2-3 phrases du filing **citées verbatim** comme preuves (avec pourquoi
+chacune penche d'un côté), puis une nuance honnête sur ce qui va en sens
+inverse.
 
-Deux décisions de cadrage prises explicitement (demandées à l'utilisateur
-via question, pas devinées) :
+Le cadrage a bougé **trois fois**, à chaque fois sur demande explicite de
+l'utilisateur après lecture d'un vrai rapport généré, jamais supposé :
 
-- **Interprétation ancrée, pas une simple liste de chiffres.** Version
-  initiale : synthèse factuelle stricte, sans aucune interprétation
-  (choisie sur trois options proposées : factuelle stricte / factuelle +
-  points d'attention / avis qualitatif complet). Après avoir vu cette
-  version en usage réel, l'utilisateur a explicitement redemandé (via une
-  nouvelle question, pas supposé) que le modèle **relie les signaux entre
-  eux et en tire une vraie lecture** — ex: un score de red flag qui se
-  dégrade en même temps qu'une tonalité qui devient plus négative sur le
-  même sous-thème est un signal plus fort que chacun pris isolément, et
-  le prompt demande maintenant explicitement de le dire. Ce qui reste
-  interdit, inchangé : un avis directionnel ou un conseil d'investissement
-  explicite ("haussier"/"baissier", conseil d'achat/vente, jugement sur la
-  qualité du management) — interpréter un signal n'est pas la même chose
-  que conseiller une action dessus, cette limite a été reconfirmée
-  explicitement au moment d'assouplir l'interdiction d'interpréter, pas
-  levée par erreur avec elle.
-- **Ancré uniquement sur les données du rapport, jamais sur la connaissance
-  du modèle.** Reconfirmé explicitement dans la même question que
-  ci-dessus, pas assoupli en même temps que l'interprétation : le prompt
-  interdit toujours d'utiliser une connaissance de la société ou de son
-  secteur acquise ailleurs (entraînement, actualité) — impossible à
-  vérifier ou à rattacher à ce filing précis, ça mélangerait silencieusement
-  une vraie analyse sourcée avec du rappel non vérifiable. Le contexte
-  envoyé au modèle (`build_prompt_context`, fonction pure et testée sans
-  réseau) inclut de vrais extraits du diff par sous-thème (pas juste des
-  compteurs), pour donner une base concrète à l'interprétation sans
-  envoyer le filing entier. Test de régression verrouillant les deux
-  garde-fous dans le prompt système :
-  `test_system_prompt_allows_interpretation_but_forbids_investment_advice_and_external_knowledge`.
+1. **v1 — synthèse factuelle stricte**, zéro interprétation, zéro
+   direction. Choisie explicitement parmi trois options proposées.
+2. **v2 — interprétation ancrée** : relier les signaux entre eux et en
+   tirer une lecture, mais toujours sans verdict directionnel.
+3. **v3 (actuelle) — verdict bullish/bearish concret.** Après lecture
+   d'un vrai rapport NVDA, l'utilisateur a constaté que la synthèse
+   restait descriptive (des compteurs et des scores de tonalité) là où
+   l'attente réelle était : lire ce qui a été ajouté et supprimé, le
+   remettre en contexte, et **trancher**. Exemple donné par l'utilisateur
+   pour cadrer l'attendu : si un émetteur annonce que les prix DRAM
+   seront ajustés à la hausse de 5%, c'est **fortement bullish** compte
+   tenu de ce que ça implique sur le revenu et la marge — et ce type de
+   phrase doit ressortir citée, pas noyée dans un compteur. Ça lève
+   explicitement l'interdiction d'avis directionnel des v1/v2.
+
+**Ce qui n'a PAS bougé** sur les trois versions, reformulé à chaque fois
+plutôt que reconduit ou abandonné silencieusement :
+
+- **Ancré uniquement sur les données du rapport, jamais sur la
+  connaissance que le modèle a de cette société.** Le prompt interdit
+  toujours d'importer un fait sur l'émetteur venu d'ailleurs (autres
+  filings, actualité, cours de bourse, mémoire d'entraînement) —
+  invérifiable et non rattachable à ce filing précis. En revanche
+  **raisonner économiquement sur un fait fourni** (une hausse de prix
+  annoncée implique plus de revenu) est désormais explicitement demandé :
+  la limite est de ne pas importer de faits nouveaux, pas de s'interdire
+  de réfléchir.
+- **Jamais de recommandation d'achat/vente ni d'objectif de cours.** Un
+  verdict sur *la balance des changements de ce filing* est demandé ;
+  dire d'acheter ou vendre le titre reste une affirmation d'une autre
+  nature, que l'outil ne fait pas. Cette limite a été reconfirmée au
+  moment même où l'interdiction d'avis directionnel était levée, pas
+  emportée avec elle.
+
+Deux tests distincts verrouillent ça dans le texte du prompt système —
+séparés exprès, pour qu'assouplir l'un ne puisse jamais assouplir l'autre
+en silence : `test_system_prompt_asks_for_a_bullish_bearish_verdict_with_verbatim_evidence`
+et `test_system_prompt_still_forbids_buy_sell_advice_and_external_company_knowledge`.
+
+### Le vrai blocage corrigé en v3 : le MD&A n'était pas envoyé
+
+Demander au modèle de **citer** les phrases les plus significatives était
+impossible à satisfaire en l'état : `build_prompt_context` envoyait le
+MD&A sous forme de **compteurs de mots uniquement, sans aucun texte** —
+or c'est précisément là que vit l'information concrète (prix, marges,
+demande). Le modèle ne pouvait pas citer ce qu'il ne recevait pas, d'où
+des synthèses qui ne parlaient que de compteurs et de scores. Corrigé :
+
+- Les **deux** sections (Risk Factors et MD&A) envoient maintenant de
+  vraies phrases modifiées, verbatim, étiquetées `AJOUTE` / `SUPPRIME` /
+  `REFORMULE` (avec l'ancienne et la nouvelle version pour une
+  reformulation). Une **suppression** compte autant qu'un ajout : une
+  société qui retire un risque qu'elle mentionnait l'an dernier envoie un
+  signal, et le prompt demande de le peser comme tel.
+- La troncature des extraits passe de 160 à **400 caractères** : un
+  extrait coupé en plein milieu est activement nuisible quand on demande
+  une citation verbatim (soit elle est citée incomplète, soit le modèle
+  reconstruit la fin, c'est-à-dire l'invente).
+- Le budget d'extraits est plafonné (14 par section, 3 par sous-thème)
+  et **priorisé** : une phrase portant une **grandeur chiffrée**
+  (pourcentage, montant, points de base, multiple) passe avant du
+  boilerplate non chiffré — c'est exactement la forme de l'exemple DRAM.
+  Première version de cette heuristique : n'importe quel chiffre (`\d`),
+  ce qui marchait mal sur du vrai texte (une année « fiscal 2026 », un
+  numéro de section ou d'item sont des chiffres sans grandeur, donc tout
+  se retrouvait à égalité et le départage par longueur donnait le budget
+  au boilerplate le plus long — attrapé par un test, corrigé en ne
+  matchant que les vraies grandeurs).
+  L'heuristique décide **quoi envoyer**, jamais quel doit être le verdict :
+  un mauvais classement coûte au modèle une citation candidate, il ne peut
+  pas lui en faire inventer une.
 
 **Délibérément séparé de `build_report_data()`**, jamais appelé
 automatiquement : contrairement à tous les autres modules, un appel réel
@@ -684,15 +730,36 @@ jamais faire échouer la génération du rapport. Si `attach_ai_summary`
 n'est jamais appelé, la section n'apparaît tout simplement pas dans le
 rapport (pas de placeholder "indisponible" affiché par défaut).
 
-Modèle par défaut : `claude-haiku-4-5-20251001` (rapide et économique pour
-une tâche de resynthèse de faits déjà fournis, pas de raisonnement
-poussé) — surchargeable via le paramètre `model` ou la variable
-d'environnement `ANTHROPIC_MODEL`.
+### Choix du modèle
 
-**Coût** : de l'ordre de 0,1 à 0,2 centime de dollar par rapport
-(prompt compact ~500-1000 tokens, réponse ~150-250 tokens, tarifs Haiku
-4.5 à $1/$5 par million de tokens entrée/sortie) — pour les 15 tickers
-du workflow de fiabilité, quelques centimes au total.
+**Une clé API n'est liée à aucun modèle** : le modèle se choisit à
+**chaque appel**, pas au moment de créer la clé. La même clé peut donc
+servir indifféremment Haiku ou Sonnet.
+
+Modèle par défaut : `claude-haiku-4-5-20251001` (rapide et économique).
+Surchargeable de trois façons, par ordre de priorité : le paramètre
+`model=` de `attach_ai_summary`, la variable d'environnement
+`ANTHROPIC_MODEL`, sinon le défaut. Depuis le workflow GitHub Actions,
+c'est une **liste déroulante `ai_model`** dans le formulaire "Run
+workflow" — rien à éditer dans le code.
+
+À noter honnêtement : le défaut Haiku a été choisi pour la tâche de la
+**v1** (reformuler des faits déjà fournis, sans raisonnement poussé). La
+v3 demande nettement plus — peser des phrases les unes contre les autres
+et trancher. Si les verdicts paraissent superficiels ou mal calibrés,
+c'est le premier levier à essayer : basculer sur Sonnet dans la liste
+déroulante. Ce point n'a pas été mesuré comparativement sur de vrais
+rapports (ça demanderait de lancer les deux modèles sur les mêmes filings
+et de juger les sorties), donc c'est une **piste raisonnée, pas un
+résultat vérifié**.
+
+**Coût** : de l'ordre de 0,3 à 0,6 centime de dollar par rapport sur
+Haiku 4.5 (prompt ~1000-2500 tokens selon le volume d'extraits, réponse
+~300-600 tokens, tarifs $1/$5 par million entrée/sortie). En hausse par
+rapport aux ~0,1-0,2 centime des v1/v2 : le prompt envoie maintenant de
+vraies phrases (et non des compteurs), et la réponse contient des
+citations verbatim. Pour les 15 tickers du workflow, de l'ordre de 5 à 10
+centimes par run. Sur Sonnet 4.5, compter environ 3x plus.
 
 **Activable à la demande depuis le workflow GitHub Actions**
 (`.github/workflows/test-real-sec-api.yml`) : une case à cocher
@@ -701,11 +768,12 @@ est même transmise au script — même si le secret est configuré dans le
 repo, un run où la case reste décochée ne déclenche jamais d'appel
 payant. La clé doit être ajoutée comme secret du repo (Settings →
 Secrets and variables → Actions → New repository secret,
-`ANTHROPIC_API_KEY`), pas saisie en clair dans une case de saisie.
+`ANTHROPIC_API_KEY`), pas saisie en clair dans une case de saisie. Le
+log du run indique quel modèle a réellement produit les synthèses.
 
 ### Tests
 
-9 tests, tous hors-ligne : `build_prompt_context` (pure, sans réseau) et
+11 tests, tous hors-ligne : `build_prompt_context` (pure, sans réseau) et
 le traitement des réponses succès/échec via des réponses HTTP simulées.
 Le chemin d'erreur HTTP réel (401 avec une fausse clé) a été vérifié
 manuellement contre la vraie API pendant le développement — network
@@ -721,7 +789,7 @@ python -m pytest tests/report/test_ai_summary.py -v
 ## Statut : projet complet, validé contre de vraies données
 
 Les 5 modules principaux (+ le module 6 optionnel) sont terminés et
-testés (180 tests). Le pipeline a été validé
+testés (185 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,

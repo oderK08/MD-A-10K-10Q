@@ -20,6 +20,14 @@ name: Test contre la vraie API SEC EDGAR
         required: false
         default: false
         type: boolean
+      ai_model:
+        description: "Modèle Claude pour la synthèse IA (sans effet si la case ci-dessus est décochée)"
+        required: false
+        default: "claude-haiku-4-5-20251001"
+        type: choice
+        options:
+          - "claude-haiku-4-5-20251001"
+          - "claude-sonnet-4-5-20250929"
 
 jobs:
   test-real-api:
@@ -52,6 +60,10 @@ jobs:
           # même si le secret existe dans le repo, un run où la case
           # reste décochée ne fait jamais d'appel payant à l'API Claude.
           ANTHROPIC_API_KEY: ${{ inputs.use_ai_summary && secrets.ANTHROPIC_API_KEY || '' }}
+          # Une clé API n'est liée à aucun modèle : le modèle se choisit
+          # à chaque appel. Ce champ est donc un choix par run, pas une
+          # propriété de la clé.
+          ANTHROPIC_MODEL: ${{ inputs.ai_model }}
         run: python scripts/test_real_sec_pipeline.py
 
       - name: Publier le tableau récapitulatif (résultats par ticker)

@@ -9,32 +9,44 @@ here is billed, requires network + an API key, and is not
 deterministic. A caller must explicitly opt in via `attach_ai_summary`,
 handed an already-built (free, deterministic) ReportData.
 
-Two framing decisions, made explicitly rather than left to prompt
-improvisation, because this is an advisory-use tool:
+Framing has moved twice, each time an explicit user request after
+seeing the previous version in real use, never assumed:
 
-1. ANCHORED INTERPRETATION, not a bare restatement of numbers.
-   Originally shipped as a strict factual synthesis with NO
-   interpretation at all -- the user later asked (explicitly, after
-   seeing that version in practice) for the model to actually connect
-   the computed signals and give a real reading of what they mean
-   together (e.g. "a Piotroski decline alongside a more negative MD&A
-   tone points to..."), not just list them. Re-confirmed via
-   AskUserQuestion rather than assumed. What's still forbidden,
-   unchanged: an explicit directional or investment call ("bullish",
-   "buy", "management is downplaying the risk", a judgment on
-   management quality) -- forming that call is the human reader's job,
-   not the tool's. Interpreting a signal is not the same as advising an
-   action on it.
-2. GROUNDED ONLY in this report's own computed fields -- financials,
-   red-flag results, per-sub-theme diff summaries with short real
-   excerpts, sentiment scores -- never in whatever the model happens
-   to know about the company from training data. Re-confirmed via the
-   same AskUserQuestion as (1), not relaxed alongside it: a model's
-   background knowledge of a real company is impossible to verify or
-   attribute to this specific filing, so letting it leak in would
-   silently blend real, sourced analysis with unverifiable recall. The
-   system prompt says so explicitly and asks the model to say "données
-   insuffisantes" rather than fill a gap from outside knowledge.
+1. v1 -- strict factual synthesis, zero interpretation, zero
+   directional read. Chosen explicitly (via AskUserQuestion) over two
+   more interpretive options.
+2. v2 -- anchored interpretation: the model connects the computed
+   signals into a real reading ("a Piotroski decline alongside a more
+   negative MD&A tone points to..."), but still forbidden from any
+   directional/bullish-bearish call.
+3. v3 (current) -- after reading a real generated report, the user
+   said the actual point was for the model to read what was added and
+   removed, weigh it against context, and give a CONCRETE bullish/
+   bearish verdict on the balance of the changes -- quoting the 2-3
+   most important real sentences as evidence (their own worked example:
+   a disclosed 5% DRAM price increase is "hyper bullish" given what
+   that implies for revenue). This explicitly reverses the "no
+   directional call" restriction from v1/v2.
+
+What did NOT move across all three versions, restated each time rather
+than silently carried over or dropped:
+
+- GROUNDED ONLY in this report's own computed fields -- financials,
+  red-flag results, per-sub-theme diff excerpts (now real quoted
+  sentences, not just counts -- see `_diff_group_lines`), sentiment
+  scores -- never in whatever the model happens to know about this
+  specific company from training data. A model's background knowledge
+  of a real company is impossible to verify or attribute to this
+  specific filing, so letting it leak in would silently blend real,
+  sourced analysis with unverifiable recall. GENERAL business/economic
+  reasoning about what a disclosed fact implies (a price increase on a
+  key product implies more revenue) is allowed and is in fact the whole
+  point of v3 -- the line is reasoning FROM the provided facts, not
+  importing new ones about this company from outside the report.
+- NEVER an explicit buy/sell recommendation or price target. A
+  bullish/bearish READ of what changed is now requested; being told to
+  buy or sell a specific security is a different, heavier claim this
+  tool still never makes -- that stays the human reader's call.
 
 If the API call fails for ANY reason (no key, network, rate limit, bad
 response shape), the section comes back `unavailable` with a plain
@@ -47,6 +59,7 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import re
 from typing import Optional
 
 import requests
@@ -61,73 +74,186 @@ ANTHROPIC_API_VERSION = "2023-06-01"
 # Override via the ANTHROPIC_MODEL env var (or the `model` parameter)
 # for a stronger model if desired.
 DEFAULT_MODEL = "claude-haiku-4-5-20251001"
-DEFAULT_MAX_TOKENS = 500
+# Raised from 500 alongside the verdict-with-evidence prompt: the answer
+# now carries 2-3 VERBATIM quoted filing sentences (which are long, and
+# cost tokens the model can't compress without breaking the "quote
+# exactly" instruction) plus a verdict and a counterpoint. At 500 the
+# response risked being cut mid-quote.
+DEFAULT_MAX_TOKENS = 1000
 DEFAULT_TIMEOUT_SECONDS = 30.0
 
-_SYSTEM_PROMPT = """Tu rediges une synthese courte (4 a 6 phrases, en francais) pour la section "Synthese IA" d'un rapport d'analyse actions.
+_SYSTEM_PROMPT = """Tu es analyste equity. Tu lis les changements textuels entre deux filings SEC de la meme societe (ce qui a ete AJOUTE, SUPPRIME ou REFORMULE dans les Risk Factors et le MD&A), plus les indicateurs deja calcules, et tu rends un avis concret : est-ce que la balance de ces changements est plutot BULLISH ou plutot BEARISH ?
 
-Ton role est d'INTERPRETER les donnees deja calculees ci-dessous, pas seulement de les lister : relie les signaux entre eux et donne une vraie lecture de ce qui se degage de leur combinaison (ex: un score de red flag qui se degrade en meme temps qu'une tonalite qui devient plus negative sur le meme sous-theme, c'est un signal plus fort que chacun pris isolement -- dis-le explicitement).
+Ta reponse, en francais, structuree ainsi :
+
+1. VERDICT (1 phrase) : commence directement par "Plutot bullish", "Plutot bearish", "Mitige" ou "Neutre", suivi de la raison principale en une proposition. Ne noie pas le verdict au milieu d'un paragraphe -- c'est la premiere chose que le lecteur doit voir.
+2. PHRASES CLES (2 a 3) : cite VERBATIM, entre guillemets, les 2 ou 3 phrases reellement ajoutees/supprimees/reformulees les plus lourdes de sens, et pour chacune dis en une ligne pourquoi elle penche bullish ou bearish. Ne cite que du texte reellement present dans les donnees fournies -- jamais une phrase que tu reconstruis ou resumes en la presentant comme une citation. Une phrase SUPPRIMEE compte autant qu'une ajoutee : une societe qui retire un risque qu'elle mentionnait l'an dernier envoie un signal, dis-le.
+3. NUANCE (1 a 2 phrases) : ce qui va dans le sens inverse de ton verdict, ou ce qui manque pour trancher. Un verdict sans contrepartie honnete n'a pas de valeur.
+
+Comment peser une phrase -- raisonne sur ce qu'elle IMPLIQUE economiquement, ne te contente pas de la tonalite des mots :
+- Un fait chiffre concret pese plus qu'une formule prudente generique. Exemple : "we expect DRAM prices to increase approximately 5%" est fortement bullish (hausse de prix sur un produit cle = revenu et marge en hausse), meme si la phrase ne contient aucun mot "positif" au sens d'un dictionnaire.
+- A l'inverse, un risque qui passe d'hypothetique a realise est fortement bearish : "could adversely affect" devenu "has adversely affected", ou l'ajout d'un client/fournisseur/pays nommement cite comme perdu ou restreint.
+- Le boilerplate juridique qui bouge sans changer de fond (reformulation d'une clause standard) ne vaut pas un verdict : ignore-le ou dis explicitement que c'est cosmetique.
 
 Regles strictes, non negociables :
-1. N'utilise QUE les informations fournies ci-dessous pour construire ton interpretation. N'utilise JAMAIS une connaissance que tu aurais sur cette societe ou son secteur par ailleurs (autres filings, actualites, memoire d'entrainement) -- si une information n'est pas dans le texte fourni, ne l'invente pas et ne la mentionne pas. Interpreter ne veut pas dire deviner : chaque lien que tu fais entre deux signaux doit etre justifiable a partir des donnees fournies, pas d'une connaissance externe.
-2. Interpreter un signal n'est pas la meme chose que conseiller une action : ne donne AUCUN avis directionnel ou conseil d'investissement (pas de "haussier"/"baissier", pas de recommandation d'achat/vente, pas de jugement de valeur sur la qualite du management). Decris ce qui a change, relie les signaux entre eux, mais laisse la decision au lecteur humain.
-3. Si les donnees fournies sont insuffisantes pour interpreter quoi que ce soit d'utile, dis-le explicitement plutot que de combler avec des generalites ou une connaissance externe.
-4. Ne repete pas mecaniquement les chiffres deja affiches ailleurs dans le rapport (revenue, resultat net) sauf si c'est necessaire pour donner du contexte a ton interpretation.
-5. Reponds uniquement avec le texte de la synthese, sans titre, sans introduction du type "Voici la synthese"."""
+1. N'utilise QUE les informations fournies ci-dessous. N'utilise JAMAIS une connaissance que tu aurais sur CETTE societe par ailleurs (autres filings, actualites, resultats trimestriels, cours de bourse, memoire d'entrainement) -- si un fait n'est pas dans le texte fourni, ne l'invente pas et ne le mentionne pas. En revanche, raisonner economiquement sur ce qu'un fait fourni implique (une hausse de prix annoncee implique plus de revenu) est exactement ce qu'on te demande : la limite est de ne pas importer de faits nouveaux sur cette societe, pas de t'interdire de reflechir.
+2. Ton verdict porte sur la BALANCE DES CHANGEMENTS de ce filing, pas sur la valorisation du titre. Ne donne JAMAIS de recommandation d'achat/vente, ni d'objectif de cours, ni de conseil d'allocation -- "les changements de ce filing penchent bearish" est ce qu'on attend ; "vendez NVDA" ne l'est pas.
+3. Si les changements fournis sont trop minces ou trop cosmetiques pour trancher, dis "Neutre" et explique pourquoi, plutot que de forcer un verdict sur du bruit.
+4. Ne repete pas mecaniquement les chiffres deja affiches ailleurs dans le rapport (revenue, resultat net) sauf s'ils appuient directement ton verdict.
+5. Reponds uniquement avec le texte de l'analyse, sans titre, sans introduction du type "Voici l'analyse". Pas de numerotation apparente des trois parties -- enchaine-les naturellement en 2 ou 3 courts paragraphes."""
 
 
 def _fmt(value, suffix: str = "") -> str:
     return "indisponible" if value is None else f"{value}{suffix}"
 
 
-_EXAMPLE_EXCERPT_MAX_CHARS = 160
+# Long enough to carry a whole real filing sentence intact. The prompt
+# asks the model to QUOTE sentences verbatim as evidence for its verdict,
+# so an excerpt truncated mid-sentence is actively harmful here: it would
+# either be quoted incomplete, or push the model to reconstruct the
+# missing end (i.e. invent it). Raised from 160 for exactly that reason.
+_EXCERPT_MAX_CHARS = 400
+
+# How many changed sentences to send per section. The model is asked to
+# pick the 2-3 most meaningful, so it needs a real pool to choose from --
+# but the whole diff of a 40k-word MD&A would be both expensive and
+# mostly boilerplate. These caps keep a typical prompt in the low
+# thousands of tokens (a fraction of a cent on Haiku) while still
+# covering every sentence that scores as materially informative.
+_MAX_EXCERPTS_PER_SECTION = 14
+_MAX_EXCERPTS_PER_GROUP = 3
+
+# Matches a quantified MAGNITUDE, not just any digit. A bare "\d" was
+# the first version and ranked badly on real text: a plain year ("fiscal
+# 2026"), a section number or a list index all contain digits without
+# carrying any magnitude, so everything scored equal and the tiebreak
+# (length) handed the budget to the longest boilerplate. Matches instead:
+# a percentage, a currency amount, a scaled figure (million/billion),
+# basis points, or a multiplier -- the shapes a material disclosure
+# actually takes ("increase approximately 5%", "$1.2 billion", "150
+# basis points").
+_QUANTIFIED_FACT_RE = re.compile(
+    r"\d+(?:[.,]\d+)?\s*(?:%|percent|percentage points?|basis points?|bps|x\b)"
+    r"|[$€£]\s*\d"
+    r"|\d+(?:[.,]\d+)?\s*(?:million|billion|trillion|thousand)",
+    re.IGNORECASE,
+)
 
 
 def _truncate(text: str) -> str:
-    if len(text) > _EXAMPLE_EXCERPT_MAX_CHARS:
-        return text[:_EXAMPLE_EXCERPT_MAX_CHARS].rsplit(" ", 1)[0] + "..."
+    if len(text) > _EXCERPT_MAX_CHARS:
+        return text[:_EXCERPT_MAX_CHARS].rsplit(" ", 1)[0] + "..."
     return text
+
+
+def _excerpt_priority(text: str) -> tuple:
+    """
+    Ranks a changed sentence by how likely it is to actually move a
+    bullish/bearish read, so the capped excerpt budget goes to the
+    sentences worth quoting rather than the first N in document order.
+
+    A sentence carrying a NUMBER outranks one that doesn't: the user's
+    own worked example for this feature ("we expect DRAM prices to
+    increase approximately 5%") is exactly that shape -- a concrete
+    quantified disclosure, decision-relevant precisely because it's
+    specific, and easy to lose among pages of unquantified boilerplate
+    ("could adversely affect", "we may be unable to..."). Length breaks
+    ties as a rough stand-in for substance, the same proxy this project
+    already uses to rank sub-themes in the renderer.
+
+    Deliberately a heuristic for BUDGETING what to send, not a judgment:
+    it decides which real sentences the model gets to see, never what
+    the verdict should be. A wrong ranking costs the model a candidate
+    quote; it can't fabricate one.
+    """
+    return (bool(_QUANTIFIED_FACT_RE.search(text)), len(text.split()))
+
+
+def _segment_excerpt_lines(segments: list, limit: int) -> list:
+    """
+    Real, verbatim changed sentences from a diff, highest-priority
+    first, labeled by direction (added / removed / reworded). Removals
+    are labeled explicitly and kept in the same pool as additions: a
+    company dropping a risk it disclosed last year is a signal in its
+    own right, and the prompt tells the model to weigh it as one.
+    """
+    candidates = []
+    for seg in segments:
+        if seg.kind == "added":
+            candidates.append((_excerpt_priority(seg.text), f'    + AJOUTE : "{_truncate(seg.text)}"'))
+        elif seg.kind == "removed":
+            candidates.append((_excerpt_priority(seg.text), f'    - SUPPRIME : "{_truncate(seg.text)}"'))
+        elif seg.kind == "modified":
+            priority = max(_excerpt_priority(seg.text), _excerpt_priority(seg.replacement))
+            candidates.append((
+                priority,
+                f'    ~ REFORMULE : "{_truncate(seg.text)}" -> "{_truncate(seg.replacement)}"',
+            ))
+    candidates.sort(key=lambda c: c[0], reverse=True)
+    return [line for _priority, line in candidates[:limit]]
 
 
 def _diff_group_lines(groups: list) -> list:
     """
-    One line per DiffGroup (see diff/grouped_diff.py) that actually
-    changed, with a short REAL excerpt (never a paraphrase or
-    invention) so the model has concrete grounding beyond bare counts.
+    Per changed DiffGroup (see diff/grouped_diff.py): its heading, its
+    status, its counts, and its most informative REAL changed sentences
+    (never a paraphrase or invention) -- the concrete evidence the model
+    is asked to quote from.
+
+    Groups are themselves ranked by total changed word count (the same
+    proxy the renderer uses to pick which sub-themes to show in full),
+    so when the excerpt budget runs out it runs out on the least-changed
+    sub-themes, not on whichever happened to come last in the document.
     """
-    lines = []
+    changed = []
     for g in groups:
-        added = [seg for seg in g.diff.segments if seg.kind == "added"]
-        removed = [seg for seg in g.diff.segments if seg.kind == "removed"]
-        modified = [seg for seg in g.diff.segments if seg.kind == "modified"]
+        added = sum(1 for s in g.diff.segments if s.kind == "added")
+        removed = sum(1 for s in g.diff.segments if s.kind == "removed")
+        modified = sum(1 for s in g.diff.segments if s.kind == "modified")
         if not added and not removed and not modified:
             continue
+        weight = g.diff.added_word_count + g.diff.removed_word_count
+        changed.append((weight, g, added, removed, modified))
+    changed.sort(key=lambda c: c[0], reverse=True)
+
+    lines = []
+    budget = _MAX_EXCERPTS_PER_SECTION
+    for _weight, g, added, removed, modified in changed:
         status_label = {
             "added": "nouvelle sous-thematique",
             "removed": "sous-thematique supprimee",
             "matched": "modifiee",
         }[g.status]
         heading = g.heading or "(introduction, sans titre)"
-        line = (
-            f'  - "{heading}" ({status_label}) : {len(added)} ajout(s), '
-            f'{len(removed)} suppression(s), {len(modified)} phrase(s) reformulee(s)'
+        lines.append(
+            f'  - "{heading}" ({status_label}) : {added} ajout(s), '
+            f'{removed} suppression(s), {modified} phrase(s) reformulee(s)'
         )
-        if added or removed:
-            example = _truncate((added or removed)[0].text)
-            line += f'. Exemple : "{example}"'
-        elif modified:
-            seg = modified[0]
-            line += f'. Exemple : "{_truncate(seg.text)}" -> "{_truncate(seg.replacement)}"'
-        lines.append(line)
+        if budget > 0:
+            excerpts = _segment_excerpt_lines(
+                g.diff.segments, min(_MAX_EXCERPTS_PER_GROUP, budget)
+            )
+            lines.extend(excerpts)
+            budget -= len(excerpts)
     return lines
 
 
 def build_prompt_context(report: ReportData) -> str:
     """
-    Builds the compact, structured fact sheet handed to the model --
-    pure function, no network, fully unit-testable. This IS the
-    grounding: everything the model is allowed to talk about must be
-    reachable from this string.
+    Builds the structured fact sheet handed to the model -- pure
+    function, no network, fully unit-testable. This IS the grounding:
+    everything the model is allowed to talk about must be reachable from
+    this string, so anything the prompt asks it to do must actually be
+    supported by what's built here.
+
+    The MD&A used to be sent as word counts ONLY, with no actual text.
+    That made the current prompt's core instruction -- quote the 2-3
+    most meaningful changed sentences as evidence -- literally
+    impossible to satisfy for the section where concrete guidance
+    normally lives (pricing, margins, demand commentary): the model
+    could not quote what it was never sent, and the resulting summaries
+    talked only about counts and sentiment scores. Both sections now
+    send real, verbatim changed sentences.
     """
     filing = report.filing
     lines = [
@@ -153,15 +279,23 @@ def build_prompt_context(report: ReportData) -> str:
         )
         group_lines = _diff_group_lines(rf.groups)
         if group_lines:
-            lines.append("Sous-themes avec changement :")
+            lines.append("Sous-themes avec changement (avec les phrases reellement modifiees) :")
             lines.extend(group_lines)
 
     if report.mdna_diff.available:
         md = report.mdna_diff.value
         lines.append(
             f"MD&A (Item 7) -- changement : "
+            f"{md.overall.similarity_ratio * 100:.1f}% similaire, "
             f"{md.overall.added_word_count} mots ajoutes, {md.overall.removed_word_count} mots supprimes"
         )
+        mdna_excerpts = _segment_excerpt_lines(
+            md.overall.segments, _MAX_EXCERPTS_PER_SECTION
+        )
+        if mdna_excerpts:
+            lines.append("Phrases reellement modifiees dans le MD&A :")
+            lines.extend(mdna_excerpts)
+
     if report.mdna_sentiment.available:
         lines.append(f"Tonalite MD&A (Loughran-McDonald) : {report.mdna_sentiment.value.net_tone:.2f}")
     if report.risk_factors_sentiment.available and not report.risk_factors_sentiment.value.skipped:
