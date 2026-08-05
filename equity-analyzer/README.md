@@ -13,6 +13,7 @@ compilés dans un rapport PDF structuré.
 | 3. Diff textuel | ✅ Terminé (22 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
 | 5. Report Builder | ✅ Terminé (47 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
+| 6. Synthèse IA (opt-in) | ✅ Terminé (8 tests) | Résumé factuel généré par l'API Claude, ancré strictement sur les données déjà calculées |
 
 ## Module 1 — Data Layer
 
@@ -455,9 +456,79 @@ trend = build_trend_analysis([filing_2021, filing_2022, filing_2023], lm_diction
 save_pdf(render_trend_html(trend), "tendance.pdf")
 ```
 
+## Module 6 — Synthèse IA (`ai_summary.py`, opt-in)
+
+### Ce qu'il fait
+
+Ajoute, en tête du rapport, un court résumé en langage clair généré par
+l'API Claude à partir des sections **déjà calculées** par les modules
+1-5 (red flags, tonalité, sous-thèmes du diff Risk Factors/MD&A) — pas
+une nouvelle analyse indépendante.
+
+Deux décisions de cadrage prises explicitement (demandées à l'utilisateur
+via question, pas devinées) :
+
+- **Synthèse factuelle stricte, pas un avis.** Le prompt système interdit
+  tout jugement directionnel ("haussier"/"baissier", conseil d'achat/vente,
+  jugement sur la qualité du management) — décrire ce qui a changé et où
+  se trouve le signal (red flags, tonalité, sous-thèmes modifiés), jamais
+  émettre un avis. Trois options étaient proposées à l'utilisateur (synthèse
+  factuelle stricte / synthèse + points d'attention / avis qualitatif
+  complet) ; la première a été choisie explicitement.
+- **Ancré uniquement sur les données du rapport, jamais sur la connaissance
+  du modèle.** Le prompt interdit explicitement d'utiliser une connaissance
+  de la société acquise ailleurs (entraînement, actualité) — impossible à
+  vérifier ou à rattacher à ce filing précis, ça mélangerait silencieusement
+  une vraie analyse sourcée avec du rappel non vérifiable. Le contexte
+  envoyé au modèle (`build_prompt_context`, fonction pure et testée sans
+  réseau) inclut de vrais extraits du diff par sous-thème (pas juste des
+  compteurs), pour donner une base concrète sans envoyer le filing entier.
+
+**Délibérément séparé de `build_report_data()`**, jamais appelé
+automatiquement : contrairement à tous les autres modules, un appel réel
+est facturé, nécessite le réseau et une clé API, et n'est pas
+déterministe (la suite `pytest` reste donc 100% hors-ligne). Un appelant
+doit explicitement activer cette section :
+
+```python
+from equity_analyzer.report.ai_summary import attach_ai_summary
+
+report = build_report_data(filing, prior_filing, lm_dictionary)
+report = attach_ai_summary(report, api_key=os.environ["ANTHROPIC_API_KEY"])
+save_pdf(render_html(report), "rapport.pdf")
+```
+
+Si la clé est absente, ou si l'appel échoue pour n'importe quelle raison
+(réseau, quota, réponse inattendue), la section revient `unavailable` avec
+la raison — comme toutes les autres sections optionnelles du projet — sans
+jamais faire échouer la génération du rapport. Si `attach_ai_summary`
+n'est jamais appelé, la section n'apparaît tout simplement pas dans le
+rapport (pas de placeholder "indisponible" affiché par défaut).
+
+Modèle par défaut : `claude-haiku-4-5-20251001` (rapide et économique pour
+une tâche de resynthèse de faits déjà fournis, pas de raisonnement
+poussé) — surchargeable via le paramètre `model` ou la variable
+d'environnement `ANTHROPIC_MODEL`.
+
+### Tests
+
+8 tests, tous hors-ligne : `build_prompt_context` (pure, sans réseau) et
+le traitement des réponses succès/échec via des réponses HTTP simulées.
+Le chemin d'erreur HTTP réel (401 avec une fausse clé) a été vérifié
+manuellement contre la vraie API pendant le développement — network
+access à `api.anthropic.com` fonctionne depuis cet environnement de dev
+(contrairement à `data.sec.gov`), mais par cohérence avec le reste du
+projet (`EdgarClient` n'a aucun test réseau non plus), ce n'est pas
+gardé comme test automatisé.
+
+```bash
+python -m pytest tests/report/test_ai_summary.py -v
+```
+
 ## Statut : projet complet, validé contre de vraies données
 
-Les 5 modules sont terminés et testés (158 tests). Le pipeline a été validé
+Les 5 modules principaux (+ le module 6 optionnel) sont terminés et
+testés (166 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,
