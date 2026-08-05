@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 from equity_analyzer.data_layer.models import FilingTextSections, FormType, PeriodDuration
 from equity_analyzer.diff.grouped_diff import DiffGroup, GroupedTextDiffResult
 from equity_analyzer.diff.text_diff import DiffSegment, TextDiffResult
-from equity_analyzer.report.html_renderer import _humanize_xbrl_tag, _render_text_diff, render_html, render_trend_html
+from equity_analyzer.report.html_renderer import _humanize_xbrl_tag, _text_diff_detail_html, render_html, render_trend_html
 from equity_analyzer.report.report_data import build_report_data
 from equity_analyzer.report.trend import build_trend_analysis
 from equity_analyzer.sentiment.lm_dictionary import LMDictionary
@@ -172,6 +172,52 @@ def test_renders_modified_segment_as_inline_word_diff():
     assert "due to strong growth this year" in html
 
 
+def test_report_section_order_moves_sentiment_up_and_diff_detail_to_the_end():
+    """
+    Real user feedback: the detailed diff text (by far the longest,
+    most detailed reading material in the report) used to sit in the
+    middle of the page, and Sentiment (Loughran-McDonald) was isolated
+    at the very end even though it's an analysis of the same two text
+    sections as the diff. Requested order: every quick-scan number
+    (financials, red flags, diff SUMMARY, sentiment) up front, the full
+    diff TEXT detail last, right before the closing footer.
+    """
+    current = _filing(
+        text_sections=FilingTextSections(
+            item_1a_risk_factors="our revenue could decline due to competition",
+            item_7_mdna="Revenue grew due to strong demand this year.",
+            is_risk_factors_boilerplate=False,
+        ),
+    )
+    prior = _filing(
+        accession_number="acc-prior",
+        financials=make_financial_period(
+            fiscal_year=2023, fiscal_period="FY", duration=PeriodDuration.TWELVE_MONTH,
+            accession_number="acc-prior", period_end=date(2023, 12, 31), **_METRICS,
+        ),
+        text_sections=FilingTextSections(
+            item_1a_risk_factors="our revenue could decline due to competition",
+            item_7_mdna="Our manufacturing facility experienced unrelated water damage last quarter.",
+            is_risk_factors_boilerplate=False,
+        ),
+        fiscal_year=2023,
+    )
+    report = build_report_data(current, prior, DICTIONARY)
+    html = render_html(report)
+
+    red_flags_idx = html.index("Red Flags")
+    diff_summary_idx = html.index("Changements textuels vs période précédente")
+    sentiment_idx = html.index("Sentiment (Loughran-McDonald)")
+    diff_detail_idx = html.index("Détail des changements textuels")
+    footer_idx = html.index('<p class="footer">')
+
+    assert red_flags_idx < diff_summary_idx < sentiment_idx < diff_detail_idx < footer_idx
+    # the actual diff text itself must physically be in the detail
+    # section, not the summary one.
+    assert '<span class="segment-added">' not in html[diff_summary_idx:sentiment_idx]
+    assert '<span class="segment-added">' in html[diff_detail_idx:footer_idx]
+
+
 def test_renders_boilerplate_skip_note():
     current = _filing()
     current.text_sections.is_risk_factors_boilerplate = True
@@ -262,7 +308,7 @@ def test_render_trend_html_shows_unavailable_for_first_year_yoy_sections():
 
 def test_mdna_heading_is_not_double_escaped():
     """
-    _render_text_diff / _render_sentiment_result already call _e() on
+    _text_diff_summary_html / _text_diff_detail_html / _render_sentiment_result already call _e() on
     their `title` argument -- passing a pre-escaped "MD&amp;A" string
     into them re-escapes the "&" a second time, so the PDF renders the
     literal text "MD&amp;A" instead of "MD&A". Confirmed by rendering an
@@ -422,7 +468,7 @@ def test_wholesale_removed_subtheme_does_not_reproduce_its_text():
     )
     grouped = GroupedTextDiffResult(overall=group.diff, groups=[group])
 
-    html = _render_text_diff("Risk Factors (Item 1A)", grouped)
+    html = _text_diff_detail_html("Risk Factors (Item 1A)", grouped)
 
     assert "Supply Chain Risk" in html
     assert "sous-thématique supprimée" in html
@@ -438,7 +484,7 @@ def test_wholesale_added_subtheme_does_not_reproduce_its_text():
     )
     grouped = GroupedTextDiffResult(overall=group.diff, groups=[group])
 
-    html = _render_text_diff("Risk Factors (Item 1A)", grouped)
+    html = _text_diff_detail_html("Risk Factors (Item 1A)", grouped)
 
     assert "Cybersecurity Risk" in html
     assert "nouvelle sous-thématique" in html
@@ -468,7 +514,7 @@ def test_only_the_most_changed_matched_subthemes_show_full_text():
     all_segments = [seg for g in groups for seg in g.diff.segments]
     grouped = GroupedTextDiffResult(overall=_diff_result(all_segments), groups=groups)
 
-    html = _render_text_diff("Risk Factors (Item 1A)", grouped)
+    html = _text_diff_detail_html("Risk Factors (Item 1A)", grouped)
 
     for heading in ["Theme A", "Theme B", "Theme C", "Theme D", "Theme E"]:
         slug = heading.replace(" ", "")

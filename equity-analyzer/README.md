@@ -12,7 +12,7 @@ compilés dans un rapport PDF structuré.
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
 | 3. Diff textuel | ✅ Terminé (30 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
-| 5. Report Builder | ✅ Terminé (51 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
+| 5. Report Builder | ✅ Terminé (52 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
 | 6. Synthèse IA (opt-in) | ✅ Terminé (8 tests) | Résumé factuel généré par l'API Claude, ancré strictement sur les données déjà calculées |
 
 ## Module 1 — Data Layer
@@ -489,6 +489,23 @@ suite de tests qui restait verte, qui a trouvé deux vrais bugs de rendu
   net, nombre de red flags, direction du diff MD&A et de la tonalité — les
   avertissements (zone de détresse Altman, Beneish suspect) sont mis en
   évidence visuellement.
+- **Ordre des sections, demande explicite de l'utilisateur** : la
+  Sentiment (Loughran-McDonald), auparavant isolée tout à la fin du
+  rapport, est remontée juste après le résumé du diff Risk Factors/MD&A
+  ("Changements textuels vs période précédente") — les deux sont des
+  analyses des deux mêmes sections textuelles, ça se lit mieux ensemble
+  qu'après tout le reste. À l'inverse, le détail complet du diff (le
+  texte réellement ajouté/supprimé/reformulé — la partie la plus longue
+  et la plus dense à lire du rapport) est descendu tout en bas, juste
+  avant le pied de page, dans une nouvelle section "Détail des
+  changements textuels". Résultat : tous les chiffres à lecture rapide
+  (financiers, red flags, résumé du diff, tonalité) regroupés en premier,
+  le texte détaillé en dernier. `_render_text_diff()` a été scindée en
+  `_text_diff_summary_html()` (juste la ligne similarité/compteurs) et
+  `_text_diff_detail_html()` (le corps complet, avec le classement des
+  sous-thèmes déjà décrit ci-dessus) pour permettre ce découpage sans dupliquer
+  la logique. Test de régression :
+  `test_report_section_order_moves_sentiment_up_and_diff_detail_to_the_end`.
 - **Pagination** — pied de page "Page X / Y" répété sur chaque page, via
   la syntaxe propriétaire `@page { @frame footer_frame { ... } }` +
   `<pdf:pagenumber/>`/`<pdf:pagecount/>` de `xhtml2pdf` (pas du CSS
@@ -572,7 +589,7 @@ distincts removed/added, pas un "modified" forcé).
 
 ### Tests
 
-51 tests, dont deux tests d'intégration bout-en-bout qui font tourner
+52 tests, dont deux tests d'intégration bout-en-bout qui font tourner
 **Module 1 → Module 5** sur les vraies fixtures (XBRL + HTML) jusqu'à un
 vrai PDF généré (vérifie les octets magiques `%PDF-`) — un pour un rapport
 single-période, un pour une tendance sur 2 exercices. Avec cette fixture
@@ -690,7 +707,7 @@ python -m pytest tests/report/test_ai_summary.py -v
 ## Statut : projet complet, validé contre de vraies données
 
 Les 5 modules principaux (+ le module 6 optionnel) sont terminés et
-testés (178 tests). Le pipeline a été validé
+testés (179 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,
