@@ -510,6 +510,20 @@ une tâche de resynthèse de faits déjà fournis, pas de raisonnement
 poussé) — surchargeable via le paramètre `model` ou la variable
 d'environnement `ANTHROPIC_MODEL`.
 
+**Coût** : de l'ordre de 0,1 à 0,2 centime de dollar par rapport
+(prompt compact ~500-1000 tokens, réponse ~150-250 tokens, tarifs Haiku
+4.5 à $1/$5 par million de tokens entrée/sortie) — pour les 15 tickers
+du workflow de fiabilité, quelques centimes au total.
+
+**Activable à la demande depuis le workflow GitHub Actions**
+(`.github/workflows/test-real-sec-api.yml`) : une case à cocher
+`use_ai_summary` (décochée par défaut) contrôle si `ANTHROPIC_API_KEY`
+est même transmise au script — même si le secret est configuré dans le
+repo, un run où la case reste décochée ne déclenche jamais d'appel
+payant. La clé doit être ajoutée comme secret du repo (Settings →
+Secrets and variables → Actions → New repository secret,
+`ANTHROPIC_API_KEY`), pas saisie en clair dans une case de saisie.
+
 ### Tests
 
 8 tests, tous hors-ligne : `build_prompt_context` (pure, sans réseau) et

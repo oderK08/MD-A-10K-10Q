@@ -15,6 +15,11 @@ name: Test contre la vraie API SEC EDGAR
         description: "User-Agent SEC EDGAR (nom d'app + email de contact, exigé par la SEC)"
         required: false
         default: "EquityAnalyzer/1.0 contact@example.com"
+      use_ai_summary:
+        description: "Activer la synthèse IA (Module 6, payant -- nécessite le secret ANTHROPIC_API_KEY)"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   test-real-api:
@@ -43,6 +48,10 @@ jobs:
         env:
           TICKERS: ${{ inputs.tickers }}
           SEC_USER_AGENT: ${{ inputs.user_agent }}
+          # N'est défini QUE si la case "use_ai_summary" est cochée --
+          # même si le secret existe dans le repo, un run où la case
+          # reste décochée ne fait jamais d'appel payant à l'API Claude.
+          ANTHROPIC_API_KEY: ${{ inputs.use_ai_summary && secrets.ANTHROPIC_API_KEY || '' }}
         run: python scripts/test_real_sec_pipeline.py
 
       - name: Publier le tableau récapitulatif (résultats par ticker)

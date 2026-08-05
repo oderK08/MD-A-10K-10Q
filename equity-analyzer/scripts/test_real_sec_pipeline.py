@@ -29,6 +29,13 @@ Outputs:
   which is exactly this failure mode wearing a found=True disguise) --
   for diagnosing the regex against real filing text without needing
   direct network access here.
+
+The opt-in AI summary (report/ai_summary.py, Module 6) is controlled
+per-run by the workflow's "use_ai_summary" checkbox, not by editing this
+file: the workflow only sets ANTHROPIC_API_KEY in this process's
+environment when the box is checked, so a run where it's left unchecked
+never makes a paid API call even if a key is configured as a repo
+secret.
 """
 
 from __future__ import annotations
@@ -53,13 +60,20 @@ from equity_analyzer.data_layer import (
     list_filings,
 )
 from equity_analyzer.data_layer.text_sections import html_to_text
-from equity_analyzer.report import build_report_data, render_html, save_pdf
+from equity_analyzer.report import attach_ai_summary, build_report_data, render_html, save_pdf
 from equity_analyzer.sentiment import load_lm_dictionary
 
 DEFAULT_TICKERS = "AAPL,MSFT,GOOGL,AMZN,NVDA,JPM,XOM,JNJ,PG,KO,WMT,DIS,BA,CAT,NFLX"
 
 TICKERS = [t.strip().upper() for t in os.environ.get("TICKERS", DEFAULT_TICKERS).split(",") if t.strip()]
 USER_AGENT = os.environ.get("SEC_USER_AGENT", "EquityAnalyzer/1.0 contact@example.com").strip()
+# Opt-in only (see report/ai_summary.py): the workflow's "use_ai_summary"
+# checkbox controls whether this env var is even set -- if the box was
+# left unchecked, GitHub Actions never exposes the secret to this
+# process, so this stays empty regardless of whether a key is
+# configured in the repo. attach_ai_summary() treats an empty/missing
+# key exactly like "never asked for this" -- see its own docstring.
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
 
 ROOT = Path(__file__).parent.parent
 DICTIONARY_PATH = ROOT / "data" / "Loughran-McDonald_MasterDictionary_1993-2025.csv"
@@ -84,6 +98,7 @@ SUMMARY_FIELDS = [
     "altman_z", "beneish_m", "piotroski_f",
     "mdna_diff", "risk_factors_diff",
     "mdna_sentiment", "risk_factors_sentiment",
+    "ai_summary",
     "error",
 ]
 
@@ -218,6 +233,21 @@ def run_for_ticker(client, dictionary, ticker: str) -> dict:
             row[key] = f"indisponible: {section.unavailable_reason}"
             _warn(f"{name}: indisponible -- {section.unavailable_reason}")
 
+    # Opt-in only: the "use_ai_summary" workflow checkbox controls whether
+    # ANTHROPIC_API_KEY is even set in this process's environment (see the
+    # module-level comment). A ticker run never silently starts making paid
+    # API calls just because a repo secret happens to exist.
+    if ANTHROPIC_API_KEY:
+        report = attach_ai_summary(report, api_key=ANTHROPIC_API_KEY)
+        if report.ai_summary.available:
+            row["ai_summary"] = "OK"
+            _ok("Synthèse IA: générée")
+        else:
+            row["ai_summary"] = f"indisponible: {report.ai_summary.unavailable_reason}"
+            _warn(f"Synthèse IA: indisponible -- {report.ai_summary.unavailable_reason}")
+    else:
+        row["ai_summary"] = "non demandée"
+
     try:
         REPORTS_DIR.mkdir(exist_ok=True)
         html = render_html(report)
@@ -248,6 +278,11 @@ def main() -> int:
         _ok(f"Dictionnaire Loughran-McDonald chargé ({DICTIONARY_PATH.name})")
     else:
         _warn(f"Dictionnaire non trouvé à {DICTIONARY_PATH} -- sentiment indisponible pour tous les tickers.")
+
+    if ANTHROPIC_API_KEY:
+        _ok("Synthèse IA activée (ANTHROPIC_API_KEY présente) -- un appel Claude par ticker.")
+    else:
+        _warn("Synthèse IA non demandée (case décochée ou pas de clé) -- aucun appel Claude ne sera fait.")
     print()
 
     results = []
