@@ -12,20 +12,29 @@ handed an already-built (free, deterministic) ReportData.
 Two framing decisions, made explicitly rather than left to prompt
 improvisation, because this is an advisory-use tool:
 
-1. STRICT FACTUAL SYNTHESIS, not an opinion. The prompt forbids a
-   directional or investment judgment ("bullish", "management is
-   downplaying the risk") -- forming that judgment is the human
-   reader's job, not the tool's. This was an explicit user choice
-   (asked via AskUserQuestion) over two more interpretive options.
+1. ANCHORED INTERPRETATION, not a bare restatement of numbers.
+   Originally shipped as a strict factual synthesis with NO
+   interpretation at all -- the user later asked (explicitly, after
+   seeing that version in practice) for the model to actually connect
+   the computed signals and give a real reading of what they mean
+   together (e.g. "a Piotroski decline alongside a more negative MD&A
+   tone points to..."), not just list them. Re-confirmed via
+   AskUserQuestion rather than assumed. What's still forbidden,
+   unchanged: an explicit directional or investment call ("bullish",
+   "buy", "management is downplaying the risk", a judgment on
+   management quality) -- forming that call is the human reader's job,
+   not the tool's. Interpreting a signal is not the same as advising an
+   action on it.
 2. GROUNDED ONLY in this report's own computed fields -- financials,
    red-flag results, per-sub-theme diff summaries with short real
    excerpts, sentiment scores -- never in whatever the model happens
-   to know about the company from training data. A model's background
-   knowledge of a real company is impossible to verify or attribute to
-   this specific filing, so letting it leak in would silently blend
-   real, sourced analysis with unverifiable recall. The system prompt
-   says so explicitly and asks the model to say "données insuffisantes"
-   rather than fill a gap from outside knowledge.
+   to know about the company from training data. Re-confirmed via the
+   same AskUserQuestion as (1), not relaxed alongside it: a model's
+   background knowledge of a real company is impossible to verify or
+   attribute to this specific filing, so letting it leak in would
+   silently blend real, sourced analysis with unverifiable recall. The
+   system prompt says so explicitly and asks the model to say "données
+   insuffisantes" rather than fill a gap from outside knowledge.
 
 If the API call fails for ANY reason (no key, network, rate limit, bad
 response shape), the section comes back `unavailable` with a plain
@@ -55,13 +64,15 @@ DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 DEFAULT_MAX_TOKENS = 500
 DEFAULT_TIMEOUT_SECONDS = 30.0
 
-_SYSTEM_PROMPT = """Tu rediges une synthese factuelle courte (4 a 6 phrases, en francais) pour la section "Synthese IA" d'un rapport d'analyse actions.
+_SYSTEM_PROMPT = """Tu rediges une synthese courte (4 a 6 phrases, en francais) pour la section "Synthese IA" d'un rapport d'analyse actions.
+
+Ton role est d'INTERPRETER les donnees deja calculees ci-dessous, pas seulement de les lister : relie les signaux entre eux et donne une vraie lecture de ce qui se degage de leur combinaison (ex: un score de red flag qui se degrade en meme temps qu'une tonalite qui devient plus negative sur le meme sous-theme, c'est un signal plus fort que chacun pris isolement -- dis-le explicitement).
 
 Regles strictes, non negociables :
-1. N'utilise QUE les informations fournies ci-dessous. N'utilise JAMAIS une connaissance que tu aurais sur cette societe par ailleurs (autres filings, actualites, memoire d'entrainement) -- si une information n'est pas dans le texte fourni, ne l'invente pas et ne la mentionne pas.
-2. Ne donne AUCUN avis directionnel ou conseil d'investissement (pas de "haussier"/"baissier", pas de recommandation d'achat/vente, pas de jugement de valeur sur la qualite du management). Reste descriptif : quoi a change, et ou se trouve le signal (red flags, tonalite, sous-themes modifies).
-3. Si les donnees fournies sont insuffisantes pour dire quoi que ce soit d'utile, dis-le explicitement plutot que de combler avec des generalites.
-4. Ne repete pas mecaniquement les chiffres deja affiches ailleurs dans le rapport (revenue, resultat net) sauf si c'est necessaire pour donner du contexte a un changement.
+1. N'utilise QUE les informations fournies ci-dessous pour construire ton interpretation. N'utilise JAMAIS une connaissance que tu aurais sur cette societe ou son secteur par ailleurs (autres filings, actualites, memoire d'entrainement) -- si une information n'est pas dans le texte fourni, ne l'invente pas et ne la mentionne pas. Interpreter ne veut pas dire deviner : chaque lien que tu fais entre deux signaux doit etre justifiable a partir des donnees fournies, pas d'une connaissance externe.
+2. Interpreter un signal n'est pas la meme chose que conseiller une action : ne donne AUCUN avis directionnel ou conseil d'investissement (pas de "haussier"/"baissier", pas de recommandation d'achat/vente, pas de jugement de valeur sur la qualite du management). Decris ce qui a change, relie les signaux entre eux, mais laisse la decision au lecteur humain.
+3. Si les donnees fournies sont insuffisantes pour interpreter quoi que ce soit d'utile, dis-le explicitement plutot que de combler avec des generalites ou une connaissance externe.
+4. Ne repete pas mecaniquement les chiffres deja affiches ailleurs dans le rapport (revenue, resultat net) sauf si c'est necessaire pour donner du contexte a ton interpretation.
 5. Reponds uniquement avec le texte de la synthese, sans titre, sans introduction du type "Voici la synthese"."""
 
 

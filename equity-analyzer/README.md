@@ -13,7 +13,7 @@ compilés dans un rapport PDF structuré.
 | 3. Diff textuel | ✅ Terminé (30 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
 | 5. Report Builder | ✅ Terminé (52 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
-| 6. Synthèse IA (opt-in) | ✅ Terminé (8 tests) | Résumé factuel généré par l'API Claude, ancré strictement sur les données déjà calculées |
+| 6. Synthèse IA (opt-in) | ✅ Terminé (9 tests) | Synthèse interprétative générée par l'API Claude, ancrée strictement sur les données déjà calculées |
 
 ## Module 1 — Data Layer
 
@@ -633,21 +633,35 @@ une nouvelle analyse indépendante.
 Deux décisions de cadrage prises explicitement (demandées à l'utilisateur
 via question, pas devinées) :
 
-- **Synthèse factuelle stricte, pas un avis.** Le prompt système interdit
-  tout jugement directionnel ("haussier"/"baissier", conseil d'achat/vente,
-  jugement sur la qualité du management) — décrire ce qui a changé et où
-  se trouve le signal (red flags, tonalité, sous-thèmes modifiés), jamais
-  émettre un avis. Trois options étaient proposées à l'utilisateur (synthèse
-  factuelle stricte / synthèse + points d'attention / avis qualitatif
-  complet) ; la première a été choisie explicitement.
+- **Interprétation ancrée, pas une simple liste de chiffres.** Version
+  initiale : synthèse factuelle stricte, sans aucune interprétation
+  (choisie sur trois options proposées : factuelle stricte / factuelle +
+  points d'attention / avis qualitatif complet). Après avoir vu cette
+  version en usage réel, l'utilisateur a explicitement redemandé (via une
+  nouvelle question, pas supposé) que le modèle **relie les signaux entre
+  eux et en tire une vraie lecture** — ex: un score de red flag qui se
+  dégrade en même temps qu'une tonalité qui devient plus négative sur le
+  même sous-thème est un signal plus fort que chacun pris isolément, et
+  le prompt demande maintenant explicitement de le dire. Ce qui reste
+  interdit, inchangé : un avis directionnel ou un conseil d'investissement
+  explicite ("haussier"/"baissier", conseil d'achat/vente, jugement sur la
+  qualité du management) — interpréter un signal n'est pas la même chose
+  que conseiller une action dessus, cette limite a été reconfirmée
+  explicitement au moment d'assouplir l'interdiction d'interpréter, pas
+  levée par erreur avec elle.
 - **Ancré uniquement sur les données du rapport, jamais sur la connaissance
-  du modèle.** Le prompt interdit explicitement d'utiliser une connaissance
-  de la société acquise ailleurs (entraînement, actualité) — impossible à
+  du modèle.** Reconfirmé explicitement dans la même question que
+  ci-dessus, pas assoupli en même temps que l'interprétation : le prompt
+  interdit toujours d'utiliser une connaissance de la société ou de son
+  secteur acquise ailleurs (entraînement, actualité) — impossible à
   vérifier ou à rattacher à ce filing précis, ça mélangerait silencieusement
   une vraie analyse sourcée avec du rappel non vérifiable. Le contexte
   envoyé au modèle (`build_prompt_context`, fonction pure et testée sans
   réseau) inclut de vrais extraits du diff par sous-thème (pas juste des
-  compteurs), pour donner une base concrète sans envoyer le filing entier.
+  compteurs), pour donner une base concrète à l'interprétation sans
+  envoyer le filing entier. Test de régression verrouillant les deux
+  garde-fous dans le prompt système :
+  `test_system_prompt_allows_interpretation_but_forbids_investment_advice_and_external_knowledge`.
 
 **Délibérément séparé de `build_report_data()`**, jamais appelé
 automatiquement : contrairement à tous les autres modules, un appel réel
@@ -691,7 +705,7 @@ Secrets and variables → Actions → New repository secret,
 
 ### Tests
 
-8 tests, tous hors-ligne : `build_prompt_context` (pure, sans réseau) et
+9 tests, tous hors-ligne : `build_prompt_context` (pure, sans réseau) et
 le traitement des réponses succès/échec via des réponses HTTP simulées.
 Le chemin d'erreur HTTP réel (401 avec une fausse clé) a été vérifié
 manuellement contre la vraie API pendant le développement — network
@@ -707,7 +721,7 @@ python -m pytest tests/report/test_ai_summary.py -v
 ## Statut : projet complet, validé contre de vraies données
 
 Les 5 modules principaux (+ le module 6 optionnel) sont terminés et
-testés (179 tests). Le pipeline a été validé
+testés (180 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,

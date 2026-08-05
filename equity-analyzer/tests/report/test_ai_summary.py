@@ -16,7 +16,7 @@ from datetime import date
 import pytest
 
 from equity_analyzer.data_layer.models import FilingTextSections, FormType, PeriodDuration
-from equity_analyzer.report.ai_summary import attach_ai_summary, build_prompt_context
+from equity_analyzer.report.ai_summary import _SYSTEM_PROMPT, attach_ai_summary, build_prompt_context
 from equity_analyzer.report.report_data import build_report_data
 from equity_analyzer.sentiment.lm_dictionary import LMDictionary
 
@@ -152,3 +152,20 @@ def test_attach_ai_summary_succeeds_with_a_well_formed_response(monkeypatch):
 
     assert result.ai_summary.available
     assert result.ai_summary.value["text"] == "Synthese factuelle du filing."
+
+
+def test_system_prompt_allows_interpretation_but_forbids_investment_advice_and_external_knowledge():
+    """
+    Locked-in per explicit user choice (asked again via AskUserQuestion
+    after the strict-factual-only version shipped): the model may now
+    interpret and connect the already-computed signals into a real
+    reading, not just restate them -- but two guardrails from the
+    original scoping stay, re-confirmed rather than silently dropped
+    alongside the interpretation change: never an investment
+    recommendation, never knowledge about the company from outside this
+    report's own computed data.
+    """
+    prompt = _SYSTEM_PROMPT.lower()
+    assert "interpret" in prompt
+    assert "conseil d'investissement" in prompt
+    assert "connaissance" in prompt and "ailleurs" in prompt
