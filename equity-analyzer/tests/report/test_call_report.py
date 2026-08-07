@@ -421,3 +421,26 @@ def test_a_reason_the_report_does_not_recognise_is_shown_verbatim():
     from equity_analyzer.report.html_renderer import _readable_reason
 
     assert _readable_reason("quelque chose d'inattendu") == "quelque chose d'inattendu"
+
+
+def test_the_mdna_label_follows_the_form_the_quarter_was_reported_in():
+    """
+    One quarter in four is reported in the 10-K rather than a 10-Q, and
+    the MD&A is Item 7 there, not Item 2. A hardcoded "10-Q (Item 2)"
+    would be wrong on a quarter of all reports, and wrong in the
+    direction that sends a reader looking for a document that does not
+    exist.
+    """
+    # "&" is escaped on the way into the page, so this is the string a
+    # reader actually gets.
+    quarterly = render_html(build_report())
+    assert "MD&amp;A du 10-Q (Item 2)" in quarterly
+
+    annual_quarter = make_filing(
+        form_type=FormType.TEN_K, fiscal_year=2026, fiscal_period="FY",
+        period_end=date(2026, 6, 30),
+        text_sections=_quarter_filing().text_sections,
+    )
+    annual = render_html(build_report(quarter_filing=annual_quarter))
+    assert "MD&amp;A du 10-K (Item 7)" in annual
+    assert "MD&amp;A du 10-Q" not in annual

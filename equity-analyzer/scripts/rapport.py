@@ -56,7 +56,7 @@ from equity_analyzer.data_layer import (
     build_financial_period,
     extract_sections,
     filing_index_url,
-    latest_quarterly_pair,
+    latest_reported_period,
     list_filings,
 )
 from equity_analyzer.data_layer.alpha_vantage import RETRY_AFTER_REFUSAL_SECONDS
@@ -65,10 +65,12 @@ from equity_analyzer.data_layer.earnings_expectations import (
     fetch_earnings_expectations,
 )
 from equity_analyzer.data_layer.transcript_cache import CachedTranscriptSource, TranscriptCache
+from equity_analyzer.data_layer.earnings_release import list_earnings_8ks
 from equity_analyzer.data_layer.transcript_period import (
     PeriodLabelUnavailable,
     alpha_vantage_label,
     find_latest_available,
+    next_label,
     verify_against_declared,
 )
 from equity_analyzer.data_layer.transcript_source import (
@@ -230,22 +232,51 @@ def main() -> int:
         return 1
 
     try:
-        pair = latest_quarterly_pair(client, cik)
+        # 10-Q OR 10-K. A fiscal year has four quarters but only three
+        # 10-Qs: the fourth is reported inside the 10-K. Asking for the
+        # newest 10-Q skips one quarter in four, silently, for every
+        # company (see cik_lookup.latest_reported_period).
+        ref = latest_reported_period(client, cik)
         facts = client.fetch_company_facts(cik)
         quarter_filing = _build_filing(
-            client, cik, pair.current, TICKER, company_name, facts, with_text=True
+            client, cik, ref, TICKER, company_name, facts, with_text=True
         )
-        start_label = alpha_vantage_label(
+        filed_label = alpha_vantage_label(
             quarter_filing.fiscal_year, quarter_filing.fiscal_period
         )
         _ok(
             f"Dernier trimestre déposé : {quarter_filing.fiscal_period} "
-            f"{quarter_filing.fiscal_year} (clos le {quarter_filing.period_end}), "
-            f"repère fournisseur {start_label}"
+            f"{quarter_filing.fiscal_year} (clos le {quarter_filing.period_end}, "
+            f"{quarter_filing.form_type.value}), repère fournisseur {filed_label}"
         )
     except (EdgarClientError, FilingNotFoundError, PeriodLabelUnavailable, ValueError) as exc:
         _fail(f"Impossible de déterminer le dernier trimestre : {exc}")
         return 1
+
+    # -- Has the company REPORTED a quarter it has not yet FILED? --
+    #
+    # The earnings call happens on the day of the press release; the
+    # 10-Q or 10-K that EDGAR indexes follows two to six weeks later. In
+    # that window the newest call exists and the newest periodic filing
+    # is for the quarter before it, so anchoring on filings alone reads
+    # a call one quarter old and says nothing about it. The earnings
+    # 8-K (Item 2.02) is filed the same day as the release, so it is the
+    # cheapest honest signal that a newer quarter has been reported.
+    start_label = filed_label
+    consensus_anchor = quarter_filing.period_end
+    try:
+        recent_8k = list_earnings_8ks(client, cik, limit=1)[0]
+        reported_end = recent_8k.period_of_report
+        if reported_end is not None and reported_end > quarter_filing.period_end:
+            start_label = next_label(filed_label)
+            consensus_anchor = reported_end
+            _ok(
+                f"Résultats publiés le {recent_8k.filed_date} pour le trimestre clos "
+                f"le {reported_end}, pas encore déposé : recherche du call sur "
+                f"{start_label}"
+            )
+    except (EdgarClientError, FilingNotFoundError, IndexError, ValueError) as exc:
+        _warn(f"Pas de 8-K de résultats exploitable, on s'en tient au dépôt : {exc}")
 
     # -- The annual filings the red flags are computed on. Never the
     #    quarter above: all three are annual models (see report_data). --
@@ -299,11 +330,11 @@ def main() -> int:
     expectations_reason = None
     try:
         expectations = fetch_earnings_expectations(TICKER)
-        expectation = expectations.at(quarter_filing.period_end, quarters_back)
+        expectation = expectations.at(consensus_anchor, quarters_back)
         if expectation is None:
             expectations_reason = (
                 f"aucune ligne de consensus pour le trimestre du call "
-                f"(clos le {quarter_filing.period_end}"
+                f"(clos le {consensus_anchor}"
                 + (f", {quarters_back} trimestre(s) plus tôt)" if quarters_back else ")")
             )
             _warn(expectations_reason)

@@ -468,8 +468,25 @@ def _render_red_flags(report: CallReport) -> str:
     """
 
 
+def _mdna_label(report: CallReport) -> str:
+    """
+    The MD&A's item number depends on the form: Item 2 in a 10-Q, Item 7
+    in a 10-K. Not cosmetic. One quarter in four is reported in the
+    10-K rather than a 10-Q (see cik_lookup.latest_reported_period), so
+    a hardcoded "10-Q" would be wrong on a quarter of all reports, and
+    wrong in the direction that makes a reader look for a document that
+    does not exist.
+    """
+    filing = report.quarter_filing
+    if filing is None:
+        return "MD&A du dépôt"
+    form = getattr(filing.form_type, "value", filing.form_type)
+    item = "Item 7" if form == "10-K" else "Item 2"
+    return f"MD&A du {form} ({item})"
+
+
 def _render_tone(report: CallReport) -> str:
-    mdna_label = "MD&A du 10-Q (Item 2)"
+    mdna_label = _mdna_label(report)
     return f"""
     <h2>Tonalité (Loughran-McDonald)</h2>
     <table>
@@ -488,8 +505,9 @@ def _render_provenance(report: CallReport) -> str:
     filing_line = ""
     if report.quarter_filing is not None:
         filing = report.quarter_filing
+        form = getattr(filing.form_type, "value", filing.form_type)
         filing_line = (
-            f" 10-Q {filing.fiscal_period} {filing.fiscal_year}, déposé le "
+            f" {form} {filing.fiscal_period} {filing.fiscal_year}, déposé le "
             f"{filing.filed_date.isoformat()}, accession {filing.accession_number}."
         )
     return f"""

@@ -78,3 +78,54 @@ def test_a_call_that_names_no_period_is_flagged_not_passed_silently():
     warning = verify_against_declared("2026Q2", "Welcome everyone, thanks for joining.")
     assert warning is not None
     assert "non déclarée" in warning
+
+
+# -- Stepping forward, for the window between reporting and filing -----
+
+
+def test_next_label_steps_one_quarter_forward():
+    from equity_analyzer.data_layer.transcript_period import next_label
+
+    assert next_label("2026Q1") == "2026Q2"
+    assert next_label("2026Q3") == "2026Q4"
+
+
+def test_next_label_rolls_the_year_at_q4():
+    from equity_analyzer.data_layer.transcript_period import next_label
+
+    assert next_label("2026Q4") == "2027Q1"
+
+
+def test_next_and_previous_label_are_inverses():
+    """
+    They anchor the same search from opposite ends: forward when a
+    quarter has been reported but not filed, backward when a quarter has
+    been filed but the call is not published yet. If they disagreed, a
+    search that stepped forward then back would land on a different
+    quarter than it started from.
+    """
+    from equity_analyzer.data_layer.transcript_period import next_label, previous_label
+
+    for label in ("2026Q1", "2026Q2", "2026Q3", "2026Q4", "2025Q4"):
+        assert previous_label(next_label(label)) == label
+        assert next_label(previous_label(label)) == label
+
+
+def test_stepping_forward_works_for_a_filer_whose_year_does_not_end_in_december():
+    """
+    The reason this steps from a KNOWN filed anchor rather than from the
+    calendar. Microsoft's fiscal year ends in June, so the quarter after
+    its Q3 (ended 31 March) is its Q4 (ended 30 June), and the label the
+    provider indexes it under is 2026Q4, not a calendar quarter.
+    """
+    from equity_analyzer.data_layer.transcript_period import (
+        alpha_vantage_label,
+        next_label,
+    )
+
+    filed = alpha_vantage_label(2026, "Q3")
+    assert filed == "2026Q3"
+    assert next_label(filed) == "2026Q4"
+    # And the 10-K that reports that quarter is labelled FY by EDGAR,
+    # which maps to the same Q4 the provider uses.
+    assert alpha_vantage_label(2026, "FY") == "2026Q4"

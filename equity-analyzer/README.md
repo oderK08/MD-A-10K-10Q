@@ -119,14 +119,36 @@ pour l'essentiel de la population visée. Le problème est concret : une
 requête réelle pour `MSFT 2026Q2` a renvoyé le call du trimestre clos en
 décembre 2025.
 
-**Le trimestre déposé n'est pas toujours le trimestre publié.** Une société
-peut déposer son 10-Q quelques jours après avoir publié, avant que le
-fournisseur n'ait mis le call en ligne (constaté sur AAOI). La recherche
-remonte alors trimestre par trimestre, et le rapport **dit de combien** il a
-fallu remonter plutôt que de faire passer un call plus ancien pour le
-courant. Le consensus affiché remonte avec lui : mesurer une lecture du T1
-contre les attentes du T2 serait pire que pas de consensus du tout, parce
-que ça a l'air fondé.
+**Le quatrième trimestre n'est pas un 10-Q.** Un exercice compte quatre
+trimestres mais seulement trois 10-Q : le quatrième est publié dans le
+10-K, avec l'année complète. Chercher « le dernier 10-Q » saute donc un
+trimestre sur quatre, pour toutes les sociétés, et le saute en silence
+puisqu'un dépôt de T3 est un dépôt parfaitement valide. Trouvé sur un
+vrai run MSFT : exercice clos en juin, T4 clos le 30 juin publié dans le
+10-K de fin juillet, et l'outil est allé lire le call d'avril en le
+présentant comme le dernier. La sélection porte donc sur le dernier
+**10-Q ou 10-K**, ordonné par période de report.
+
+**Et publier n'est pas déposer.** Le call a lieu le jour du communiqué ;
+le 10-Q ou le 10-K qu'EDGAR indexe suit deux à six semaines plus tard.
+Dans cette fenêtre le call le plus récent existe alors que le dernier
+dépôt périodique porte sur le trimestre d'avant. Le **8-K de résultats
+(Item 2.02)**, déposé le jour même du communiqué, est le signal le moins
+cher qu'un trimestre plus récent a été publié : quand sa période dépasse
+celle du dernier dépôt périodique, la recherche part d'un trimestre plus
+loin. Avancer d'un cran depuis un repère fiscal **connu** est sûr là où
+déduire un trimestre du calendrier ne l'est pas : le repère porte déjà
+l'étiquetage de la société, donc un déposant à clôture juin passe de son
+T3 à son T4 sans que personne ait codé en dur la fin de son exercice.
+
+**Et dans l'autre sens, le trimestre déposé n'est pas toujours publié
+chez le fournisseur.** Une société peut déposer quelques jours après
+avoir publié, avant que le transcript ne soit en ligne (constaté sur
+AAOI). La recherche remonte alors trimestre par trimestre, et le rapport
+**dit de combien** il a fallu remonter plutôt que de faire passer un call
+plus ancien pour le courant. Le consensus remonte avec lui : mesurer une
+lecture du T1 contre les attentes du T2 serait pire que pas de consensus
+du tout, parce que ça a l'air fondé.
 
 **Et on vérifie quand même.** `verify_against_declared` compare le repère
 demandé à la période que la société **annonce à voix haute** dans les
