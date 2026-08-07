@@ -17,7 +17,8 @@ the workflow's input boxes (filled in the GitHub Actions UI, no terminal
 needed) can control them without editing this file.
 
 Outputs:
-- One PDF report per ticker in rapports/
+- Two PDFs per ticker in rapports/: <TICKER>.pdf (the two-page
+  main report) and <TICKER>_detail.pdf (the uncapped change detail)
 - summary.csv: one row per ticker, one column per pipeline stage, so
   gaps across companies are visible at a glance
 - debug/<TICKER>_plaintext.txt + occurrence hints, for tickers where
@@ -60,7 +61,14 @@ from equity_analyzer.data_layer import (
     list_filings,
 )
 from equity_analyzer.data_layer.text_sections import html_to_text
-from equity_analyzer.report import attach_ai_summary, build_report_data, render_html, save_pdf
+from equity_analyzer.report import (
+    attach_ai_summary,
+    attach_theme_selection,
+    build_report_data,
+    render_detail_html,
+    render_html,
+    save_pdf,
+)
 from equity_analyzer.sentiment import load_lm_dictionary
 
 DEFAULT_TICKERS = "AAPL,MSFT,GOOGL,AMZN,NVDA,JPM,XOM,JNJ,PG,KO,WMT,DIS,BA,CAT,NFLX"
@@ -98,6 +106,7 @@ SUMMARY_FIELDS = [
     "altman_z", "beneish_m", "piotroski_f",
     "mdna_diff", "risk_factors_diff",
     "mdna_sentiment", "risk_factors_sentiment",
+    "themes",
     "ai_summary",
     "error",
 ]
@@ -237,6 +246,20 @@ def run_for_ticker(client, dictionary, ticker: str) -> dict:
     # ANTHROPIC_API_KEY is even set in this process's environment (see the
     # module-level comment). A ticker run never silently starts making paid
     # API calls just because a repo secret happens to exist.
+    # Pass 1 of 2: pick the analyst-relevant sub-themes BEFORE writing
+    # anything, so the summary is written over the selection rather than
+    # over whatever happened to change most. Runs (with a documented
+    # word-count fallback) even without a key, so the sub-theme table is
+    # populated on a free run too.
+    report = attach_theme_selection(report, api_key=ANTHROPIC_API_KEY or None)
+    if report.theme_selection is not None and report.theme_selection.available:
+        selection = report.theme_selection.value
+        row["themes"] = f"{len(selection.headings)} ({'IA' if selection.ai_selected else 'repli'})"
+        _ok(f"Sous-thématiques retenues: {selection.reason}")
+    else:
+        row["themes"] = "aucune"
+
+    # Pass 2 of 2: the executive summary, written over that selection.
     if ANTHROPIC_API_KEY:
         report = attach_ai_summary(report, api_key=ANTHROPIC_API_KEY)
         if report.ai_summary.available:
@@ -250,9 +273,12 @@ def run_for_ticker(client, dictionary, ticker: str) -> dict:
 
     try:
         REPORTS_DIR.mkdir(exist_ok=True)
-        html = render_html(report)
-        save_pdf(html, REPORTS_DIR / f"{ticker}.pdf")
-        _ok(f"PDF généré: rapports/{ticker}.pdf")
+        # Main report: hard two-page budget, compacted if needed.
+        save_pdf(render_html(report), REPORTS_DIR / f"{ticker}.pdf", max_pages=2)
+        # Companion "détail": deliberately uncapped -- capping it would
+        # mean dropping changed text.
+        save_pdf(render_detail_html(report), REPORTS_DIR / f"{ticker}_detail.pdf")
+        _ok(f"PDF générés: rapports/{ticker}.pdf (2 p.) + {ticker}_detail.pdf")
     except Exception as exc:  # noqa: BLE001
         _fail(f"Génération du PDF: {exc}")
         row["error"] = (row["error"] + "; " if row["error"] else "") + f"pdf: {exc}"

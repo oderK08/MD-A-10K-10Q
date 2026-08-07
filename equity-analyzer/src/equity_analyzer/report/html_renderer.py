@@ -19,6 +19,7 @@ from html import escape as _e
 
 from ..diff.text_diff import word_level_diff
 from .charts import bar_chart_data_uri
+from .fonts import body_font_stack, font_face_css
 from .report_data import ReportData, SectionResult
 from .trend import TrendAnalysis, TrendPoint
 
@@ -28,63 +29,80 @@ from .trend import TrendAnalysis, TrendPoint
 # plain in-flow <pdf:pagenumber/> only appears once, at whatever point
 # in the document flow it's placed; wrapping it in the #footer_content
 # frame target is what makes it repeat.
-_CSS = """
+# Entirely greyscale, by explicit user request ("je veux pas de couleur").
+# Every distinction the old stylesheet carried in colour -- an Altman
+# distress zone, a flagged Beneish, added vs removed text -- is now
+# carried by weight, rule, indent or a typographic marker instead, so
+# nothing is lost when the page is read (or printed) in black and white.
+# The second request, "que ça ressemble pas à de l'IA", is why there are
+# no tinted callout boxes, no badges and no emoji: the page is set like
+# a plain analyst note.
+_CSS_TEMPLATE = """
+  %(font_faces)s
   @page {
     size: a4 portrait;
-    margin: 2.4cm 2cm 2cm 2cm;
+    margin: 2cm 1.9cm 1.8cm 1.9cm;
     @frame footer_frame {
       -pdf-frame-content: footer_content;
-      bottom: 1cm; margin-left: 2cm; margin-right: 2cm; height: 1cm;
+      bottom: 1cm; margin-left: 1.9cm; margin-right: 1.9cm; height: 1cm;
     }
   }
-  body { font-family: Helvetica, Arial, sans-serif; color: #1a1a1a; font-size: 11pt; }
-  h1 { font-size: 18pt; margin-bottom: 2pt; }
-  h2 { font-size: 13pt; margin-top: 20pt; border-bottom: 1px solid #ccc; padding-bottom: 4pt; }
-  h3 { font-size: 11pt; margin-top: 12pt; }
-  h4 { font-size: 10pt; margin-top: 10pt; margin-bottom: 2pt; color: #2a2a2a;
-       border-left: 3pt solid #ccc; padding-left: 6pt; }
-  .group-stats { font-size: 9pt; color: #666; margin-top: 0; margin-bottom: 4pt; }
-  .muted { font-size: 9pt; color: #888; font-style: italic; }
-  .subtitle { color: #555; margin-top: 0; }
-  table { border-collapse: collapse; width: 100%; margin-top: 6pt; }
-  th, td { text-align: left; padding: 4pt 8pt; border-bottom: 1px solid #ddd; font-size: 10pt; }
-  th { background: #f2f2f2; }
-  .card { border: 1px solid #ddd; border-radius: 4pt; padding: 10pt; margin-top: 8pt; }
-  .unavailable { color: #888; font-style: italic; }
-  .zone-safe { color: #1a7f37; font-weight: bold; }
-  .zone-grey { color: #9a6700; font-weight: bold; }
-  .zone-distress { color: #cf222e; font-weight: bold; }
-  .flagged-true { color: #cf222e; font-weight: bold; }
-  .flagged-false { color: #1a7f37; font-weight: bold; }
-  .segment-added { background: #e6ffed; color: #1a7f37; padding: 2pt 4pt; display: block; margin: 2pt 0; }
-  .segment-removed { background: #ffeef0; color: #cf222e; text-decoration: line-through; padding: 2pt 4pt; display: block; margin: 2pt 0; }
-  .segment-modified { border-left: 2pt solid #9a6700; padding: 2pt 4pt 2pt 6pt; margin: 2pt 0; }
-  .word-removed { color: #cf222e; text-decoration: line-through; }
-  .word-added { color: #1a7f37; }
-  .skip-note { color: #9a6700; background: #fff8e6; padding: 6pt; border-radius: 4pt; }
-  .footer { margin-top: 24pt; color: #888; font-size: 8pt; border-top: 1px solid #ccc; padding-top: 6pt; }
-  #footer_content { text-align: center; font-size: 8pt; color: #999; }
-  .cover { text-align: center; margin-top: 200pt; }
-  .cover .cover-kicker { font-size: 11pt; color: #888; letter-spacing: 1pt; text-transform: uppercase; }
-  .cover .cover-title { font-size: 28pt; font-weight: bold; margin-top: 8pt; }
-  .cover .cover-subtitle { font-size: 13pt; color: #555; margin-top: 6pt; }
-  .cover .cover-meta { font-size: 9pt; color: #999; margin-top: 70pt; }
-  .exec-summary { background: #f5f8fa; border-left: 3pt solid #2a6f97; padding: 8pt 12pt; margin: 10pt 0; }
-  .exec-summary h2 { margin-top: 0; border-bottom: none; padding-bottom: 0; }
-  .exec-summary ul { margin: 4pt 0; padding-left: 16pt; }
-  .exec-summary li { margin: 3pt 0; }
-  .exec-summary .warn { color: #9a6700; font-weight: bold; }
-  .ai-summary { background: #f7f5fb; border-left: 3pt solid #6f42c1; padding: 8pt 12pt; margin: 10pt 0; }
-  .ai-summary h2 { margin-top: 0; border-bottom: none; padding-bottom: 0; }
-  .ai-badge { font-size: 8pt; font-weight: normal; color: #6f42c1; border: 1pt solid #6f42c1;
-              border-radius: 3pt; padding: 1pt 5pt; margin-left: 6pt; vertical-align: middle; }
-  .ai-disclaimer { font-size: 8pt; color: #888; font-style: italic; margin-top: 6pt; margin-bottom: 0; }
+  body { font-family: %(body_font)s; color: #111; font-size: 9.5pt; line-height: 1.35; }
+  h1 { font-size: 15pt; font-weight: bold; margin: 0 0 1pt 0; letter-spacing: -0.2pt; }
+  h2 { font-size: 10.5pt; font-weight: bold; margin: 11pt 0 4pt 0;
+       border-bottom: 0.6pt solid #111; padding-bottom: 2.5pt; }
+  h3 { font-size: 9.5pt; font-weight: bold; margin: 9pt 0 3pt 0; }
+  h4 { font-size: 9pt; font-weight: bold; margin: 8pt 0 2pt 0; }
+  p { margin: 0 0 5pt 0; }
+  .subtitle { color: #555; margin: 0 0 2pt 0; font-size: 8.5pt; }
+  .lede { font-size: 9.5pt; margin-bottom: 7pt; }
+  table { border-collapse: collapse; width: 100%%; margin-top: 4pt; }
+  th, td { text-align: left; padding: 2pt 5pt; border-bottom: 0.4pt solid #ccc; font-size: 8.5pt; }
+  td.wide, th.wide { width: 52%%; }
+  td.narrow, th.narrow { width: 12%%; }
+  th { border-bottom: 0.6pt solid #111; font-weight: bold; }
+  td.num, th.num { text-align: right; }
+  .muted { font-size: 8pt; color: #666; font-style: italic; }
+  .unavailable { color: #666; font-style: italic; }
+  .note { font-size: 8pt; color: #444; margin-top: 3pt; }
+  /* Verdict/severity, formerly colour-coded: now weight + a bracketed word. */
+  .flag-on { font-weight: bold; }
+  .flag-off { font-weight: normal; color: #444; }
+  /* Diff marks, formerly green/red: strike-through for gone text, an
+     underline for new text, both legible in pure black. */
+  .segment-added { display: block; margin: 1.5pt 0; padding-left: 10pt; text-decoration: underline; }
+  .segment-removed { display: block; margin: 1.5pt 0; padding-left: 10pt; text-decoration: line-through; color: #555; }
+  .segment-modified { display: block; margin: 1.5pt 0; padding-left: 10pt; }
+  .word-removed { text-decoration: line-through; color: #555; }
+  .word-added { text-decoration: underline; font-weight: bold; }
+  .skip-note { font-style: italic; color: #444; }
+  .footer { margin-top: 12pt; color: #666; font-size: 7.5pt;
+            border-top: 0.4pt solid #bbb; padding-top: 4pt; }
+  #footer_content { text-align: center; font-size: 7.5pt; color: #888; }
+  .exec-summary p { margin-bottom: 6pt; text-align: justify; }
   .page-break { page-break-before: always; }
-  .chart-row { margin: 3pt 0; }
-  .chart-label { display: inline-block; width: 40pt; font-size: 9pt; vertical-align: middle; }
-  .chart-value { display: inline-block; width: 46pt; font-size: 9pt; text-align: right;
-                 vertical-align: middle; padding-right: 6pt; }
+  .kicker { font-size: 7.5pt; letter-spacing: 0.8pt; text-transform: uppercase;
+            color: #555; margin: 0 0 6pt 0; }
+  /* Trend report only -- kept from the previous layout. */
+  .cover { text-align: center; margin-top: 200pt; }
+  .cover .cover-kicker { font-size: 10pt; color: #555; letter-spacing: 1pt; text-transform: uppercase; }
+  .cover .cover-title { font-size: 24pt; font-weight: bold; margin-top: 8pt; }
+  .cover .cover-subtitle { font-size: 12pt; color: #444; margin-top: 6pt; }
+  .cover .cover-meta { font-size: 8.5pt; color: #666; margin-top: 70pt; }
 """
+
+
+def _css() -> str:
+    """
+    The stylesheet with the report font resolved to real @font-face
+    rules. Built at call time, not import time: the font file's presence
+    is a property of the machine rendering the report, and this way a
+    font installed after import still gets picked up.
+    """
+    return _CSS_TEMPLATE % {
+        "font_faces": font_face_css(),
+        "body_font": body_font_stack(),
+    }
 
 
 def _fmt_currency(value):
@@ -156,9 +174,9 @@ def _executive_summary_lines(report: ReportData) -> list:
     else:
         lines.append("Aucun indicateur de red flags calculable pour cette période (données insuffisantes).")
     if report.altman_z.available and report.altman_z.value.zone == "distress":
-        lines.append('<span class="warn">⚠ Altman Z-Score en zone de détresse financière.</span>')
+        lines.append('<span class="flag-on">Altman Z-Score en zone de détresse financière.</span>')
     if report.beneish_m.available and report.beneish_m.value.flagged:
-        lines.append('<span class="warn">⚠ Beneish M-Score signale un risque de manipulation comptable.</span>')
+        lines.append('<span class="flag-on">Beneish M-Score signale un risque de manipulation comptable.</span>')
 
     if report.mdna_diff.available:
         mdna_segments = report.mdna_diff.value.overall.segments
@@ -178,43 +196,114 @@ def _executive_summary_lines(report: ReportData) -> list:
     return lines
 
 
+# Hard cap on the executive summary, so page 1 can never spill onto
+# page 2 and push the whole two-page layout out by a page. The model is
+# already asked for 200 words; this is the backstop for when it
+# overruns, and it truncates at a sentence boundary with an explicit
+# note rather than cutting mid-word or silently dropping the tail.
+_MAX_SUMMARY_WORDS = 340
+
+
+def _truncate_summary(text: str) -> tuple:
+    """Returns (text, was_truncated), cut at the last sentence end that fits."""
+    words = text.split()
+    if len(words) <= _MAX_SUMMARY_WORDS:
+        return text, False
+    clipped = " ".join(words[:_MAX_SUMMARY_WORDS])
+    last_stop = max(clipped.rfind(". "), clipped.rfind(".\n"))
+    if last_stop > len(clipped) // 2:
+        clipped = clipped[: last_stop + 1]
+    return clipped, True
+
+
 def _render_executive_summary(report: ReportData) -> str:
+    """
+    Page 1: the AI's read of the selected sub-themes, as continuous
+    prose. Deliberately NOT the old bulleted digest of headline numbers
+    -- those now live on page 2, and duplicating them here would spend
+    the page the user reserved for interpretation on figures the reader
+    is about to see anyway.
+
+    Falls back to the computed digest when no AI summary was requested
+    or the call failed, so page 1 is never blank: a report generated
+    without an API key still opens with something useful, just flagged
+    as computed rather than written.
+    """
+    if report.ai_summary is not None and report.ai_summary.available:
+        text, truncated = _truncate_summary(report.ai_summary.value["text"])
+        paragraphs = "\n".join(
+            f"<p>{_e(para.strip())}</p>" for para in text.split("\n") if para.strip()
+        )
+        note = ""
+        if truncated:
+            note = (
+                '<p class="muted">Synthèse tronquée pour tenir en une page — '
+                "le détail complet des changements figure dans le rapport « détail ».</p>"
+            )
+        return f"""
+        <div class="exec-summary">
+          <h2>Résumé exécutif</h2>
+          {paragraphs}
+          {note}
+          {_render_selection_note(report)}
+        </div>
+        """
+
     lines = _executive_summary_lines(report)
     if not lines:
         return ""
-    items = "\n".join(f"<li>{line}</li>" for line in lines)
-    return f'<div class="exec-summary"><h2>Résumé exécutif</h2><ul>{items}</ul></div>'
+    items = "\n".join(f"<p>{line}</p>" for line in lines)
+    unavailable = ""
+    if report.ai_summary is not None and not report.ai_summary.available:
+        unavailable = (
+            f'<p class="muted">Lecture bullish/bearish indisponible — '
+            f"{_e(report.ai_summary.unavailable_reason)}</p>"
+        )
+    return f"""
+    <div class="exec-summary">
+      <h2>Résumé exécutif</h2>
+      <p class="muted">Synthèse calculée à partir des indicateurs du rapport
+      (lecture interprétative non demandée pour ce tirage).</p>
+      {items}
+      {unavailable}
+      {_render_selection_note(report)}
+    </div>
+    """
 
 
-def _render_ai_summary(report: ReportData) -> str:
+def _render_selection_note(report: ReportData) -> str:
     """
-    Opt-in only (see report/ai_summary.py): `report.ai_summary` is None
-    unless a caller explicitly called `attach_ai_summary`, in which case
-    this renders nothing at all -- no "indisponible" placeholder either,
-    since most reports simply never requested this section, and showing
-    an empty/failed AI box by default would misleadingly suggest it's a
-    normal part of every report.
+    States which sub-themes the summary above was written over, and how
+    they were chosen. Always rendered when a selection exists: whether
+    an analyst-grade model picked them or a word-count fallback did
+    changes how much weight the reader should give the summary, so it
+    is never left to be assumed.
     """
-    if report.ai_summary is None:
+    section = getattr(report, "theme_selection", None)
+    if section is None or not section.available:
         return ""
-    if not report.ai_summary.available:
-        return f"""
-        <div class="ai-summary">
-          <h2>Synthèse générée par IA</h2>
-          <p class="unavailable">Indisponible — {_e(report.ai_summary.unavailable_reason)}</p>
-        </div>
-        """
-    text = _e(report.ai_summary.value["text"])
+    selection = section.value
+    if not selection.headings:
+        return f'<p class="note">{_e(selection.reason)}.</p>'
+    listed = " · ".join(_e(h) for h in selection.headings)
+    return f'<p class="note">Sous-thématiques retenues : {listed}. ({_e(selection.reason)}.)</p>'
+
+
+def _render_ai_disclaimer(report: ReportData) -> str:
+    """
+    The provenance line for the AI-written summary. Kept out of
+    `_render_executive_summary` so it can sit at the very bottom of
+    page 1 rather than interrupting the prose, and rendered only when an
+    AI summary actually appears -- a computed digest needs no AI caveat.
+    """
+    if report.ai_summary is None or not report.ai_summary.available:
+        return ""
     model = _e(report.ai_summary.value["model"])
     return f"""
-    <div class="ai-summary">
-      <h2>Lecture bullish / bearish par IA <span class="ai-badge">{model}</span></h2>
-      <p>{text}</p>
-      <p class="ai-disclaimer">Verdict directionnel généré automatiquement à partir
-      des seules données calculées dans ce rapport (aucune connaissance externe sur
-      la société) — porte sur la balance des changements de ce filing, pas sur la
-      valorisation du titre. À vérifier ; ne constitue pas un conseil en investissement.</p>
-    </div>
+    <p class="muted">Lecture rédigée par {model} à partir des seules données calculées
+    dans ce rapport (aucune connaissance externe sur la société) ; porte sur la balance
+    des changements de ce dépôt, pas sur la valorisation du titre. À vérifier ;
+    ne constitue pas un conseil en investissement.</p>
     """
 
 
@@ -238,75 +327,178 @@ def _render_financial_highlights(report: ReportData) -> str:
     if not report.financial_highlights:
         return '<h2>Chiffres clés</h2><p class="unavailable">Aucune donnée financière extraite pour ce filing.</p>'
     rows = "\n".join(
-        f"<tr><td>{_e(h.label)}</td><td>{_fmt_currency(h.value)}</td>"
+        f'<tr><td class="wide">{_e(h.label)}</td><td class="num">{_fmt_currency(h.value)}</td>'
         f"<td>{_e(_humanize_xbrl_tag(h.concept)) if h.concept else '—'}</td></tr>"
         for h in report.financial_highlights
     )
     completeness_note = ""
     if report.financial_data_completeness is not None:
+        # One short line, not the previous three-line caveat: page 2 is
+        # tight, and the nuance (a missing metric isn't necessarily a gap
+        # -- some don't apply to a given sector) is documented in the
+        # README rather than re-explained on every report.
         completeness_note = (
-            f'<p>Complétude des données financières : '
-            f'<strong>{_fmt_pct(report.financial_data_completeness)}</strong> '
-            f"des métriques attendues ont été résolues pour ce filing "
-            f"(le reste — voir les sections indisponibles ci-dessous —"
-            f" n'est pas forcément un manque : certaines métriques ne "
-            f"s'appliquent pas à tous les secteurs).</p>"
+            f'<p class="note">Complétude des données XBRL : '
+            f"<strong>{_fmt_pct(report.financial_data_completeness)}</strong> "
+            f"des métriques attendues résolues.</p>"
         )
     return f"""
     <h2>Chiffres clés</h2>
     {completeness_note}
     <table>
-      <tr><th>Poste</th><th>Valeur</th><th>Tag XBRL</th></tr>
+      <tr><th class="wide">Poste</th><th class="num">Valeur</th><th>Tag XBRL</th></tr>
       {rows}
     </table>
     """
 
 
-def _render_altman(section: SectionResult) -> str:
-    if not section.available:
-        return f"<h3>Altman Z-Score</h3>{_unavailable_html(section)}"
-    result = section.value
-    return f"""
-    <h3>Altman Z-Score ({_e(result.variant)})</h3>
-    <p>Score : <strong>{_fmt_ratio(result.score)}</strong>
-       — zone : <span class="zone-{_e(result.zone)}">{_e(result.zone)}</span></p>
+_ZONE_LABELS = {"safe": "sûre", "grey": "grise", "distress": "détresse"}
+
+
+def _red_flag_rows(report: ReportData) -> str:
     """
-
-
-def _render_beneish(section: SectionResult) -> str:
-    if not section.available:
-        return f"<h3>Beneish M-Score</h3>{_unavailable_html(section)}"
-    result = section.value
-    flagged_class = "flagged-true" if result.flagged else "flagged-false"
-    flagged_label = "signalé" if result.flagged else "non signalé"
-    return f"""
-    <h3>Beneish M-Score</h3>
-    <p>Score : <strong>{_fmt_ratio(result.score)}</strong> (seuil {_fmt_ratio(result.threshold)})
-       — <span class="{flagged_class}">{flagged_label}</span></p>
+    The three red flags as rows of one compact table rather than three
+    bordered cards -- page 2 has to carry all of them plus the per-theme
+    change table, and cards spend most of their height on padding.
+    Severity is bold text, never colour (see the stylesheet note).
     """
+    rows = []
 
+    if report.altman_z.available:
+        z = report.altman_z.value
+        emphasis = "flag-on" if z.zone == "distress" else "flag-off"
+        rows.append(
+            f"<tr><td>Altman Z-Score <span class=\"muted\">({_e(z.variant)})</span></td>"
+            f'<td class="num">{_fmt_ratio(z.score)}</td>'
+            f'<td><span class="{emphasis}">zone {_e(_ZONE_LABELS.get(z.zone, z.zone))}</span></td></tr>'
+        )
+    else:
+        rows.append(
+            "<tr><td>Altman Z-Score</td><td class=\"num\">—</td>"
+            f'<td class="unavailable">{_e(report.altman_z.unavailable_reason)}</td></tr>'
+        )
 
-def _render_piotroski(section: SectionResult) -> str:
-    if not section.available:
-        return f"<h3>Piotroski F-Score</h3>{_unavailable_html(section)}"
-    result = section.value
-    criteria_rows = "\n".join(
-        f"<tr><td>{_e(name.replace('_', ' '))}</td><td>{'✓' if passed else '✗'}</td></tr>"
-        for name, passed in result.criteria.items()
-    )
-    return f"""
-    <h3>Piotroski F-Score</h3>
-    <p>Score : <strong>{result.score} / {result.max_score}</strong></p>
-    <table>{criteria_rows}</table>
-    """
+    if report.beneish_m.available:
+        m = report.beneish_m.value
+        emphasis = "flag-on" if m.flagged else "flag-off"
+        label = "signalé" if m.flagged else "non signalé"
+        rows.append(
+            f"<tr><td>Beneish M-Score <span class=\"muted\">(seuil {_fmt_ratio(m.threshold)})</span></td>"
+            f'<td class="num">{_fmt_ratio(m.score)}</td>'
+            f'<td><span class="{emphasis}">{label}</span></td></tr>'
+        )
+    else:
+        rows.append(
+            "<tr><td>Beneish M-Score</td><td class=\"num\">—</td>"
+            f'<td class="unavailable">{_e(report.beneish_m.unavailable_reason)}</td></tr>'
+        )
+
+    if report.piotroski_f.available:
+        f = report.piotroski_f.value
+        failed = [name.replace("_", " ") for name, passed in f.criteria.items() if not passed]
+        # Only the FAILED criteria are named. The passed ones are implied
+        # by the score and would cost a third of the page to list.
+        detail = "tous critères validés" if not failed else "échoue : " + ", ".join(failed)
+        rows.append(
+            "<tr><td>Piotroski F-Score</td>"
+            f'<td class="num">{f.score} / {f.max_score}</td>'
+            f"<td>{_e(detail)}</td></tr>"
+        )
+    else:
+        rows.append(
+            "<tr><td>Piotroski F-Score</td><td class=\"num\">—</td>"
+            f'<td class="unavailable">{_e(report.piotroski_f.unavailable_reason)}</td></tr>'
+        )
+
+    return "\n".join(rows)
 
 
 def _render_red_flags(report: ReportData) -> str:
     return f"""
-    <h2>Red Flags</h2>
-    <div class="card">{_render_altman(report.altman_z)}</div>
-    <div class="card">{_render_beneish(report.beneish_m)}</div>
-    <div class="card">{_render_piotroski(report.piotroski_f)}</div>
+    <h2>Red flags</h2>
+    <table>
+      <tr><th>Indicateur</th><th class="num">Score</th><th>Lecture</th></tr>
+      {_red_flag_rows(report)}
+    </table>
+    """
+
+
+def _theme_change_rows(grouped) -> str:
+    """
+    One row per sub-theme: how much of it changed, in percent, plus the
+    raw counts behind that percentage.
+
+    The percentage is changed words over the sub-theme's total word
+    count -- deliberately NOT the diff's `similarity_ratio`, which is
+    computed over whole sentences and so reads 0% for a sub-theme where
+    a single figure moved inside every sentence. Words are the unit a
+    reader means by "how much of this changed".
+    """
+    rows = []
+    for group in grouped.selected_groups:
+        diff = group.diff
+        changed = diff.added_word_count + diff.removed_word_count
+        base = max(diff.prior_word_count, diff.current_word_count)
+        pct = (changed / base) if base else 0.0
+        added = sum(1 for s in diff.segments if s.kind == "added")
+        removed = sum(1 for s in diff.segments if s.kind == "removed")
+        modified = sum(1 for s in diff.segments if s.kind == "modified")
+        status_suffix = {
+            "added": " (nouvelle)",
+            "removed": " (supprimée)",
+            "matched": "",
+        }[group.status]
+        heading = _e(group.heading) if group.heading else "Introduction"
+        rows.append(
+            f'<tr><td class="wide">{heading}{status_suffix}</td>'
+            f'<td class="num">{pct * 100:.0f}%</td>'
+            f'<td class="num">{added}</td><td class="num">{removed}</td>'
+            f'<td class="num">{modified}</td></tr>'
+        )
+    return "\n".join(rows)
+
+
+def _render_theme_change_table(report: ReportData) -> str:
+    """Page 2: how much each retained sub-theme moved, at a glance."""
+    section = report.risk_factors_diff
+    if not section.available:
+        return f"<h2>Changements par sous-thématique</h2>{_unavailable_html(section)}"
+    rf = section.value
+    if rf.skipped:
+        return (
+            "<h2>Changements par sous-thématique</h2>"
+            f'<p class="skip-note">{_e(rf.skip_reason)}</p>'
+        )
+
+    rows = _theme_change_rows(rf.diff)
+    if not rows:
+        return (
+            "<h2>Changements par sous-thématique</h2>"
+            '<p class="unavailable">Aucune sous-thématique retenue pour ce filing.</p>'
+        )
+
+    overall = rf.diff.overall
+    unselected = [g for g in rf.diff.groups if not g.selected]
+    unselected_note = ""
+    if unselected:
+        # Never a silent drop: the reader is told how many sub-themes
+        # exist beyond the retained set, and where to read them.
+        unselected_note = (
+            f'<p class="note">{len(unselected)} autre(s) sous-thématique(s) non retenue(s) '
+            f"dans la sélection ci-dessus — comptabilisées dans le total Item 1A, "
+            f"détaillées dans le rapport « détail ».</p>"
+        )
+
+    return f"""
+    <h2>Changements par sous-thématique (Item 1A)</h2>
+    <table>
+      <tr><th class="wide">Sous-thématique</th><th class="num narrow">% modifié</th>
+          <th class="num narrow">Ajouts</th><th class="num narrow">Suppr.</th><th class="num narrow">Reform.</th></tr>
+      {rows}
+    </table>
+    <p class="note">Item 1A dans son ensemble : {_fmt_pct(overall.similarity_ratio)} de similarité,
+    {overall.added_word_count} mots ajoutés, {overall.removed_word_count} mots supprimés.</p>
+    {unselected_note}
     """
 
 
@@ -519,129 +711,158 @@ def _render_risk_factors_diff_detail(section: SectionResult) -> str:
     return _text_diff_detail_html("Risk Factors (Item 1A)", rf_result.diff)
 
 
-def _render_diff_summary_section(report: ReportData) -> str:
-    return f"""
-    <h2>Changements textuels vs période précédente</h2>
-    <div class="card">{_render_risk_factors_diff_summary(report.risk_factors_diff)}</div>
-    <div class="card">{_render_mdna_diff_summary(report.mdna_diff)}</div>
-    """
-
-
-def _render_diff_detail_section(report: ReportData) -> str:
-    """
-    The full removed/added/modified text -- the longest, most detailed
-    reading material in the report -- rendered as its own section near
-    the end (see render_html), after every quick-scan number. Renders
-    nothing at all (not even the "<h2>") when there's genuinely no detail
-    to show for either section (both unavailable/skipped), rather than
-    an empty heading followed by nothing.
-    """
-    rf_detail = _render_risk_factors_diff_detail(report.risk_factors_diff)
-    mdna_detail = _render_mdna_diff_detail(report.mdna_diff)
-    if not rf_detail and not mdna_detail:
-        return ""
-    cards = "".join(f'<div class="card">{detail}</div>' for detail in (rf_detail, mdna_detail) if detail)
-    return f"""
-    <h2>Détail des changements textuels</h2>
-    {cards}
-    """
-
-
-def _render_sentiment_result(title: str, result) -> str:
-    counts_rows = "\n".join(
-        f"<tr><td>{_e(category.replace('_', ' '))}</td><td>{count}</td>"
-        f"<td>{_fmt_pct(result.proportions[category])}</td></tr>"
-        for category, count in result.counts.items()
-    )
-    return f"""
-    <h3>{_e(title)}</h3>
-    <p>Tonalité nette : <strong>{_fmt_ratio(result.net_tone)}</strong>
-       ({result.total_word_count} mots analysés)</p>
-    <table><tr><th>Catégorie</th><th>Occurrences</th><th>Proportion</th></tr>{counts_rows}</table>
-    """
-
-
-def _render_mdna_sentiment(section: SectionResult) -> str:
+def _sentiment_row(label: str, section: SectionResult, skipped_attr: bool = False) -> str:
     if not section.available:
-        return f"<h3>MD&amp;A (Item 7)</h3>{_unavailable_html(section)}"
-    # plain "&" here too -- see the matching note in _render_mdna_diff.
-    return _render_sentiment_result("MD&A (Item 7)", section.value)
-
-
-def _render_risk_factors_sentiment(section: SectionResult) -> str:
-    if not section.available:
-        return f"<h3>Risk Factors (Item 1A)</h3>{_unavailable_html(section)}"
-    rf_result = section.value  # RiskFactorsSentimentResult
-    if rf_result.skipped:
         return (
-            f"<h3>Risk Factors (Item 1A)</h3>"
-            f'<p class="skip-note">{_e(rf_result.skip_reason)}</p>'
+            f"<tr><td>{label}</td><td class=\"num\">—</td>"
+            f'<td class="unavailable">{_e(section.unavailable_reason)}</td></tr>'
         )
-    return _render_sentiment_result("Risk Factors (Item 1A)", rf_result.result)
+    result = section.value
+    if skipped_attr:
+        if result.skipped:
+            return (
+                f'<tr><td>{label}</td><td class="num">—</td>'
+                f'<td class="skip-note">{_e(result.skip_reason)}</td></tr>'
+            )
+        result = result.result
+    tone = result.net_tone
+    direction = "positive" if tone > 0.1 else "négative" if tone < -0.1 else "neutre"
+    return (
+        f"<tr><td>{label}</td><td class=\"num\">{_fmt_ratio(tone)}</td>"
+        f"<td>{direction} · {result.total_word_count} mots analysés</td></tr>"
+    )
 
 
 def _render_sentiment_section(report: ReportData) -> str:
+    """
+    Compact two-row table instead of the previous two full
+    category-breakdown tables: page 2 has to hold red flags, per-theme
+    change and this, and the seven Loughran-McDonald category counts are
+    detail-report material. The net tone -- the number a reader actually
+    acts on -- stays here.
+    """
     return f"""
-    <h2>Sentiment (Loughran-McDonald)</h2>
-    <div class="card">{_render_risk_factors_sentiment(report.risk_factors_sentiment)}</div>
-    <div class="card">{_render_mdna_sentiment(report.mdna_sentiment)}</div>
+    <h2>Tonalité (Loughran-McDonald)</h2>
+    <table>
+      <tr><th>Section</th><th class="num">Tonalité nette</th><th>Lecture</th></tr>
+      {_sentiment_row("Risk Factors (Item 1A)", report.risk_factors_sentiment, skipped_attr=True)}
+      {_sentiment_row("MD&amp;A (Item 7)", report.mdna_sentiment)}
+    </table>
     """
 
 
-def render_html(report: ReportData) -> str:
-    """
-    Renders `report` into a complete, self-contained HTML document.
-
-    Section order, per user feedback on a real report: every quick-scan
-    number (financials, red flags, the Risk Factors/MD&A diff SUMMARY,
-    sentiment) comes first; the detailed diff TEXT -- by far the
-    longest, most detailed reading material in the report -- comes last,
-    right before the closing footer. Sentiment (Loughran-McDonald) was
-    moved up to sit right after the diff summary rather than at the very
-    end of the report: both are analyses of the same two text sections
-    (Risk Factors, MD&A), so reading them together makes more sense than
-    having sentiment isolated after everything else.
-    """
+def _document_html(title: str, body: str) -> str:
     return f"""<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>{_e(report.filing.company_name)} — {_e(report.filing.form_type.value)} {report.filing.fiscal_year} {_e(report.filing.fiscal_period)}</title>
-  <style>{_CSS}</style>
+  <title>{title}</title>
+  <style>{_css()}</style>
 </head>
 <body>
   <div id="footer_content">Page <pdf:pagenumber /> / <pdf:pagecount /></div>
-  {_render_header(report)}
-  {_render_executive_summary(report)}
-  {_render_ai_summary(report)}
-  {_render_financial_highlights(report)}
-  {_render_red_flags(report)}
-  {_render_diff_summary_section(report)}
-  {_render_sentiment_section(report)}
-  {_render_diff_detail_section(report)}
-  <p class="footer">
-    Rapport généré automatiquement le {report.generated_at.isoformat()} à partir des
-    données SEC EDGAR. Voir le code source du projet pour la méthodologie complète
-    et les approximations documentées de chaque module.
-  </p>
+{body}
 </body>
 </html>
 """
+
+
+def render_html(report: ReportData) -> str:
+    """
+    The main report: exactly two pages.
+
+    Page 1 is the executive summary -- the AI's read of the sub-themes
+    selected as analyst-relevant, plus which ones those were and how
+    they were chosen. Page 2 is every number: red flags, per-sub-theme
+    change percentages, financial highlights and tone.
+
+    The detailed changed text is NOT here. It lives in its own document
+    (`render_detail_html`) because it's unbounded in length -- a heavily
+    rewritten Item 1A runs to dozens of pages -- and mixing it in is
+    what made earlier versions of this report unreadable.
+
+    Two pages is a hard constraint, not a target: the page break between
+    the two halves is explicit, page 1's summary is capped and truncated
+    at a sentence boundary if the model overruns, and page 2's tables
+    are sized to fit. Nothing is dropped without a visible note pointing
+    to the detail report.
+    """
+    filing = report.filing
+    title = (
+        f"{_e(filing.company_name)} — {_e(filing.form_type.value)} "
+        f"{filing.fiscal_year} {_e(filing.fiscal_period)}"
+    )
+    body = f"""
+  {_render_header(report)}
+  {_render_executive_summary(report)}
+  {_render_ai_disclaimer(report)}
+  <div class="page-break">
+    {_render_red_flags(report)}
+    {_render_theme_change_table(report)}
+    {_render_financial_highlights(report)}
+    {_render_sentiment_section(report)}
+    <p class="footer">
+      Généré le {report.generated_at.date().isoformat()} à partir des données SEC EDGAR.
+      Détail intégral des changements textuels : rapport « détail » joint.
+    </p>
+  </div>
+"""
+    return _document_html(title, body)
+
+
+def render_detail_html(report: ReportData) -> str:
+    """
+    The companion "détail" document: the full changed text, sub-theme by
+    sub-theme, with no length cap.
+
+    Split out of the main report at the user's request. Selected
+    sub-themes come first, in the order the selection ranked them, then
+    the rest -- so the document opens on what the summary was written
+    over, but still contains everything (nothing is dropped just for not
+    having been selected).
+    """
+    filing = report.filing
+    title = (
+        f"{_e(filing.company_name)} — détail des changements "
+        f"{filing.fiscal_year} {_e(filing.fiscal_period)}"
+    )
+    rf_detail = _render_risk_factors_diff_detail(report.risk_factors_diff)
+    mdna_detail = _render_mdna_diff_detail(report.mdna_diff)
+    if not rf_detail and not mdna_detail:
+        sections = (
+            '<p class="unavailable">Aucun changement textuel détaillé disponible '
+            "pour ce filing (sections manquantes ou diff non calculable).</p>"
+        )
+    else:
+        sections = "\n".join(part for part in (rf_detail, mdna_detail) if part)
+
+    body = f"""
+  {_render_header(report)}
+  <p class="kicker">Détail des changements textuels</p>
+  <p class="muted">Texte supprimé barré, texte ajouté souligné. Pour une phrase
+  reformulée, l'ancienne formulation est barrée et la nouvelle suit entre parenthèses.</p>
+  {sections}
+  <p class="footer">
+    Généré le {report.generated_at.date().isoformat()} à partir des données SEC EDGAR.
+    Document d'accompagnement du rapport principal.
+  </p>
+"""
+    return _document_html(title, body)
 
 
 def _trend_altman_cell(section: SectionResult) -> str:
     if not section.available:
         return '<span class="unavailable">—</span>'
     result = section.value
-    return f'{_fmt_ratio(result.score)} <span class="zone-{_e(result.zone)}">({_e(result.zone)})</span>'
+    return f'{_fmt_ratio(result.score)} ({_e(_ZONE_LABELS.get(result.zone, result.zone))})'
 
 
 def _trend_beneish_cell(section: SectionResult) -> str:
     if not section.available:
         return '<span class="unavailable">—</span>'
     result = section.value
-    flagged_class = "flagged-true" if result.flagged else "flagged-false"
-    return f'<span class="{flagged_class}">{_fmt_ratio(result.score)}</span>'
+    emphasis = "flag-on" if result.flagged else "flag-off"
+    return f'<span class="{emphasis}">{_fmt_ratio(result.score)}</span>'
 
 
 def _trend_piotroski_cell(section: SectionResult) -> str:
@@ -730,7 +951,7 @@ def _trend_executive_summary_lines(trend: TrendAnalysis) -> list:
     ]
     if flagged_years:
         lines.append(
-            f'<span class="warn">⚠ Beneish M-Score a signalé un risque de manipulation '
+            f'<span class="flag-on">Beneish M-Score a signalé un risque de manipulation '
             f"comptable pour : {', '.join(flagged_years)}.</span>"
         )
 
@@ -740,7 +961,7 @@ def _trend_executive_summary_lines(trend: TrendAnalysis) -> list:
     ]
     if distress_years:
         lines.append(
-            f'<span class="warn">⚠ Altman Z-Score en zone de détresse pour : '
+            f'<span class="flag-on">Altman Z-Score en zone de détresse pour : '
             f"{', '.join(distress_years)}.</span>"
         )
 
@@ -821,7 +1042,7 @@ def render_trend_html(trend: TrendAnalysis) -> str:
 <head>
   <meta charset="utf-8">
   <title>{_e(last_filing.company_name)} — historique {years_span}</title>
-  <style>{_CSS}</style>
+  <style>{_css()}</style>
 </head>
 <body>
   <div id="footer_content">Page <pdf:pagenumber /> / <pdf:pagecount /></div>

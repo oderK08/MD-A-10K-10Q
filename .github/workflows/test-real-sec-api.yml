@@ -44,6 +44,14 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Installer la police du rapport (Lato)
+        # Le rapport intègre Lato dans le PDF via @font-face pointant sur
+        # un vrai fichier .ttf -- xhtml2pdf ne consulte pas la base de
+        # polices système. Sans ce paquet, report/fonts.py se rabat
+        # proprement sur la sans-serif générique (le rapport se génère
+        # quand même, mais pas dans la bonne police).
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-lato
+
       - name: Installer les dépendances
         run: |
           pip install -r requirements.txt || true

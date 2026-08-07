@@ -12,8 +12,8 @@ compilés dans un rapport PDF structuré.
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
 | 3. Diff textuel | ✅ Terminé (30 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
-| 5. Report Builder | ✅ Terminé (55 tests) | Génération du rapport PDF + tendance multi-année, mise en forme (page de garde, résumé exécutif, graphiques) |
-| 6. Lecture bullish/bearish IA (opt-in) | ✅ Terminé (11 tests) | Verdict directionnel généré par l'API Claude, ancré strictement sur les données déjà calculées, avec citations verbatim |
+| 5. Report Builder | ✅ Terminé (59 tests) | Rapport principal 2 pages + rapport « détail » séparé, en niveaux de gris, police Lato intégrée |
+| 6. Sélection + lecture IA (opt-in) | ✅ Terminé (23 tests) | Deux passes : l'IA choisit les sous-thématiques suivies par les analystes, Python les diffe, l'IA rédige le résumé exécutif dessus |
 
 ## Module 1 — Data Layer
 
@@ -528,6 +528,65 @@ suite de tests qui restait verte, qui a trouvé deux vrais bugs de rendu
      qui laisse au moteur de mise en page de vrais points de coupure de
      mots.
 
+### Refonte : deux documents, deux pages, sans couleur
+
+Refonte demandée après lecture d'un vrai rapport NVDA. Le rapport ne
+sortait plus un seul PDF long mais **deux documents** :
+
+- **`<TICKER>.pdf` — le rapport principal, exactement 2 pages.**
+  Page 1 : le résumé exécutif seul (la lecture de l'IA sur les
+  sous-thématiques retenues, plus la liste de ces sous-thématiques et
+  la façon dont elles ont été choisies). Page 2 : tous les chiffres —
+  red flags, % de changement par sous-thématique, chiffres clés,
+  tonalité.
+- **`<TICKER>_detail.pdf` — le rapport « détail », non plafonné.** Tout
+  le texte réellement ajouté/supprimé/reformulé, sous-thématique par
+  sous-thématique, les retenues d'abord. Volontairement sans limite de
+  pages : la plafonner reviendrait à supprimer du texte modifié, ce que
+  ce projet ne fait jamais silencieusement.
+
+**Les 2 pages sont une garantie, pas une cible.** La feuille de style
+seule ne suffit pas : un filing avec 10 sous-thématiques modifiées et
+plusieurs critères Piotroski en échec déborde naturellement sur une 3e
+page. `render_pdf_fitted(html, max_pages=2)` rend le PDF, **compte les
+vraies pages du PDF produit**, et re-rend avec une feuille de style de
+plus en plus compacte jusqu'à ce que ça tienne. Le choix de l'utilisateur
+entre « compacter, jamais déborder » et « laisser filer » était explicite.
+Test de régression : `test_main_report_fits_two_pages_even_in_the_worst_case`
+construit le pire cas réaliste (le plafond de 10 sous-thématiques, des
+intitulés longs, un résumé trop long), **vérifie d'abord qu'il déborde
+vraiment** au rendu naturel — sinon le test ne prouverait rien — puis que
+la version ajustée fait exactement 2 pages.
+
+Si même l'étape la plus compacte déborde, la fonction renvoie ce rendu-là
+plutôt que de lever : un rapport un peu long est plus utile au lecteur
+que pas de rapport, et `page_count()` reste disponible pour vérifier.
+
+**Aucune couleur.** Tout ce que la feuille de style distinguait par la
+couleur passe par la graisse, un filet, un retrait ou un marqueur
+typographique : zone Altman en toutes lettres (« zone détresse »),
+Beneish signalé en gras, texte supprimé barré, texte ajouté souligné.
+Rien n'est perdu à la lecture en noir et blanc ou à l'impression. Test :
+`test_report_uses_no_colour_anywhere` scanne le HTML rendu des deux
+documents et rejette toute couleur hexadécimale dont R, G et B ne sont
+pas égaux — un futur ajustement de style ne peut pas réintroduire du
+vert/rouge sans faire échouer la suite.
+
+**Police.** L'utilisateur demandait Seravek. C'est une police
+propriétaire Apple, livrée avec macOS : absente des runners GitHub
+Actions, et sa licence n'autorise pas à l'embarquer dans ce dépôt. Le
+choix a été posé explicitement ; **Lato** a été retenue, la plus proche
+en esprit parmi les humanistes libres, installable via `apt`
+(`fonts-lato`, ajouté au workflow) donc identique en CI et en local.
+Détail qui compte : `xhtml2pdf` **ne consulte pas la base de polices
+système** — un simple `font-family: Lato` retombe silencieusement sur
+Helvetica dans le PDF (vérifié avec `pdffonts`). Seule une règle
+`@font-face` pointant sur un vrai `.ttf` embarque la police
+(`report/fonts.py`), ce que `pdffonts` confirme ensuite avec `emb yes`.
+Si le fichier est absent, `font_face_css()` renvoie `""` et la pile
+générique s'applique : le rapport se génère quand même, simplement dans
+la police par défaut.
+
 ### Rendu du diff par sous-thème : condenser sans jamais cacher
 
 Retour utilisateur sur un vrai rapport Micron généré en conditions
@@ -589,7 +648,7 @@ distincts removed/added, pas un "modified" forcé).
 
 ### Tests
 
-55 tests, dont deux tests d'intégration bout-en-bout qui font tourner
+59 tests, dont deux tests d'intégration bout-en-bout qui font tourner
 **Module 1 → Module 5** sur les vraies fixtures (XBRL + HTML) jusqu'à un
 vrai PDF généré (vérifie les octets magiques `%PDF-`) — un pour un rapport
 single-période, un pour une tendance sur 2 exercices. Avec cette fixture
@@ -621,7 +680,57 @@ trend = build_trend_analysis([filing_2021, filing_2022, filing_2023], lm_diction
 save_pdf(render_trend_html(trend), "tendance.pdf")
 ```
 
-## Module 6 — Lecture bullish/bearish par IA (`ai_summary.py`, opt-in)
+## Module 6 — Sélection + lecture IA (`theme_selection.py` + `ai_summary.py`, opt-in)
+
+### Le flux en trois temps
+
+Refonte demandée explicitement : l'IA ne doit plus seulement commenter
+après coup ce que Python a diffé, elle doit d'abord **choisir sur quoi
+travailler**.
+
+1. **Python liste** les sous-thématiques réellement présentes dans le
+   filing (`list_subthemes`, pur, sans réseau — réutilise la détection
+   de titres du diff lui-même, donc les deux ne peuvent pas diverger sur
+   ce qu'est une sous-thématique).
+2. **L'IA choisit** jusqu'à `MAX_SELECTED_THEMES` (**10**) de ces
+   intitulés : ceux qu'un analyste couvrant cette société surveillerait
+   réellement — prix, volumes, marges, demande, concentration client,
+   contraintes de capacité, risques réglementaires bloquants — en
+   dépriorisant le boilerplate juridique générique
+   (`select_key_subthemes`).
+3. **Python diffe**, puis **l'IA revient** écrire le résumé exécutif sur
+   cette sélection (`ai_summary.py`), en reprenant explicitement les
+   « points attendus » sous-thématique par sous-thématique.
+
+Ce que ça remplace : le classement par nombre de mots changés. Un mauvais
+proxy de la pertinence analyste — une section juridique fortement
+réécrite passait devant un changement de trois mots sur le guidance de
+prix.
+
+**Le modèle ne peut que CHOISIR dans la liste que Python lui donne.**
+Tout intitulé renvoyé qui n'existe pas dans la liste d'entrée est écarté
+(`_parse_selection`) : une sous-thématique hallucinée ou reformulée ne
+peut pas entrer dans le pipeline — au pire la sélection revient plus
+courte, jamais fausse. Test :
+`test_a_hallucinated_heading_is_dropped_not_passed_through`.
+
+**Les non-retenues ne sont pas jetées.** `apply_theme_selection` *marque*
+les groupes, il n'en supprime aucun : le total Item 1A continue de les
+compter, le rapport principal indique combien il y en a, et le rapport
+« détail » les contient toutes. Une sélection vide sélectionne zéro
+sous-thématique et non « toutes » — c'est une vraie réponse du sélecteur,
+pas un cas à inverser silencieusement.
+
+**Dégrade proprement sans clé API** : pas de clé, réseau en panne,
+réponse illisible → repli documenté sur les sous-thématiques les plus
+volumineuses, et le rapport **écrit noir sur blanc** comment la sélection
+a été faite (`ThemeSelection.reason`, `ai_selected`) plutôt que de
+laisser croire qu'une IA a tranché. Le rapport reste générable
+gratuitement et hors-ligne.
+
+**Coût** : deux appels au lieu d'un. La passe de sélection est courte
+(elle ne reçoit que des intitulés et des tailles, pas de texte) — compter
+de l'ordre de 0,4 à 0,8 centime par rapport au total sur Haiku 4.5.
 
 ### Ce qu'il fait
 
@@ -716,11 +825,20 @@ déterministe (la suite `pytest` reste donc 100% hors-ligne). Un appelant
 doit explicitement activer cette section :
 
 ```python
-from equity_analyzer.report.ai_summary import attach_ai_summary
+from equity_analyzer.report import (
+    attach_ai_summary, attach_theme_selection,
+    build_report_data, render_detail_html, render_html, save_pdf,
+)
 
 report = build_report_data(filing, prior_filing, lm_dictionary)
+
+# Passe 1 : quelles sous-thématiques valent le coup (repli documenté sans clé)
+report = attach_theme_selection(report, api_key=os.environ.get("ANTHROPIC_API_KEY"))
+# Passe 2 : le résumé exécutif, écrit sur cette sélection
 report = attach_ai_summary(report, api_key=os.environ["ANTHROPIC_API_KEY"])
-save_pdf(render_html(report), "rapport.pdf")
+
+save_pdf(render_html(report), "rapport.pdf", max_pages=2)   # 2 pages garanties
+save_pdf(render_detail_html(report), "rapport_detail.pdf")  # non plafonné
 ```
 
 Si la clé est absente, ou si l'appel échoue pour n'importe quelle raison
@@ -773,7 +891,7 @@ log du run indique quel modèle a réellement produit les synthèses.
 
 ### Tests
 
-11 tests, tous hors-ligne : `build_prompt_context` (pure, sans réseau) et
+23 tests, tous hors-ligne : `build_prompt_context` et `select_key_subthemes` (purs, sans réseau) et
 le traitement des réponses succès/échec via des réponses HTTP simulées.
 Le chemin d'erreur HTTP réel (401 avec une fausse clé) a été vérifié
 manuellement contre la vraie API pendant le développement — network
@@ -789,7 +907,7 @@ python -m pytest tests/report/test_ai_summary.py -v
 ## Statut : projet complet, validé contre de vraies données
 
 Les 5 modules principaux (+ le module 6 optionnel) sont terminés et
-testés (185 tests). Le pipeline a été validé
+testés (201 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,

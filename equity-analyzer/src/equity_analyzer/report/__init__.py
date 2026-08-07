@@ -7,9 +7,10 @@ an opt-in AI summary (ai_summary.py, Module 6) layered on top via
 """
 
 from .ai_summary import AISummaryError, attach_ai_summary
+from .theme_selection import ThemeSelection, attach_theme_selection, select_key_subthemes
 from .errors import PdfRenderError, ReportError
-from .html_renderer import render_html, render_trend_html
-from .pdf_renderer import render_pdf, save_pdf
+from .html_renderer import render_detail_html, render_html, render_trend_html
+from .pdf_renderer import page_count, render_pdf, render_pdf_fitted, save_pdf
 from .report_data import (
     FinancialHighlight,
     ReportData,
@@ -26,7 +27,10 @@ __all__ = [
     "FinancialHighlight",
     "build_report_data",
     "render_html",
+    "render_detail_html",
     "render_pdf",
+    "render_pdf_fitted",
+    "page_count",
     "save_pdf",
     "TrendAnalysis",
     "TrendPoint",
@@ -34,4 +38,7 @@ __all__ = [
     "render_trend_html",
     "AISummaryError",
     "attach_ai_summary",
+    "ThemeSelection",
+    "attach_theme_selection",
+    "select_key_subthemes",
 ]

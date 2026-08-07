@@ -91,7 +91,12 @@ def test_full_pipeline_produces_a_pdf_with_real_fixtures():
 
     html = render_html(report)
     assert "Apple Inc." in html
-    assert "Indisponible" in html  # the red-flags gaps are shown, not hidden
+    # The red-flag gaps are shown, not hidden. In the two-page layout the
+    # three flags share one table, so an unavailable one carries its
+    # reason in its own row rather than a standalone "Indisponible —"
+    # paragraph; the reason text itself is what must survive.
+    assert '<td class="unavailable">' in html
+    assert "12-month" in html
 
     pdf_bytes = render_pdf(html)
     assert pdf_bytes[:5] == b"%PDF-"
