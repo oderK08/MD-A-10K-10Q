@@ -22,6 +22,15 @@ name: Dernier earnings call (un ticker)
         description: "User-Agent SEC EDGAR (nom d'app + email, exigé par la SEC)"
         required: false
         default: "EquityAnalyzer/1.0 contact@example.com"
+      ai_model:
+        description: "Modèle Claude qui lit le call"
+        required: false
+        default: "claude-sonnet-5"
+        type: choice
+        options:
+          - claude-sonnet-5
+          - claude-opus-5
+          - claude-haiku-4-5-20251001
 
 jobs:
   call:
@@ -43,11 +52,13 @@ jobs:
           pip install -r requirements.txt || true
           pip install -e .
 
-      - name: Récupérer le dernier call et le comparer au précédent
+      - name: Récupérer le dernier call et le faire analyser
         env:
           TICKER: ${{ inputs.ticker }}
           SEC_USER_AGENT: ${{ inputs.user_agent }}
           ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ inputs.ai_model }}
         run: python scripts/latest_call.py
 
       - name: Publier le résultat

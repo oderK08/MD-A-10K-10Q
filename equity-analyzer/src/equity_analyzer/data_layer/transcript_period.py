@@ -102,9 +102,53 @@ def verify_against_declared(requested: str, transcript_text: str) -> Optional[st
     return None
 
 
+def find_latest_available(source, ticker, cik, start_label, max_back=4, pause=None):
+    """
+    The most recent quarter that ACTUALLY HAS a transcript, walking back
+    from the one EDGAR says was filed last.
+
+    Needed because those two are not the same thing, which the first
+    live run made obvious: EDGAR had AAOI's Q2 2026 on file the same
+    week the company reported, and the transcript provider did not have
+    that call yet. Asking for exactly one quarter and giving up turned
+    "published a few days ago" into "no transcript", which is wrong and
+    discouraging in equal measure.
+
+    Returns (transcript, label, quarters_back). `quarters_back` is how
+    stale the answer is -- 0 means the newest filed quarter, 1 means the
+    one before it -- and the caller is expected to show it rather than
+    quietly present an older call as the latest.
+
+    A REFUSAL STOPS THE WALK IMMEDIATELY. Quota exhaustion and a
+    premium-only endpoint apply to every subsequent request too, so
+    continuing would spend the rest of the day's budget to collect the
+    same error four more times.
+    """
+    from .transcript_source import TranscriptRefused, TranscriptUnavailable
+
+    label = start_label
+    misses = []
+    for attempt in range(max_back):
+        if attempt and pause:
+            pause()
+        try:
+            return source.fetch(ticker, cik, quarter=label), label, attempt
+        except TranscriptRefused:
+            raise
+        except TranscriptUnavailable as exc:
+            misses.append(f"{label} ({exc})")
+            label = previous_label(label)
+
+    raise TranscriptUnavailable(
+        f"aucun transcript pour {ticker} sur les {max_back} derniers trimestres "
+        f"testés — " + " ; ".join(misses)
+    )
+
+
 __all__ = [
     "PeriodLabelUnavailable",
     "alpha_vantage_label",
+    "find_latest_available",
     "previous_label",
     "verify_against_declared",
 ]
