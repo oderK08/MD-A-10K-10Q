@@ -1,0 +1,61 @@
+name: Dernier earnings call (un ticker)
+
+# Tu mets un ticker, tu obtiens le dernier earnings call et ce qui a
+# changé dedans depuis le trimestre précédent.
+#
+# Le trimestre n'est pas à saisir : EDGAR sait quel trimestre la société
+# vient de déposer, et sous quel repère fiscal elle le désigne. C'est le
+# même repère que celui utilisé par le fournisseur de transcripts, donc
+# un déposant à clôture juin ou janvier marche sans rien de particulier.
+#
+# Coûte 2 requêtes sur les 25 du jour : le call du trimestre et celui
+# d'avant. Les transcripts déjà récupérés sortent du cache et ne coûtent
+# rien.
+"on":
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Le ticker (ex: AAOI, MSFT, NVDA, COHR)"
+        required: true
+        default: "AAOI"
+      user_agent:
+        description: "User-Agent SEC EDGAR (nom d'app + email, exigé par la SEC)"
+        required: false
+        default: "EquityAnalyzer/1.0 contact@example.com"
+
+jobs:
+  call:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: equity-analyzer
+    steps:
+      - name: Checkout du repo
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer les dépendances
+        run: |
+          pip install -r requirements.txt || true
+          pip install -e .
+
+      - name: Récupérer le dernier call et le comparer au précédent
+        env:
+          TICKER: ${{ inputs.ticker }}
+          SEC_USER_AGENT: ${{ inputs.user_agent }}
+          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
+        run: python scripts/latest_call.py
+
+      - name: Publier le résultat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dernier-call-${{ inputs.ticker }}
+          path: |
+            equity-analyzer/dernier_call.md
+            equity-analyzer/transcripts/
+          if-no-files-found: ignore

@@ -1,0 +1,122 @@
+# Nasdaq-100 : liste de DÉPART, à vérifier avant de s'y fier.
+#
+# PROVENANCE : écrite de mémoire par le modèle, PAS récupérée chez
+# Nasdaq. L'indice est reconstitué chaque année et remanié en cours
+# d'année lors des acquisitions, donc cette liste est forcément en
+# retard. Elle sert à lancer la reconnaissance sans attendre, pas à
+# définir un univers d'investissement.
+#
+# POUR LA RAFRAÎCHIR : Nasdaq publie les composants de l'indice (NDX)
+# sur son propre site. Remplacer ce fichier par cette liste, un ticker
+# par ligne.
+#
+# CE QUI ARRIVE SI ELLE EST FAUSSE : rien de silencieux. Un ticker
+# retiré de l'indice mais toujours coté sera simplement sondé pour rien ;
+# un ticker qui n'existe plus ressort en "CIK introuvable" dans la
+# sortie. Aucune ligne ne peut être fausse sans se voir.
+#
+# ÉMETTEURS ÉTRANGERS : les sociétés cotées via ADR (ASML, AZN, PDD,
+# CCEP...) déposent un 20-F annuel et pas de 10-Q. Elles sont hors du
+# périmètre du pipeline principal, mais gardées ici parce que la
+# reconnaissance transcript, elle, les concerne toujours : leur call a
+# lieu et leur site IR existe.
+
+AAPL
+MSFT
+NVDA
+AMZN
+AVGO
+META
+TSLA
+GOOGL
+GOOG
+COST
+NFLX
+TMUS
+CSCO
+AMD
+PEP
+LIN
+ADBE
+INTU
+TXN
+QCOM
+AMAT
+ISRG
+BKNG
+HON
+AMGN
+VRTX
+PANW
+ADP
+GILD
+SBUX
+MU
+ADI
+LRCX
+MELI
+INTC
+CMCSA
+REGN
+KLAC
+CRWD
+PDD
+CTAS
+MDLZ
+CEG
+SNPS
+MAR
+CDNS
+ORLY
+ABNB
+PYPL
+FTNT
+ASML
+WDAY
+MRVL
+ROP
+MNST
+ADSK
+NXPI
+CPRT
+DASH
+TTD
+CHTR
+PCAR
+ROST
+AEP
+KDP
+FAST
+ODFL
+PAYX
+EA
+BKR
+KHC
+VRSK
+CTSH
+EXC
+GEHC
+CCEP
+LULU
+CSGP
+XEL
+DDOG
+AZN
+IDXX
+TEAM
+ON
+ZS
+FANG
+DXCM
+TTWO
+CDW
+BIIB
+GFS
+MDB
+WBD
+ARM
+SMCI
+APP
+PLTR
+MSTR
+AXON

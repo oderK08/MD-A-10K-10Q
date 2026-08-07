@@ -18,7 +18,7 @@ name: Reconnaissance transcripts (où et sous quel format)
         required: false
         default: ""
       use_nasdaq_100:
-        description: "Utiliser la liste Nasdaq-100 du repo (data/nasdaq100.txt) au lieu du champ ci-dessus"
+        description: "Utiliser la liste Nasdaq-100 du repo (universes/nasdaq100.txt) au lieu du champ ci-dessus"
         required: false
         default: true
         type: boolean
@@ -54,13 +54,17 @@ jobs:
         # sonder une watchlist perso sans toucher au dépôt.
         run: |
           if [ -n "${{ inputs.tickers }}" ]; then
-            echo "list=${{ inputs.tickers }}" >> "$GITHUB_OUTPUT"
+            LIST="${{ inputs.tickers }}"
           elif [ "${{ inputs.use_nasdaq_100 }}" = "true" ]; then
-            LIST=$(grep -v '^#' data/nasdaq100.txt | grep -v '^$' | paste -sd, -)
-            echo "list=$LIST" >> "$GITHUB_OUTPUT"
+            test -f universes/nasdaq100.txt || {
+              echo "universes/nasdaq100.txt introuvable dans le dépôt."; exit 1; }
+            LIST=$(grep -v '^#' universes/nasdaq100.txt | grep -v '^$' | paste -sd, -)
           else
-            echo "list=" >> "$GITHUB_OUTPUT"
+            LIST=""
           fi
+          test -n "$LIST" || { echo "Liste de tickers vide."; exit 1; }
+          echo "Liste : $LIST"
+          echo "list=$LIST" >> "$GITHUB_OUTPUT"
 
       - name: Sonder chaque société (EDGAR puis site IR)
         env:

@@ -1,0 +1,31 @@
+# Watchlist de l'utilisateur.
+#
+# Un ticker par ligne. Ce fichier l'emporte sur universes/nasdaq100.txt dans
+# les workflows qui proposent les deux.
+#
+# La liste décrit une chaîne d'approvisionnement IA plutôt qu'un panier
+# diversifié : AAOI et COHR fabriquent l'optique, NVDA le silicium, et
+# MSFT / AMZN / GOOG sont les hyperscalers qui achètent les trois. Ce
+# n'est pas une remarque de style — ça veut dire que le capex annoncé
+# par un hyperscaler est un signal de demande direct pour les trois
+# premiers, et qu'une analyse ligne à ligne société par société rate
+# précisément ce qui lie ces noms entre eux.
+#
+# TROIS CALENDRIERS FISCAUX DIFFÉRENTS dans six noms, ce qui compte
+# parce que le paramètre `quarter` d'Alpha Vantage suit l'exercice de la
+# société et pas l'année civile (constaté sur MSFT : une demande de
+# 2026Q2 a renvoyé le call du trimestre fiscal clos en décembre 2025).
+# Comparer deux trimestres mal appariés est une erreur silencieuse qui
+# fausse tout le rapport, donc scripts/probe_fiscal_quarters.py mesure
+# la correspondance réelle au lieu de la supposer.
+#
+#   AAOI, AMZN, GOOG   clôture décembre   fiscal = civil
+#   MSFT, COHR         clôture juin       décalé de deux trimestres
+#   NVDA               clôture janvier    millésime en avance d'un an
+
+AAOI
+MSFT
+NVDA
+AMZN
+GOOG
+COHR

@@ -16,7 +16,7 @@ name: Sonder les trimestres fiscaux (que veut dire `quarter` ?)
   workflow_dispatch:
     inputs:
       tickers:
-        description: "Tickers (vide = data/watchlist.txt)"
+        description: "Tickers (vide = universes/watchlist.txt)"
         required: false
         default: ""
       quarter:
@@ -46,13 +46,23 @@ jobs:
 
       - name: Composer la liste
         id: universe
+        # Échoue tout de suite si la liste est vide, plutôt que de laisser
+        # l'étape suivante s'en plaindre. La première exécution a produit
+        # une liste vide parce que universes/watchlist.txt n'était pas
+        # suivi par git : le dossier data/ d'où il venait est ignoré par
+        # défaut. Le workflow avait l'air de fonctionner jusqu'à un
+        # message d'erreur qui accusait le mauvais coupable.
         run: |
           if [ -n "${{ inputs.tickers }}" ]; then
-            echo "list=${{ inputs.tickers }}" >> "$GITHUB_OUTPUT"
+            LIST="${{ inputs.tickers }}"
           else
-            LIST=$(grep -v '^#' data/watchlist.txt | grep -v '^$' | paste -sd, -)
-            echo "list=$LIST" >> "$GITHUB_OUTPUT"
+            test -f universes/watchlist.txt || {
+              echo "universes/watchlist.txt introuvable dans le dépôt."; exit 1; }
+            LIST=$(grep -v '^#' universes/watchlist.txt | grep -v '^$' | paste -sd, -)
           fi
+          test -n "$LIST" || { echo "Liste de tickers vide."; exit 1; }
+          echo "Liste : $LIST"
+          echo "list=$LIST" >> "$GITHUB_OUTPUT"
 
       - name: Comparer trimestre demandé et trimestre déclaré
         env:
