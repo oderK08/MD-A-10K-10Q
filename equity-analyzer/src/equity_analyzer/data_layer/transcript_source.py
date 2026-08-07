@@ -204,26 +204,40 @@ class HttpTranscriptSource(TranscriptSource):
 
     url_template: str          # e.g. "https://host/transcript?symbol={ticker}"
     api_key_env: str = "TRANSCRIPT_API_KEY"
+    # Vendors split roughly evenly between a header and a query
+    # parameter. Set exactly one: `api_key_param` wins when both are set.
     api_key_header: str = "X-Api-Key"
+    api_key_param: Optional[str] = None
     text_field: str = "transcript"
     date_field: str = "date"
     period_field: str = "quarter"
+    # When the text field holds a LIST of speaker turns rather than one
+    # string -- the better shape, and the one Alpha Vantage uses.
+    speaker_field: Optional[str] = None
+    content_field: str = "content"
+    title_field: Optional[str] = None
     name: str = "transcript API"
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
     extra_params: dict = field(default_factory=dict)
 
-    def fetch(self, ticker: str, cik: str, client=None) -> CallTranscript:
+    def fetch(self, ticker: str, cik: str, client=None, quarter: Optional[str] = None) -> CallTranscript:
         api_key = os.environ.get(self.api_key_env, "").strip()
         if not api_key:
             raise TranscriptUnavailable(
                 f"no transcript API key in ${self.api_key_env}"
             )
-        url = self.url_template.format(ticker=ticker, cik=cik)
+        url = self.url_template.format(ticker=ticker, cik=cik, quarter=quarter or "")
+        params = dict(self.extra_params)
+        headers = {}
+        if self.api_key_param:
+            params[self.api_key_param] = api_key
+        else:
+            headers[self.api_key_header] = api_key
         try:
             response = requests.get(
                 url,
-                headers={self.api_key_header: api_key},
-                params=self.extra_params or None,
+                headers=headers or None,
+                params=params or None,
                 timeout=self.timeout_seconds,
             )
         except requests.RequestException as exc:
@@ -246,10 +260,11 @@ class HttpTranscriptSource(TranscriptSource):
         if not isinstance(payload, dict):
             raise TranscriptUnavailable(f"unexpected {self.name} response shape")
 
-        text = (payload.get(self.text_field) or "").strip()
+        raw = payload.get(self.text_field)
+        text = (_join_turns(raw, self) if isinstance(raw, list) else (raw or "")).strip()
         if not text:
             raise TranscriptUnavailable(
-                f"{self.name} response has no '{self.text_field}' field for {ticker}"
+                f"{self.name} response has no usable '{self.text_field}' for {ticker}"
             )
 
         prepared, qa = split_prepared_from_qa(text)
@@ -264,6 +279,75 @@ class HttpTranscriptSource(TranscriptSource):
         )
 
 
+def _join_turns(turns: list, config) -> str:
+    """
+    Flattens a list of speaker turns into text, keeping the speaker on
+    its own line.
+
+    A turn list is the BETTER shape to receive, not a complication to
+    flatten away: the speaker line is short, title-cased and
+    unpunctuated, which is exactly what this project's sub-theme
+    detection already recognises as a heading. So the call arrives
+    pre-grouped by speaker, and the diff compares what the CFO said this
+    quarter against what the CFO said last quarter rather than treating
+    the call as one undivided block.
+    """
+    lines = []
+    for turn in turns:
+        if not isinstance(turn, dict):
+            if turn:
+                lines.append(str(turn))
+            continue
+        speaker = str(turn.get(config.speaker_field) or "").strip() if config.speaker_field else ""
+        title = str(turn.get(config.title_field) or "").strip() if config.title_field else ""
+        header = " -- ".join(part for part in (speaker, title) if part)
+        content = str(turn.get(config.content_field) or "").strip()
+        if not content:
+            continue
+        if header:
+            lines.append(header)
+        lines.append(content)
+    return "\n".join(lines)
+
+
+def alpha_vantage_source(api_key_env: str = "ALPHAVANTAGE_API_KEY") -> HttpTranscriptSource:
+    """
+    Alpha Vantage's EARNINGS_CALL_TRANSCRIPT endpoint, preconfigured.
+
+    Worth trying BEFORE any of the harder routes. It is a real API, not
+    a scrape, so no terms are being violated and nothing breaks when a
+    site is redesigned; it returns the call already split by speaker;
+    and its free tier is documented at 25 requests a day, which is far
+    more than a person analysing a handful of names a week will use. If
+    this works, the whole audio-acquisition problem -- the one genuinely
+    hard part of a DIY transcript pipeline -- simply does not arise.
+
+    UNVERIFIED, in two ways that matter. The vendor's site is
+    unreachable from the environment this was written in, so the URL
+    shape and field names come from documentation read second-hand;
+    and, more importantly, Alpha Vantage has moved several of its
+    "Alpha Intelligence" endpoints to premium, so whether transcripts
+    are in the free tier at all is exactly the thing to check first with
+    a free key. Treat a working call as the confirmation, not this
+    docstring.
+    """
+    return HttpTranscriptSource(
+        url_template=(
+            "https://www.alphavantage.co/query"
+            "?function=EARNINGS_CALL_TRANSCRIPT&symbol={ticker}&quarter={quarter}"
+        ),
+        api_key_env=api_key_env,
+        api_key_param="apikey",   # Alpha Vantage authenticates by query string, not header
+        text_field="transcript",  # a list of speaker turns
+        speaker_field="speaker",
+        title_field="title",
+        content_field="content",
+        date_field="quarter",
+        period_field="quarter",
+        name="Alpha Vantage",
+    )
+
+
 def _parse_date(value) -> Optional[date]:
     if not value:
         return None
@@ -276,6 +360,7 @@ def _parse_date(value) -> Optional[date]:
 __all__ = [
     "CallTranscript",
     "EdgarExhibitSource",
+    "alpha_vantage_source",
     "HttpTranscriptSource",
     "TranscriptSource",
     "TranscriptUnavailable",

@@ -24,12 +24,14 @@ from .earnings_release import (
 )
 from .earnings_text import EarningsDocumentText, extract_earnings_text
 from .text_sections import extract_sections, html_to_text
+from .transcript_cache import CachedTranscriptSource, TranscriptCache
 from .transcript_source import (
     CallTranscript,
     EdgarExhibitSource,
     HttpTranscriptSource,
     TranscriptSource,
     TranscriptUnavailable,
+    alpha_vantage_source,
 )
 from .xbrl_normalizer import (
     build_financial_period,
@@ -64,10 +66,13 @@ __all__ = [
     "EarningsDocumentText",
     "extract_earnings_text",
     "CallTranscript",
+    "CachedTranscriptSource",
     "EdgarExhibitSource",
     "HttpTranscriptSource",
+    "TranscriptCache",
     "TranscriptSource",
     "TranscriptUnavailable",
+    "alpha_vantage_source",
     "build_financial_period",
     "classify_duration",
     "report_period_for_accession",

@@ -210,5 +210,95 @@ def test_an_unexpected_response_shape_fails_loudly(monkeypatch):
         lambda *a, **k: _Response({"message": "quota exceeded"}),
     )
     source = HttpTranscriptSource(url_template="https://vendor.example/{ticker}")
-    with pytest.raises(TranscriptUnavailable, match="no 'transcript' field"):
+    with pytest.raises(TranscriptUnavailable, match="no usable 'transcript'"):
         source.fetch("AAOI", CIK)
+
+
+# --- Alpha Vantage: the route worth trying before any of the hard ones ---
+
+
+def test_the_alpha_vantage_preset_authenticates_by_query_string_not_header(monkeypatch):
+    """
+    Vendors split about evenly between a header and a query parameter.
+    Alpha Vantage uses `apikey` in the query string; sending it as a
+    header would come back as a polite 200 with an error payload, which
+    is the worst kind of failure.
+    """
+    from equity_analyzer.data_layer import transcript_source
+    from equity_analyzer.data_layer.transcript_source import alpha_vantage_source
+
+    monkeypatch.setenv("ALPHAVANTAGE_API_KEY", "av-test")
+    captured = {}
+
+    def _get(url, headers=None, params=None, timeout=None):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["params"] = params
+        return _Response({"symbol": "AAOI", "quarter": "2026Q3", "transcript": [
+            {"speaker": "Operator", "title": "", "content": "Welcome to the call."},
+            {"speaker": "Chun Lin Hsieh", "title": "CEO",
+             "content": "We expect average selling prices to increase approximately 5%."},
+            {"speaker": "Operator", "title": "",
+             "content": "We will now begin the question-and-answer session."},
+            {"speaker": "Analyst", "title": "Cowen", "content": "What drove the margin change?"},
+        ]})
+
+    monkeypatch.setattr(transcript_source.requests, "get", _get)
+    transcript = alpha_vantage_source().fetch("AAOI", "0001158114", quarter="2026Q3")
+
+    assert captured["params"]["apikey"] == "av-test"
+    assert not captured["headers"]
+    assert "symbol=AAOI" in captured["url"] and "quarter=2026Q3" in captured["url"]
+    assert transcript.source == "Alpha Vantage"
+    # and the call is still split at the operator's handover
+    assert "increase approximately 5%" in transcript.prepared_remarks
+    assert "What drove the margin change?" in transcript.qa
+
+
+def test_speaker_turns_arrive_pre_grouped_by_speaker(monkeypatch):
+    """
+    A turn list is the better shape to receive, not a complication to
+    flatten away. The speaker line is short, title-cased and
+    unpunctuated -- exactly what this project's sub-theme detection
+    already treats as a heading -- so the call arrives grouped, and the
+    diff compares what the CFO said this quarter against what the CFO
+    said last quarter instead of treating the call as one block.
+    """
+    from equity_analyzer.data_layer import transcript_source
+    from equity_analyzer.data_layer.transcript_source import alpha_vantage_source
+    from equity_analyzer.diff.grouped_diff import split_into_groups
+
+    monkeypatch.setenv("ALPHAVANTAGE_API_KEY", "av-test")
+    monkeypatch.setattr(
+        transcript_source.requests, "get",
+        lambda *a, **k: _Response({"transcript": [
+            {"speaker": "Chun Lin Hsieh", "title": "CEO",
+             "content": "We expect average selling prices to increase approximately 5%."},
+            {"speaker": "Stefan Murry", "title": "CFO",
+             "content": "Gross margin was 32% in the quarter."},
+        ]}),
+    )
+    transcript = alpha_vantage_source().fetch("AAOI", "0001158114", quarter="2026Q3")
+
+    assert "Chun Lin Hsieh -- CEO" in transcript.full_text
+    headings = [h for h, _ in split_into_groups(transcript.full_text)]
+    assert "Chun Lin Hsieh -- CEO" in headings
+    assert "Stefan Murry -- CFO" in headings
+
+
+def test_an_empty_turn_list_is_unavailable_not_an_empty_transcript(monkeypatch):
+    """
+    Alpha Vantage answers 200 with an empty transcript for a quarter it
+    does not have. An empty CallTranscript would flow downstream looking
+    like a call where nothing was said.
+    """
+    from equity_analyzer.data_layer import transcript_source
+    from equity_analyzer.data_layer.transcript_source import alpha_vantage_source
+
+    monkeypatch.setenv("ALPHAVANTAGE_API_KEY", "av-test")
+    monkeypatch.setattr(
+        transcript_source.requests, "get",
+        lambda *a, **k: _Response({"symbol": "AAOI", "transcript": []}),
+    )
+    with pytest.raises(TranscriptUnavailable, match="no usable 'transcript'"):
+        alpha_vantage_source().fetch("AAOI", "0001158114", quarter="2026Q3")
