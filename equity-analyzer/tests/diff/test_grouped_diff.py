@@ -139,3 +139,72 @@ def test_real_nvidia_shaped_structure_groups_correctly():
     # the real detailed occurrence (rewritten -- "export controls" is new)
     assert manufacturing_groups[1].status == "matched"
     assert any(seg.kind == "modified" for seg in manufacturing_groups[1].diff.segments)
+
+
+def test_wrapped_prose_is_not_promoted_to_a_sub_theme():
+    """
+    `html_to_text` breaks text at block-tag boundaries, and financial
+    printers routinely wrap one paragraph across several of them. The
+    resulting mid-paragraph fragment is short, carries no trailing
+    punctuation, and used to satisfy every heading test -- so a
+    paragraph could silently become three "sub-themes".
+
+    That is worse than cosmetic: it fragments the diff and, since the
+    sub-theme list is what the selection pass chooses from, it spends
+    the model's limited picks on fragments of running prose.
+    """
+    text = (
+        "Critical Accounting Estimates\n"
+        "Our critical accounting estimates are unchanged from those described\n"
+        "in our most recent Annual Report, and require management to make\n"
+        "judgments about matters that are inherently uncertain\n"
+    )
+    from equity_analyzer.diff.grouped_diff import split_into_groups
+
+    assert [h for h, _ in split_into_groups(text)] == ["Critical Accounting Estimates"]
+
+
+def test_part_dividers_are_not_sub_themes():
+    """
+    A section ends at the next ITEM header, and a "PART II" divider sits
+    just before one -- so it lands inside the extracted text. It is all
+    caps, short and unpunctuated, i.e. indistinguishable from a heading
+    on every test but this one.
+    """
+    from equity_analyzer.diff.grouped_diff import split_into_groups
+
+    headings = [h for h, _ in split_into_groups(
+        "Results of Operations\nRevenue grew.\n\nPART II\nOther Information\nNone.\n"
+    )]
+    assert "PART II" not in headings
+    assert "Results of Operations" in headings
+
+
+def test_all_caps_headings_are_still_recognised():
+    """Many filers set headings in caps; the title-case test must accept them."""
+    from equity_analyzer.diff.grouped_diff import split_into_groups
+
+    headings = [h for h, _ in split_into_groups(
+        "RESULTS OF OPERATIONS\nRevenue grew 12%.\n\nLIQUIDITY\nCash was flat.\n"
+    )]
+    assert headings == ["RESULTS OF OPERATIONS", "LIQUIDITY"]
+
+
+def test_the_unheaded_opening_block_survives_a_selection():
+    """
+    The text before a section's first sub-heading is never on the ballot
+    the selector is handed (it has no heading to choose), so dropping it
+    would not be a decision the selector made. In an MD&A that block
+    routinely carries the overview and the guidance.
+    """
+    from equity_analyzer.diff.grouped_diff import apply_theme_selection
+
+    prior = "We expect margins to hold.\n\nLiquidity\nCash was 4 billion.\n"
+    current = "We expect margins to compress.\n\nLiquidity\nCash was 5 billion.\n"
+    result = diff_text_grouped(prior, current)
+    marked = apply_theme_selection(result, ["Liquidity"])
+
+    by_heading = {g.heading: g for g in marked.groups}
+    assert by_heading[""].selected is True
+    # ...but behind what was actually chosen
+    assert by_heading[""].selection_rank > by_heading["Liquidity"].selection_rank

@@ -121,6 +121,30 @@ def _unavailable_html(section: SectionResult) -> str:
     return f'<p class="unavailable">Indisponible : {_e(section.unavailable_reason)}</p>'
 
 
+def _form_of(filing) -> str:
+    return getattr(filing.form_type, "value", filing.form_type)
+
+
+def _period_label(filing) -> str:
+    """
+    "T3 2026" for a quarter, "exercice 2025" for an annual filing.
+
+    A quarterly report and an annual one are read differently and the
+    reader has to be able to tell which one is in front of them at a
+    glance; "exercice 2026" on a document covering three months would be
+    actively misleading about what the numbers mean.
+    """
+    period = (filing.fiscal_period or "").upper()
+    if period.startswith("Q") and period[1:].isdigit():
+        return f"T{period[1:]} {filing.fiscal_year}"
+    return f"exercice {filing.fiscal_year}"
+
+
+def _mdna_label(filing) -> str:
+    """The MD&A's item number depends on the form: Item 2 in a 10-Q, Item 7 in a 10-K."""
+    return "MD&A (Item 2)" if _form_of(filing) == "10-Q" else "MD&A (Item 7)"
+
+
 def _executive_summary_lines(report: ReportData) -> list:
     """
     Plain-language synthesis lines shown at the very top of the report,
@@ -134,13 +158,14 @@ def _executive_summary_lines(report: ReportData) -> list:
     highlights_by_label = {h.label: h.value for h in report.financial_highlights}
     revenue = highlights_by_label.get("Revenue")
     net_income = highlights_by_label.get("Net Income")
+    period = _period_label(report.filing)
     if revenue is not None and net_income is not None:
         lines.append(
             f"Revenue de {_fmt_currency(revenue)} et résultat net de "
-            f"{_fmt_currency(net_income)} pour l'exercice {report.filing.fiscal_year}."
+            f"{_fmt_currency(net_income)} sur {period}."
         )
     elif revenue is not None:
-        lines.append(f"Revenue de {_fmt_currency(revenue)} pour l'exercice {report.filing.fiscal_year}.")
+        lines.append(f"Revenue de {_fmt_currency(revenue)} sur {period}.")
 
     red_flag_sections = [
         ("Altman Z-Score", report.altman_z),
@@ -163,8 +188,8 @@ def _executive_summary_lines(report: ReportData) -> list:
         removed = sum(1 for seg in mdna_segments if seg.kind == "removed")
         modified = sum(1 for seg in mdna_segments if seg.kind == "modified")
         lines.append(
-            f"MD&amp;A : {added} ajout(s), {removed} suppression(s), "
-            f"{modified} phrase(s) reformulée(s) vs la période précédente."
+            f"{_e(_mdna_label(report.filing))} : {added} ajout(s), {removed} suppression(s), "
+            f"{modified} phrase(s) reformulée(s) vs le dépôt précédent."
         )
 
     if report.mdna_sentiment.available:
@@ -300,6 +325,35 @@ def _render_ai_disclaimer(report: ReportData) -> str:
     """
 
 
+def _comparison_subtitle(report: ReportData) -> str:
+    """
+    The two filings this report compares, on their own line.
+
+    The whole point of the report is what moved between two consecutive
+    filings, so which two they are is the first thing a reader has to be
+    able to check. When the previous filing is the annual report (a Q1),
+    that is called out: the volume of change is then inflated by the
+    difference in document format, not by the business.
+    """
+    prior = report.prior_filing
+    if prior is None:
+        return (
+            '<p class="subtitle">Aucun dépôt précédent disponible : les changements '
+            "textuels ne sont pas calculables pour ce tirage.</p>"
+        )
+    note = ""
+    if _form_of(prior) == "10-K" and _form_of(report.filing) == "10-Q":
+        note = (
+            " Comparaison de début d'exercice, contre le rapport annuel : "
+            "l'ampleur des changements tient en partie au format des deux documents."
+        )
+    return (
+        f'<p class="subtitle">Comparé au dépôt précédent : '
+        f"{_e(_form_of(prior))} {_e(_period_label(prior))}, période close le "
+        f"{prior.period_end.isoformat()}, déposé le {prior.filed_date.isoformat()}.{note}</p>"
+    )
+
+
 def _render_header(report: ReportData) -> str:
     filing = report.filing
     source_link = (
@@ -309,10 +363,12 @@ def _render_header(report: ReportData) -> str:
     return f"""
     <h1>{_e(filing.company_name)} ({_e(filing.ticker)})</h1>
     <p class="subtitle">
-      {_e(filing.form_type.value)} · exercice {filing.fiscal_year} {_e(filing.fiscal_period)}
+      {_e(_form_of(filing))} · {_e(_period_label(filing))}
+      · période close le {filing.period_end.isoformat()}
       · déposé le {filing.filed_date.isoformat()}
-      · CIK {_e(filing.cik)} · accession {_e(filing.accession_number)}{source_link}
+      · CIK {_e(filing.cik)}{source_link}
     </p>
+    {_comparison_subtitle(report)}
     """
 
 
@@ -377,6 +433,38 @@ def _red_flag_rows(report: ReportData) -> str:
     return "\n".join(rows)
 
 
+def _red_flag_source_note(report: ReportData) -> str:
+    """
+    Says which filing the three scores were computed from.
+
+    On a quarterly report this is not a detail: Altman, Beneish and
+    Piotroski are annual models, so they come from the company's 10-K,
+    not from the quarter the rest of the page is about (see
+    report_data.build_report_data). A reader who assumed these numbers
+    described the quarter would be reading them wrong, and they have no
+    way to tell from the numbers themselves.
+    """
+    annual = report.annual_filing
+    if annual is None:
+        # An annual report needs no note: the scores come from the same
+        # filing the whole page is about.
+        if _form_of(report.filing) == "10-K":
+            return ""
+        return (
+            '<p class="note">Altman, Beneish et Piotroski sont des modèles annuels '
+            "et ne sont pas calculés sur des données trimestrielles.</p>"
+        )
+    prior = report.prior_annual_filing
+    against = (
+        f" comparé à l'exercice {prior.fiscal_year}" if prior is not None else ""
+    )
+    return (
+        f'<p class="note">Modèles annuels : calculés sur le 10-K de l\'exercice '
+        f"{annual.fiscal_year}{against}, pas sur le trimestre analysé ci-dessus. "
+        f"Ils décrivent la santé de fond de la société, pas les nouvelles du trimestre.</p>"
+    )
+
+
 def _render_red_flags(report: ReportData) -> str:
     return f"""
     <h2>Red flags</h2>
@@ -384,6 +472,7 @@ def _render_red_flags(report: ReportData) -> str:
       <tr><th>Indicateur</th><th class="num">Score</th><th>Lecture</th></tr>
       {_red_flag_rows(report)}
     </table>
+    {_red_flag_source_note(report)}
     """
 
 
@@ -422,47 +511,116 @@ def _theme_change_rows(grouped) -> str:
     return "\n".join(rows)
 
 
-def _render_theme_change_table(report: ReportData) -> str:
-    """Page 2: how much each retained sub-theme moved, at a glance."""
+def _selection_section(report: ReportData) -> tuple:
+    """
+    Returns (label, grouped_diff, message) for whichever section carries
+    the sub-theme selection this report was written over -- the MD&A for
+    a quarter, Risk Factors for an annual report. `grouped_diff` is None
+    when there is nothing to table, and `message` says why.
+
+    Driven by the selection itself (`theme_selection.section_key`) so
+    the table and the summary can never end up describing different
+    sections of the filing.
+    """
+    from .theme_selection import default_section_for
+
+    selection = getattr(report, "theme_selection", None)
+    if selection is not None and selection.available and selection.value is not None:
+        section_key = selection.value.section_key
+    else:
+        section_key = default_section_for(report.filing)
+
+    if section_key == "mdna":
+        label = _mdna_label(report.filing)
+        section = report.mdna_diff
+        if not section.available:
+            return label, None, f"Indisponible : {section.unavailable_reason}"
+        return label, section.value, None
+
+    label = "Risk Factors (Item 1A)"
     section = report.risk_factors_diff
     if not section.available:
-        return f"<h2>Changements par sous-thématique</h2>{_unavailable_html(section)}"
-    rf = section.value
-    if rf.skipped:
-        return (
-            "<h2>Changements par sous-thématique</h2>"
-            f'<p class="skip-note">{_e(rf.skip_reason)}</p>'
-        )
+        return label, None, f"Indisponible : {section.unavailable_reason}"
+    if section.value.skipped:
+        return label, None, section.value.skip_reason
+    return label, section.value.diff, None
 
-    rows = _theme_change_rows(rf.diff)
+
+def _render_theme_change_table(report: ReportData) -> str:
+    """Page 2: how much each retained sub-theme moved, at a glance."""
+    label, grouped, message = _selection_section(report)
+    # "Changements par sous-thématique (MD&A (Item 2))" nests brackets
+    # inside brackets; a colon reads cleanly for every section label.
+    heading = f"<h2>Changements par sous-thématique : {_e(label)}</h2>"
+    if grouped is None:
+        return heading + f'<p class="skip-note">{_e(message)}</p>'
+
+    rows = _theme_change_rows(grouped)
     if not rows:
-        return (
-            "<h2>Changements par sous-thématique</h2>"
-            '<p class="unavailable">Aucune sous-thématique retenue pour ce filing.</p>'
-        )
+        return heading + '<p class="unavailable">Aucune sous-thématique retenue pour ce dépôt.</p>'
 
-    overall = rf.diff.overall
-    unselected = [g for g in rf.diff.groups if not g.selected]
+    overall = grouped.overall
+    unselected = [g for g in grouped.groups if not g.selected]
     unselected_note = ""
     if unselected:
         # Never a silent drop: the reader is told how many sub-themes
         # exist beyond the retained set, and where to read them.
         unselected_note = (
             f'<p class="note">{len(unselected)} autre(s) sous-thématique(s) non retenue(s) '
-            f"dans la sélection ci-dessus, comptabilisées dans le total Item 1A et "
+            f"dans la sélection ci-dessus, comptabilisées dans le total ci-dessous et "
             f"détaillées dans le rapport « détail ».</p>"
         )
 
     return f"""
-    <h2>Changements par sous-thématique (Item 1A)</h2>
+    {heading}
     <table>
       <tr><th class="wide">Sous-thématique</th><th class="num narrow">% modifié</th>
           <th class="num narrow">Ajouts</th><th class="num narrow">Suppr.</th><th class="num narrow">Reform.</th></tr>
       {rows}
     </table>
-    <p class="note">Item 1A dans son ensemble : {_fmt_pct(overall.similarity_ratio)} de similarité,
+    <p class="note">{_e(label)} dans son ensemble : {_fmt_pct(overall.similarity_ratio)} de similarité,
     {overall.added_word_count} mots ajoutés, {overall.removed_word_count} mots supprimés.</p>
     {unselected_note}
+    """
+
+
+def _render_risk_alert(report: ReportData, *, headline_only: bool) -> str:
+    """
+    The quarterly Item 1A signal (see report/risk_alert.py).
+
+    Two renderings, because the two cases deserve very different amounts
+    of the reader's attention. The normal case, where the 10-Q points
+    back at the 10-K, is one plain line on page 2: the reader asked an
+    implicit question and gets an answer, at the cost of a line. The
+    rare case, where the company actually wrote risk text into a 10-Q,
+    gets a bold line at the very top of page 1, above the summary,
+    because it is the single highest-signal thing a quarter can contain
+    and burying it in a table would defeat the point of flagging it.
+    """
+    alert = report.risk_alert
+    if alert is None:
+        return ""
+    if headline_only:
+        if not alert.triggered:
+            return ""
+        return f'<p class="lede"><span class="flag-on">{_e(alert.headline)}</span></p>'
+
+    if alert.triggered:
+        detail = ""
+        if alert.added_headings:
+            detail = (
+                f'<p class="note">Intitulés nouveaux : '
+                f"{' · '.join(_e(h) for h in alert.added_headings)}. "
+                f"Texte intégral dans le rapport « détail ».</p>"
+            )
+        return f"""
+        <h2>Facteurs de risque (Item 1A)</h2>
+        <p><span class="flag-on">{_e(alert.headline)}</span></p>
+        {detail}
+        """
+    return f"""
+    <h2>Facteurs de risque (Item 1A)</h2>
+    <p>{_e(alert.headline)}</p>
     """
 
 
@@ -634,24 +792,24 @@ def _text_diff_detail_html(title: str, grouped) -> str:
     return "\n".join(parts)
 
 
-def _render_mdna_diff_summary(section: SectionResult) -> str:
+def _render_mdna_diff_summary(section: SectionResult, label: str = "MD&A (Item 7)") -> str:
     if not section.available:
-        return f"<h3>MD&amp;A (Item 7)</h3>{_unavailable_html(section)}"
-    # NOTE: plain "&", not "&amp;" -- this goes through _text_diff_summary_
-    # html's own _e(title) call, which would otherwise double-escape it
-    # into "&amp;amp;A", rendering as the literal text "MD&amp;A" in the
-    # PDF instead of "MD&A" (caught by visually inspecting a real
-    # rendered report, not just running the tests).
-    return _text_diff_summary_html("MD&A (Item 7)", section.value)
+        return f"<h3>{_e(label)}</h3>{_unavailable_html(section)}"
+    # NOTE: `label` carries a plain "&", not "&amp;" -- it goes through
+    # _text_diff_summary_html's own _e(title) call, which would otherwise
+    # double-escape it into "&amp;amp;A", rendering as the literal text
+    # "MD&amp;A" in the PDF instead of "MD&A" (caught by visually
+    # inspecting a real rendered report, not just running the tests).
+    return _text_diff_summary_html(label, section.value)
 
 
-def _render_mdna_diff_detail(section: SectionResult) -> str:
+def _render_mdna_diff_detail(section: SectionResult, label: str = "MD&A (Item 7)") -> str:
     # Unavailable is already explained in the summary section above (see
     # render_html's section order) -- nothing to add here, not a silent
     # drop of information the reader hasn't already seen.
     if not section.available:
         return ""
-    return _text_diff_detail_html("MD&A (Item 7)", section.value)
+    return _text_diff_detail_html(label, section.value)
 
 
 def _render_risk_factors_diff_summary(section: SectionResult) -> str:
@@ -684,9 +842,16 @@ def _sentiment_row(label: str, section: SectionResult, skipped_attr: bool = Fals
     result = section.value
     if skipped_attr:
         if result.skipped:
+            # The underlying skip_reason is a five-line English
+            # explanation of the 10-Q boilerplate rule. Correct, but it
+            # now appears on every quarterly report and would take a
+            # third of this table to say what the report already states
+            # in full under "Facteurs de risque". One short French line
+            # here, the explanation there.
             return (
                 f'<tr><td>{label}</td><td class="num">n/a</td>'
-                f'<td class="skip-note">{_e(result.skip_reason)}</td></tr>'
+                f'<td class="skip-note">section non rédigée ce trimestre, '
+                f"voir Facteurs de risque ci-dessus</td></tr>"
             )
         result = result.result
     tone = result.net_tone
@@ -705,12 +870,14 @@ def _render_sentiment_section(report: ReportData) -> str:
     detail-report material. The net tone -- the number a reader actually
     acts on -- stays here.
     """
+    # _sentiment_row inserts its label into the row as-is, so escape here.
+    mdna_label = _e(_mdna_label(report.filing))
     return f"""
     <h2>Tonalité (Loughran-McDonald)</h2>
     <table>
       <tr><th>Section</th><th class="num">Tonalité nette</th><th>Lecture</th></tr>
       {_sentiment_row("Risk Factors (Item 1A)", report.risk_factors_sentiment, skipped_attr=True)}
-      {_sentiment_row("MD&amp;A (Item 7)", report.mdna_sentiment)}
+      {_sentiment_row(mdna_label, report.mdna_sentiment)}
     </table>
     """
 
@@ -737,8 +904,12 @@ def render_html(report: ReportData) -> str:
 
     Page 1 is the executive summary -- the AI's read of the sub-themes
     selected as analyst-relevant, plus which ones those were and how
-    they were chosen. Page 2 is every number: red flags, per-sub-theme
-    change percentages, financial highlights and tone.
+    they were chosen, headed by the risk-factor alert on the rare
+    quarters where it fires. Page 2 is every number, in the order that
+    matches what the report is for: first how much each retained
+    sub-theme moved between the two filings, then the risk-factor line,
+    then the annual red-flag scores (which describe the company's
+    underlying health and do not move quarter to quarter), then tone.
 
     The detailed changed text is NOT here. It lives in its own document
     (`render_detail_html`) because it's unbounded in length -- a heavily
@@ -758,11 +929,13 @@ def render_html(report: ReportData) -> str:
     )
     body = f"""
   {_render_header(report)}
+  {_render_risk_alert(report, headline_only=True)}
   {_render_executive_summary(report)}
   {_render_ai_disclaimer(report)}
   <div class="page-break">
-    {_render_red_flags(report)}
     {_render_theme_change_table(report)}
+    {_render_risk_alert(report, headline_only=False)}
+    {_render_red_flags(report)}
     {_render_sentiment_section(report)}
     <p class="footer">
       Généré le {report.generated_at.date().isoformat()} à partir des données SEC EDGAR.
@@ -787,17 +960,24 @@ def render_detail_html(report: ReportData) -> str:
     filing = report.filing
     title = (
         f"{_e(filing.company_name)} · détail des changements "
-        f"{filing.fiscal_year} {_e(filing.fiscal_period)}"
+        f"{_e(_period_label(filing))}"
     )
     rf_detail = _render_risk_factors_diff_detail(report.risk_factors_diff)
-    mdna_detail = _render_mdna_diff_detail(report.mdna_diff)
-    if not rf_detail and not mdna_detail:
+    mdna_detail = _render_mdna_diff_detail(report.mdna_diff, _mdna_label(filing))
+    # On a quarterly report the MD&A leads: it is what the main report
+    # was written over, so the detail document opens on the same
+    # material rather than on the risk factors.
+    ordered = (
+        (mdna_detail, rf_detail) if _form_of(filing) == "10-Q"
+        else (rf_detail, mdna_detail)
+    )
+    if not any(ordered):
         sections = (
             '<p class="unavailable">Aucun changement textuel détaillé disponible '
             "pour ce filing (sections manquantes ou diff non calculable).</p>"
         )
     else:
-        sections = "\n".join(part for part in (rf_detail, mdna_detail) if part)
+        sections = "\n".join(part for part in ordered if part)
 
     body = f"""
   {_render_header(report)}

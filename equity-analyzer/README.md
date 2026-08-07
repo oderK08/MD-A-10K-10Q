@@ -4,16 +4,49 @@ Outil d'analyse equity pour advisory : diff de filings SEC (10-K/10-Q),
 red flags comptables quantitatifs, et analyse de tonalité (bullish/bearish),
 compilés dans un rapport PDF structuré.
 
+## Ce que le rapport cherche à capter
+
+Le flux d'information **trimestriel** : ce que la direction dit ce
+trimestre et ne disait pas le trimestre précédent, et ce qu'elle a cessé
+de dire. Une phrase inchangée d'un trimestre à l'autre ne porte aucune
+nouvelle information, même si elle est spectaculaire dans l'absolu.
+
+Concrètement le pipeline lit **deux dépôts différents pour deux usages
+différents**, et ce n'est pas un détail d'implémentation :
+
+| | Source | Pourquoi |
+|---|---|---|
+| **Texte** | le dernier 10-Q, comparé au dépôt qui le précède immédiatement (le 10-Q d'avant, ou le 10-K quand le trimestre est un Q1) | c'est là que vit la discussion trimestrielle |
+| **Chiffres (red flags)** | les deux derniers 10-K | Altman, Beneish et Piotroski sont des modèles **annuels** : sur un trimestre ils ne sont pas moins précis, ils sont hors sujet |
+
+À l'intérieur du 10-Q, la matière est le **MD&A (Item 2)**, pas les
+facteurs de risque : dans la quasi-totalité des trimestres, l'Item 1A
+d'un 10-Q est la clause « no material changes » qui renvoie au 10-K.
+Cette section n'est pas ignorée pour autant, elle est réduite à une
+**alerte** : quand une société écrit vraiment des facteurs de risque
+dans son 10-Q, c'est un des événements les plus rares et les plus
+lourds de sens de la publication trimestrielle, et il apparaît en tête
+de la page 1.
+
+Le pipeline comparait initialement deux 10-K consécutifs. Sur une
+société qui venait de publier son Q3, cela analysait un texte annuel
+vieux de neuf à douze mois, et le Q3 n'était jamais lu. C'est cette
+erreur que la structure ci-dessus corrige.
+
+Le rapport principal fait exactement deux pages : le résumé exécutif en
+page 1, les chiffres en page 2. Le détail intégral des changements
+textuels part dans un document « détail » séparé, sans limite de pages.
+
 ## Statut du projet
 
 | Module | Statut | Description |
 |---|---|---|
-| 1. Data Layer | ✅ Terminé (46 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
-| 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
-| 3. Diff textuel | ✅ Terminé (30 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
+| 1. Data Layer | ✅ Terminé (59 tests) | Client SEC EDGAR, appariement trimestriel des dépôts, normalisation XBRL, extraction de sections textuelles |
+| 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score (modèles annuels, jamais calculés sur un trimestre) |
+| 3. Diff textuel | ✅ Terminé (34 tests) | Comparaison MD&A / Item 1A entre deux dépôts consécutifs, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
-| 5. Report Builder | ✅ Terminé (65 tests) | Rapport principal 2 pages + rapport « détail » séparé, en niveaux de gris, police Lato intégrée |
-| 6. Sélection + lecture IA (opt-in) | ✅ Terminé (26 tests) | Deux passes : l'IA choisit les sous-thématiques suivies par les analystes, Python les diffe, l'IA rédige le résumé exécutif dessus |
+| 5. Report Builder | ✅ Terminé (62 tests) | Rapport principal 2 pages + rapport « détail » séparé, en niveaux de gris, police Lato intégrée |
+| 6. Sélection + lecture IA (opt-in) | ✅ Terminé (46 tests) | Deux passes : l'IA choisit les sous-thématiques suivies par les analystes, Python les diffe, l'IA rédige le résumé exécutif dessus |
 
 ## Module 1 — Data Layer
 
@@ -25,7 +58,12 @@ compilés dans un rapport PDF structuré.
   de 10/s).
 - **`cik_lookup.py`** : résolution ticker → CIK via le fichier officiel SEC
   `company_tickers.json`, et listing des filings par type de formulaire
-  (10-K, 10-Q) à partir de `filings.recent`.
+  (10-K, 10-Q, ou les deux en une seule liste triée par récence) à partir
+  de `filings.recent`. `latest_quarterly_pair()` en dérive la paire que le
+  rapport compare : le dernier 10-Q et le dépôt qui le précède
+  immédiatement. L'ordre est établi sur la **période de report**, pas sur
+  la date de dépôt : une société qui dépose en retard appartient quand
+  même à son propre trimestre.
 - **`xbrl_normalizer.py`** : transforme les données XBRL brutes en
   `FinancialPeriod` normalisé. Gère explicitement :
   - la variation des tags GAAP selon les émetteurs (liste de tags candidats
@@ -42,6 +80,28 @@ compilés dans un rapport PDF structuré.
     restatement ultérieure
   - la classification de durée (instant / 3M / 6M / 9M / 12M) pour ne
     jamais comparer un trimestre seul à un cumul year-to-date
+  - **la sélection de la bonne période à l'intérieur d'un même dépôt** —
+    la propriété la plus dangereuse de `companyfacts`, parce que
+    l'ignorer donne un nombre parfaitement plausible qui est simplement
+    celui d'une autre période. Un numéro d'accession ne porte pas un
+    chiffre par concept mais une demi-douzaine : un 10-K étiquette ses
+    **colonnes comparatives** (trois exercices d'affilée) sous son propre
+    accession, et un 10-Q déclare le **trimestre seul ET le cumulé
+    depuis le début d'exercice** pour la période courante, plus les deux
+    équivalents de l'an dernier. Prendre la première entrée du tableau
+    renvoyait donc une période arbitraire, en pratique la plus ancienne
+    (`companyfacts` trie par date de fin croissante). `_select_entry`
+    tranche explicitement : on garde les entrées dont la durée correspond
+    à ce que le dépôt couvre (12M pour un annuel, 3M pour un trimestre,
+    instant pour un poste de bilan) et, parmi elles, la date de fin la
+    plus récente. Une métrique déclarée uniquement en cumulé est renvoyée
+    avec sa vraie durée plutôt que supprimée ou déguisée en trimestre.
+  - `report_period_for_accession()` lit l'exercice et le trimestre sur
+    les labels `fy`/`fp` du dépôt lui-même, parce que l'endpoint
+    submissions ne dit pas quel trimestre est un 10-Q et que le déduire
+    du calendrier serait faux pour toute société dont l'exercice ne finit
+    pas en décembre (Apple, NVIDIA, Micron, Microsoft…), c'est-à-dire
+    précisément la population visée.
   - **deux manques structurels identifiés avec certitude** (pas de simples
     tags alternatifs à ajouter) :
     - `shares_outstanding` est très souvent disponible **uniquement** en
@@ -138,7 +198,7 @@ pip install -r requirements.txt
 
 ```python
 from equity_analyzer.data_layer import (
-    EdgarClient, EdgarClientConfig, CikLookup, list_filings,
+    EdgarClient, EdgarClientConfig, CikLookup, latest_quarterly_pair,
     build_financial_period, extract_sections,
 )
 
@@ -146,18 +206,28 @@ config = EdgarClientConfig(user_agent="MyAdvisoryTool/1.0 you@example.com")
 client = EdgarClient(config)
 
 cik = CikLookup(client).resolve("AAPL")
-filings = list_filings(client, cik, form_type="10-Q", limit=2)
+
+# La paire trimestrielle : le dernier 10-Q et le dépôt qui le précède
+# immédiatement (le 10-Q d'avant, ou le 10-K si on est sur un Q1).
+pair = latest_quarterly_pair(client, cik)
+print(pair.current.period_of_report, "vs", pair.prior.period_of_report,
+      "(annuel)" if pair.prior_is_annual else "(trimestriel)")
 
 company_facts = client.fetch_company_facts(cik)
+
+# fiscal_year / fiscal_period sont lus sur les labels XBRL du dépôt
+# lui-même. L'endpoint submissions ne dit pas quel trimestre est un
+# 10-Q, et le déduire du calendrier serait faux pour toute société dont
+# l'exercice ne finit pas en décembre. Ces labels décident aussi quelle
+# PÉRIODE est lue pour chaque métrique : un 10-Q déclare le même concept
+# deux fois, une fois pour le trimestre seul et une fois en cumulé
+# depuis le début d'exercice, sous le même numéro d'accession.
 period = build_financial_period(
-    company_facts,
-    accession_number=filings[0].accession_number,
-    fiscal_year=2025,
-    fiscal_period="Q2",
+    company_facts, accession_number=pair.current.accession_number
 )
 
 html = client.fetch_filing_document(
-    cik, filings[0].accession_number, filings[0].primary_document
+    cik, pair.current.accession_number, pair.current.primary_document
 )
 sections = extract_sections(html)
 ```
@@ -360,6 +430,28 @@ Diff au niveau phrase (via `difflib.SequenceMatcher`), construit sur les
   plus courant) produit un seul groupe non-titré dont le diff est
   strictement identique au diff plat d'avant — donc pas de chemin de code
   séparé à maintenir pour ce cas.
+  **Un titre doit être en casse de titre** (`_is_title_cased`), et pas
+  seulement court et sans ponctuation finale. `html_to_text` coupe le
+  texte aux frontières de blocs, et les imprimeurs financiers répartissent
+  couramment un même paragraphe sur plusieurs d'entre elles : un fragment
+  de prose en plein milieu d'un paragraphe est alors court, sans
+  ponctuation finale, et passait tous les autres tests. Trouvé sur la
+  fixture MD&A du projet, où *"matters that are inherently uncertain,
+  including inventory valuation, revenue"* devenait une sous-thématique.
+  Ce n'est pas cosmétique : la liste des sous-thèmes est ce dans quoi la
+  passe de sélection choisit, donc chaque faux titre consomme un des dix
+  choix de l'IA. Le compromis est assumé : un émetteur qui écrit ses
+  titres en casse de phrase perd la coupure et son texte fusionne avec le
+  groupe précédent (regroupé, jamais perdu), alors qu'inventer des
+  sous-thèmes à partir de prose arrive sur tous les filings. Les
+  séparateurs de document (`PART II`) sont exclus séparément : ils
+  atterrissent dans la section extraite parce qu'une section s'arrête au
+  prochain en-tête ITEM.
+  **Le bloc non-titré d'ouverture survit toujours à une sélection** : il
+  n'a pas de titre, donc il n'a jamais figuré sur la liste soumise au
+  sélecteur, et l'écarter ne serait pas une décision de celui-ci. Or dans
+  un MD&A c'est régulièrement là que se trouvent l'overview et la
+  guidance.
 
 Toutes les fonctions lèvent `MissingSectionError` si une section n'a pas
 été extraite par le Module 1, plutôt que de comparer `None` silencieusement.
@@ -745,6 +837,15 @@ travailler**.
    filing (`list_subthemes`, pur, sans réseau — réutilise la détection
    de titres du diff lui-même, donc les deux ne peuvent pas diverger sur
    ce qu'est une sous-thématique).
+   **Dans quelle section** dépend du formulaire (`default_section_for`) :
+   le **MD&A (Item 2)** pour un 10-Q, l'**Item 1A** pour un 10-K. Un
+   Item 1A de 10-Q est presque toujours la clause « no material
+   changes », donc il n'y a rien à y sélectionner ; la discussion du
+   trimestre vit dans le MD&A. L'inverse vaut pour un annuel, où
+   l'Item 1A est la section que les émetteurs organisent réellement sous
+   des sous-titres nommés. Un MD&A sans le moindre sous-titre dégrade
+   tout seul, sans cas particulier : la liste revient vide, la sélection
+   le dit, et c'est le MD&A entier qui sert de matière.
 2. **L'IA lit ces intitulés — les noms seuls, volontairement sans les
    tailles — et retient** jusqu'à `MAX_SELECTED_THEMES` (**10**) de ceux
    qui ont réellement du sens **pour cette société-là**, compte tenu de
@@ -789,11 +890,14 @@ courte, jamais fausse. Test :
 `test_a_hallucinated_heading_is_dropped_not_passed_through`.
 
 **Les non-retenues ne sont pas jetées.** `apply_theme_selection` *marque*
-les groupes, il n'en supprime aucun : le total Item 1A continue de les
-compter, le rapport principal indique combien il y en a, et le rapport
-« détail » les contient toutes. Une sélection vide sélectionne zéro
-sous-thématique et non « toutes » — c'est une vraie réponse du sélecteur,
-pas un cas à inverser silencieusement.
+les groupes, il n'en supprime aucun : le total de la section continue de
+les compter, le rapport principal indique combien il y en a, et le
+rapport « détail » les contient toutes. Une sélection vide sélectionne
+zéro sous-thématique et non « toutes » — c'est une vraie réponse du
+sélecteur, pas un cas à inverser silencieusement. Seule exception, le
+bloc d'ouverture non titré, toujours conservé : n'ayant pas de titre il
+n'a jamais figuré sur la liste soumise au modèle, donc l'écarter ne
+serait pas une décision de celui-ci.
 
 **Dégrade proprement sans clé API** : pas de clé, réseau en panne,
 réponse illisible → repli documenté sur les sous-thématiques les plus
@@ -868,18 +972,22 @@ or c'est précisément là que vit l'information concrète (prix, marges,
 demande). Le modèle ne pouvait pas citer ce qu'il ne recevait pas, d'où
 des synthèses qui ne parlaient que de compteurs et de scores. Corrigé :
 
-- Les **deux** sections (Risk Factors et MD&A) envoient maintenant de
-  vraies phrases modifiées, verbatim, étiquetées `AJOUTE` / `SUPPRIME` /
-  `REFORMULE` (avec l'ancienne et la nouvelle version pour une
-  reformulation). Une **suppression** compte autant qu'un ajout : une
-  société qui retire un risque qu'elle mentionnait l'an dernier envoie un
-  signal, et le prompt demande de le peser comme tel.
+- La section qui porte la sélection envoie maintenant de vraies phrases
+  modifiées, verbatim, étiquetées `AJOUTE` / `SUPPRIME` / `REFORMULE`
+  (avec l'ancienne et la nouvelle version pour une reformulation). Une
+  **suppression** compte autant qu'un ajout : une société qui cesse de
+  mentionner un risque, un client ou une contrainte dont elle parlait le
+  trimestre précédent envoie un signal, et le prompt demande de le peser
+  comme tel.
 - La troncature des extraits passe de 160 à **400 caractères** : un
   extrait coupé en plein milieu est activement nuisible quand on demande
   une citation verbatim (soit elle est citée incomplète, soit le modèle
   reconstruit la fin, c'est-à-dire l'invente).
-- Le budget d'extraits est plafonné (14 par section, 3 par sous-thème)
-  et **priorisé** : une phrase portant une **grandeur chiffrée**
+- Le budget d'extraits est plafonné (20 par section, 4 par sous-thème,
+  mais **tout le budget de section** quand un seul groupe a changé — un
+  MD&A sans sous-titres internes arrive comme un unique groupe, et lui
+  envoyer quatre phrases comme preuve d'un trimestre entier serait
+  absurde) et **priorisé** : une phrase portant une **grandeur chiffrée**
   (pourcentage, montant, points de base, multiple) passe avant du
   boilerplate non chiffré — c'est exactement la forme de l'exemple DRAM.
   Première version de cette heuristique : n'importe quel chiffre (`\d`),
@@ -891,6 +999,51 @@ des synthèses qui ne parlaient que de compteurs et de scores. Corrigé :
   L'heuristique décide **quoi envoyer**, jamais quel doit être le verdict :
   un mauvais classement coûte au modèle une citation candidate, il ne peut
   pas lui en faire inventer une.
+
+### Ce que le prompt dit du contexte trimestriel (`_comparison_lines`)
+
+Le modèle reçoit d'abord **quels deux dépôts sont comparés**, avec leurs
+périodes et leurs dates. Ce n'est pas de la métadonnée : la question
+posée est « qu'est-ce qui a changé entre ces deux trimestres », donc
+lesquels ils sont est la prémisse de la question.
+
+Quand le dépôt précédent est le **rapport annuel** (frontière de Q1), une
+mise en garde explicite est ajoutée, et le prompt système porte une règle
+dédiée (« 3 bis ») : un 10-K discute un exercice entier et s'écrit
+beaucoup plus long, donc **l'ampleur** des ajouts et suppressions tient
+en partie au format des deux documents et pas à l'activité. Le
+**contenu** des passages reste analysable normalement ; c'est leur
+quantité qui ne veut rien dire dans ce cas. Le rapport imprime le même
+avertissement pour le lecteur humain.
+
+### L'alerte facteurs de risque (`risk_alert.py`)
+
+Dans la quasi-totalité des trimestres, l'Item 1A d'un 10-Q est la clause
+« no material changes ». C'est le cas normal, il ne dit rien, et le
+rapport l'expédie en **une ligne**. L'exception est tout l'intérêt du
+module : quand une société écrit vraiment du texte de facteurs de risque
+dans un 10-Q, c'est que les juristes n'auraient pas laissé passer la
+clause habituelle — un des signaux les plus rares et les plus denses de
+la publication trimestrielle. Il apparaît alors **en tête de page 1**,
+au-dessus du résumé, et dans le prompt avec les phrases réellement
+ajoutées.
+
+Deux asymétries structurelles pilotent la conception :
+
+1. **Seuls les ajouts sont interprétés.** Un 10-Q qui rédige son propre
+   Item 1A ne reprend que les facteurs qu'il **met à jour** ; les autres
+   restent en vigueur dans le 10-K. Le diff montre donc l'essentiel du
+   dépôt précédent comme « supprimé », ce qui ressemble à une société qui
+   retire ses divulgations de risque et n'en est absolument pas une. Les
+   suppressions sont **comptées** (le lecteur sait qu'elles existent)
+   mais jamais présentées comme un signal, et le prompt porte
+   l'avertissement explicitement plutôt que d'espérer que le modèle le
+   devine.
+2. **Contre un précédent annuel, même les ajouts sont plus bruités** : à
+   la frontière de Q1, un risque simplement reformulé produit du texte
+   « ajouté » alors qu'il figure déjà au dossier. L'alerte se déclenche
+   quand même (réécrire un risque dans un 10-Q reste un signal) mais dit
+   de quelle comparaison elle vient.
 
 **Délibérément séparé de `build_report_data()`**, jamais appelé
 automatiquement : contrairement à tous les autres modules, un appel réel
@@ -904,9 +1057,16 @@ from equity_analyzer.report import (
     build_report_data, render_detail_html, render_html, save_pdf,
 )
 
-report = build_report_data(filing, prior_filing, lm_dictionary)
+# Texte : la paire trimestrielle. Chiffres : la paire annuelle, parce que
+# les trois red flags sont des modèles annuels et qu'un score calculé sur
+# un trimestre serait faux sans que rien ne le montre.
+report = build_report_data(
+    quarter, prior_quarter, lm_dictionary,
+    annual_filing=last_10k, prior_annual_filing=previous_10k,
+)
 
-# Passe 1 : quelles sous-thématiques valent le coup (repli documenté sans clé)
+# Passe 1 : quelles sous-thématiques valent le coup (repli documenté sans clé).
+# Sur un 10-Q la sélection porte sur le MD&A, sur un 10-K sur l'Item 1A.
 report = attach_theme_selection(report, api_key=os.environ.get("ANTHROPIC_API_KEY"))
 # Passe 2 : le résumé exécutif, écrit sur cette sélection
 report = attach_ai_summary(report, api_key=os.environ["ANTHROPIC_API_KEY"])

@@ -41,6 +41,7 @@ from ..sentiment.sections import (
     score_mdna_sentiment,
     score_risk_factors_sentiment,
 )
+from .risk_alert import evaluate_risk_alert
 
 T = TypeVar("T")
 
@@ -81,6 +82,14 @@ class ReportData:
     financial_highlights: list = field(default_factory=list)  # list[FinancialHighlight]
     financial_data_completeness: Optional[float] = None  # resolved / expected metrics, 0..1
     source_filing_url: Optional[str] = None  # traceability link to the real SEC filing
+    # The annual filings the red flags were computed from, when those are
+    # NOT `filing`/`prior_filing` -- i.e. whenever the report is about a
+    # quarter. Altman, Beneish and Piotroski are annual models (see
+    # build_report_data), so a quarterly report reads its text from the
+    # 10-Q pair and its scores from the 10-K pair, and has to be able to
+    # tell the reader which year those scores are for.
+    annual_filing: Optional[Filing] = None
+    prior_annual_filing: Optional[Filing] = None
     altman_z: SectionResult = None
     beneish_m: SectionResult = None
     piotroski_f: SectionResult = None
@@ -88,6 +97,10 @@ class ReportData:
     risk_factors_diff: SectionResult = None
     mdna_sentiment: SectionResult = None
     risk_factors_sentiment: SectionResult = None
+    # Quarterly only: did this 10-Q write real risk-factor text instead
+    # of the "no material changes" clause (see report/risk_alert.py).
+    # None on an annual report, where the question doesn't apply.
+    risk_alert: Optional[object] = None  # Optional[RiskFactorsAlert]
     # Both opt-in, both set by an explicit caller AFTER the free,
     # deterministic report below is already built -- never by
     # build_report_data() itself. See report/theme_selection.py and
@@ -151,6 +164,13 @@ def _financial_highlights(financials: Optional[FinancialPeriod]) -> list:
     return highlights
 
 
+def _is_annual(filing: Optional[Filing]) -> bool:
+    if filing is None:
+        return False
+    form = getattr(filing.form_type, "value", filing.form_type)
+    return form == "10-K"
+
+
 def build_report_data(
     filing: Filing,
     prior_filing: Optional[Filing] = None,
@@ -158,38 +178,75 @@ def build_report_data(
     market_value_of_equity: Optional[float] = None,
     beneish_threshold: Optional[float] = None,
     generated_at: Optional[datetime] = None,
+    annual_filing: Optional[Filing] = None,
+    prior_annual_filing: Optional[Filing] = None,
 ) -> ReportData:
     """
     Builds a full ReportData for `filing`, optionally comparing it against
-    `prior_filing` (required for Beneish M, Piotroski F, and both text
-    diffs -- all of which are inherently year-over-year) and scoring
-    sentiment with `lm_dictionary` (required for both sentiment sections).
-    Any of these being None, or a downstream module refusing to compute
-    for a specific reason (see module docstring), shows up as an
-    `unavailable` section rather than failing report generation outright.
+    `prior_filing` (required for both text diffs) and scoring sentiment
+    with `lm_dictionary` (required for both sentiment sections). Any of
+    these being None, or a downstream module refusing to compute for a
+    specific reason (see module docstring), shows up as an `unavailable`
+    section rather than failing report generation outright.
+
+    THE RED FLAGS DO NOT COME FROM `filing` WHEN `filing` IS A QUARTER.
+    Altman Z, Beneish M and Piotroski F are annual models: every one of
+    them was estimated on full-year statements, and several of their
+    inputs are meaningless on a quarter. Beneish's accruals and sales-
+    growth indices compare a year to the year before; Piotroski's nine
+    criteria are year-over-year tests; Altman's coefficients were fitted
+    to annual balance sheets. Feeding them a 10-Q produces a number that
+    is not a bad estimate but a category error, and it would look exactly
+    like a good one.
+
+    So a quarterly report passes its company's two most recent 10-Ks as
+    `annual_filing` / `prior_annual_filing`, and the scores are computed
+    from those -- correctly labelled with the year they belong to. A
+    quarterly report with no annual filings supplied gets the scores
+    marked unavailable, with that reason spelled out, rather than a
+    quietly wrong number.
     """
     beneish_kwargs = {} if beneish_threshold is None else {"threshold": beneish_threshold}
 
-    # -- Red flags (Module 2) --
-    if filing.financials is None:
+    # -- Red flags (Module 2), always on annual data -- see the docstring --
+    if annual_filing is not None:
+        score_filing, score_prior = annual_filing, prior_annual_filing
+    elif _is_annual(filing):
+        score_filing, score_prior = filing, prior_filing
+    else:
+        score_filing, score_prior = None, None
+
+    if score_filing is None:
+        not_annual = (
+            "no annual (10-K) filing supplied -- Altman Z, Beneish M and "
+            "Piotroski F are annual models and are not computed on quarterly data"
+        )
+        altman_z = _unavailable(not_annual)
+        beneish_m = _unavailable(not_annual)
+        piotroski_f = _unavailable(not_annual)
+    elif score_filing.financials is None:
         no_financials = "no financial data extracted for this filing"
         altman_z = _unavailable(no_financials)
         beneish_m = _unavailable(no_financials)
         piotroski_f = _unavailable(no_financials)
     else:
         altman_z = _attempt(
-            lambda: altman_z_score(filing.financials, market_value_of_equity=market_value_of_equity)
+            lambda: altman_z_score(
+                score_filing.financials, market_value_of_equity=market_value_of_equity
+            )
         )
-        if prior_filing is None or prior_filing.financials is None:
+        if score_prior is None or score_prior.financials is None:
             no_prior = "no prior-period financial data available for year-over-year comparison"
             beneish_m = _unavailable(no_prior)
             piotroski_f = _unavailable(no_prior)
         else:
             beneish_m = _attempt(
-                lambda: beneish_m_score(filing.financials, prior_filing.financials, **beneish_kwargs)
+                lambda: beneish_m_score(
+                    score_filing.financials, score_prior.financials, **beneish_kwargs
+                )
             )
             piotroski_f = _attempt(
-                lambda: piotroski_f_score(filing.financials, prior_filing.financials)
+                lambda: piotroski_f_score(score_filing.financials, score_prior.financials)
             )
 
     # -- Text diff (Module 3) --
@@ -232,6 +289,9 @@ def build_report_data(
         financial_highlights=_financial_highlights(filing.financials),
         financial_data_completeness=_data_completeness(filing.financials),
         source_filing_url=filing_index_url(filing.cik, filing.accession_number),
+        annual_filing=annual_filing,
+        prior_annual_filing=prior_annual_filing,
+        risk_alert=evaluate_risk_alert(filing, risk_factors_diff, prior_filing),
         altman_z=altman_z,
         beneish_m=beneish_m,
         piotroski_f=piotroski_f,

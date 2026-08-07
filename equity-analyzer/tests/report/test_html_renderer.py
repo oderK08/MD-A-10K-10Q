@@ -250,8 +250,12 @@ def test_main_report_is_summary_then_numbers_with_detail_split_out():
     themes_idx = html.index("Changements par sous-thématique")
     tone_idx = html.index("Tonalité (Loughran-McDonald)")
 
-    # page 1 = summary, page 2 = the numbers, in that order
-    assert summary_idx < break_idx < red_flags_idx < themes_idx < tone_idx
+    # page 1 = summary, page 2 = the numbers. On page 2 the per-sub-theme
+    # change comes BEFORE the red flags: it's the movement between the two
+    # filings, which is what the report is about, while the red flags are
+    # annual-model scores that describe the company's underlying health
+    # and don't move quarter to quarter.
+    assert summary_idx < break_idx < themes_idx < red_flags_idx < tone_idx
 
     # no changed text anywhere in the main report -- that's the whole
     # point of splitting the detail out

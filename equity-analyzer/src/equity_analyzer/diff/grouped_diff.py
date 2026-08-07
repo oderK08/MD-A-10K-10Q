@@ -33,6 +33,7 @@ sentences) rather than assumed to line up 1:1 by position.
 from __future__ import annotations
 
 import difflib
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -50,6 +51,51 @@ _MAX_HEADING_WORDS = 12
 _BULLET_PREFIXES = ("•", "-", "*")
 _TRAILING_PUNCTUATION = ".!?:;,"
 
+# Words a real heading leaves lowercase even when title-cased.
+_HEADING_STOPWORDS = frozenset({
+    "a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "into",
+    "its", "nor", "of", "on", "or", "our", "per", "the", "their", "to",
+    "versus", "vs", "with",
+})
+
+# "PART I", "PART II"... These are document-structure markers, not
+# sub-themes. They land inside an extracted section because a section
+# ends at the next ITEM header and a PART divider sits just before one,
+# and they pass every other heading test (short, no trailing
+# punctuation, all caps).
+_PART_DIVIDER_RE = re.compile(r"^part\s+[ivx]+$", re.IGNORECASE)
+
+
+def _is_title_cased(line: str) -> bool:
+    """
+    Whether every significant word starts with a capital -- the drafting
+    convention SEC filings use for headings ("Liquidity and Capital
+    Resources", "RISK FACTORS"), and the thing running prose does not do.
+
+    This is the test that keeps prose fragments out of the sub-theme
+    list. `html_to_text` breaks text at block-tag boundaries, and
+    financial printers routinely wrap a single paragraph across several
+    of them, so a mid-paragraph fragment of a dozen words with no
+    trailing punctuation is common and matches every other criterion
+    here. Found on the project's own MD&A fixture: "matters that are
+    inherently uncertain, including inventory valuation, revenue" was
+    being promoted to a sub-theme, which both fragments the diff and
+    spends the selection pass's limited picks on noise.
+
+    The trade is deliberate. A filer who writes headings in sentence
+    case ("Results of operations") loses the split, and that section's
+    text merges into the preceding group -- content is regrouped, never
+    dropped. Inventing sub-themes out of prose is the worse failure of
+    the two, and unlike this one it happens on every filing.
+    """
+    significant = [
+        word for word in (w.strip("\"'“”‘’()[]") for w in line.split())
+        if word and word[0].isalpha() and word.lower() not in _HEADING_STOPWORDS
+    ]
+    if not significant:
+        return False
+    return all(word[0].isupper() for word in significant)
+
 
 def _is_heading_candidate(line: str) -> bool:
     line = line.strip()
@@ -64,7 +110,9 @@ def _is_heading_candidate(line: str) -> bool:
         return False
     if not any(c.isalpha() for c in line):
         return False
-    return True
+    if _PART_DIVIDER_RE.match(line):
+        return False
+    return _is_title_cased(line)
 
 
 def split_into_groups(text: str) -> list:
@@ -139,6 +187,15 @@ def apply_theme_selection(result: GroupedTextDiffResult, headings: list) -> Grou
     "the selector ran and found no sub-theme worth detailing", which is
     a real answer and must not be silently inverted into "keep it all".
     Callers that never selected simply don't call this function.
+
+    THE UNHEADED GROUP IS ALWAYS KEPT. The text before a section's first
+    sub-heading is not a sub-theme, so it is never on the ballot the
+    selector is handed -- dropping it would therefore not be a decision
+    the selector made, just an accident of it never having been offered.
+    That block is not filler: an MD&A regularly opens with its overview
+    and its guidance before any heading appears, and in a section with
+    no headings at all it is the entire text. It ranks last, behind
+    everything actually chosen.
     """
     rank_by_heading = {heading: rank for rank, heading in enumerate(headings)}
     regrouped = [
@@ -146,8 +203,8 @@ def apply_theme_selection(result: GroupedTextDiffResult, headings: list) -> Grou
             heading=g.heading,
             status=g.status,
             diff=g.diff,
-            selected=g.heading in rank_by_heading,
-            selection_rank=rank_by_heading.get(g.heading),
+            selected=g.heading in rank_by_heading or not g.heading,
+            selection_rank=rank_by_heading.get(g.heading, len(headings) if not g.heading else None),
         )
         for g in result.groups
     ]

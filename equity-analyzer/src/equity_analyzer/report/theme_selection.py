@@ -12,7 +12,11 @@ This module moves that judgment to where it belongs, in three steps:
   1. Python lists the sub-theme headings actually present in the filing
      (`list_subthemes` -- pure, no network, reuses the same heading
      detection the diff itself uses, so the two can never disagree about
-     what a sub-theme is).
+     what a sub-theme is). WHICH SECTION it lists depends on the form
+     type (`default_section_for`): the MD&A for a 10-Q, Risk Factors for
+     a 10-K. A 10-Q's Item 1A is almost always the "no material changes"
+     clause, so there is nothing there to select; the quarter's actual
+     discussion is in Part I Item 2.
   2. The model reads those HEADINGS -- names only, deliberately without
      sizes -- and picks up to `MAX_SELECTED_THEMES` that actually make
      sense for THIS company, given its business and what analysts
@@ -76,16 +80,18 @@ MAX_SELECTED_THEMES = 10
 # its limited picks aren't spent on noise.
 _MIN_THEME_WORDS = 30
 
-_SELECTION_SYSTEM_PROMPT = """Tu es analyste equity. On te donne le nom d'une societe et la liste des INTITULES des sous-sections de son filing SEC (10-K ou 10-Q).
+_SELECTION_SYSTEM_PROMPT = """Tu es analyste equity. On te donne le nom d'une societe, la section de son filing SEC dont il s'agit, et la liste des INTITULES des sous-sections de cette section.
 
-Ta tache : juger, intitule par intitule, lesquels ont le plus de SENS POUR CETTE SOCIETE EN PARTICULIER, compte tenu de son activite, de son secteur, et de ce que les analystes qui la suivent attendent d'elle. Tu ne choisis pas les sous-sections les plus longues ni les plus generiques : tu choisis celles ou un changement de formulation cette annee changerait quelque chose a la these d'investissement de CETTE societe.
+Le rapport compare ce depot au depot IMMEDIATEMENT PRECEDENT, en general le trimestre d'avant. Ce qu'on cherche a capter, c'est le flux d'information trimestriel : ce que la direction dit ce trimestre et ne disait pas le trimestre dernier, et inversement.
+
+Ta tache : juger, intitule par intitule, lesquels ont le plus de SENS POUR CETTE SOCIETE EN PARTICULIER, compte tenu de son activite, de son secteur, et de ce que les analystes qui la suivent attendent d'elle ce trimestre. Tu ne choisis pas les sous-sections les plus longues ni les plus generiques : tu choisis celles ou un changement de formulation d'un trimestre a l'autre changerait quelque chose a la these d'investissement de CETTE societe.
 
 Pour cette tache de selection, et pour elle seulement, tu DOIS mobiliser ce que tu sais du secteur et du modele economique de la societe : c'est precisement ce qui permet de dire qu'un intitule sur les prix des memoires est central pour un fabricant de semi-conducteurs et secondaire pour un distributeur alimentaire. Tu ne produis aucune affirmation factuelle ici -- tu ne fais que reordonner une liste d'intitules qui existent deja dans le document -- donc ce jugement sectoriel ne peut pas introduire d'information non verifiee dans le rapport.
 
 Raisonne ainsi pour chaque intitule :
-- de quoi vit cette societe, et cet intitule touche-t-il a ce moteur (prix, volumes, demande, marges, capacite, clients, approvisionnement) ?
-- est-ce un point sur lequel le marche attend justement une mise a jour de cette societe cette annee ?
-- ou est-ce une clause presente a l'identique dans le filing de n'importe quelle societe cotee (gouvernance, litiges generiques, volatilite du titre, procedures) ?
+- de quoi vit cette societe, et cet intitule touche-t-il a ce moteur (prix, volumes, demande, marges, capacite, clients, approvisionnement, carnet de commandes, tresorerie) ?
+- est-ce un point sur lequel le marche attend justement une mise a jour de cette societe ce trimestre ?
+- ou est-ce une rubrique dont le contenu est structurellement le meme d'un trimestre a l'autre (methodes comptables, engagements hors bilan recurrents, clauses de gouvernance, litiges generiques, volatilite du titre, procedures) ?
 
 Contraintes :
 - Choisis AU MAXIMUM %(max_themes)d intitules, classes du plus important au moins important pour cette societe.
@@ -112,10 +118,15 @@ class ThemeSelection:
     success ("selected by <model>") and on every fallback path, so the
     report can always say honestly how its sub-themes were chosen rather
     than leaving the reader to assume an AI made the call when it didn't.
+    `section_key` / `section_label` say WHICH section of the filing was
+    selected from, since that now depends on the form type (see
+    `attach_theme_selection`) and the report has to name it.
     """
     headings: list  # list[str]
     reason: str
     ai_selected: bool
+    section_key: str = "risk_factors"   # "mdna" | "risk_factors"
+    section_label: str = "Risk Factors (Item 1A)"
 
 
 def list_subthemes(text: str) -> list:
@@ -170,6 +181,7 @@ def _call_selection_api(
     themes: list,
     *,
     company: str,
+    section_label: str,
     api_key: str,
     model: str,
     timeout_seconds: float,
@@ -182,7 +194,11 @@ def _call_selection_api(
     # inform. Sections too short to be real are already filtered out
     # upstream by `list_subthemes`, so no size signal is needed here.
     listing = "\n".join(f'- "{t.heading}"' for t in themes)
-    user_content = f"Societe : {company}\n\nIntitules des sous-sections du filing :\n{listing}"
+    user_content = (
+        f"Societe : {company}\n"
+        f"Section analysee : {section_label}\n\n"
+        f"Intitules des sous-sections :\n{listing}"
+    )
     try:
         response = requests.post(
             ANTHROPIC_API_URL,
@@ -233,6 +249,7 @@ def select_key_subthemes(
     text: str,
     *,
     company: str,
+    section_label: str = "Risk Factors (Item 1A)",
     api_key: Optional[str] = None,
     model: Optional[str] = None,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
@@ -287,6 +304,7 @@ def select_key_subthemes(
         raw = _call_selection_api(
             themes,
             company=company,
+            section_label=section_label,
             api_key=resolved_key,
             model=resolved_model,
             timeout_seconds=timeout_seconds,
@@ -316,25 +334,71 @@ def select_key_subthemes(
     )
 
 
+def default_section_for(filing) -> str:
+    """
+    Which section of a filing this pass should select from: the MD&A for
+    a 10-Q, Risk Factors for a 10-K.
+
+    A 10-Q's Item 1A is almost always the "no material changes" clause,
+    so there is nothing there to select; the quarter's actual discussion
+    -- demand, pricing, margins, guidance, liquidity, the things that
+    change between two quarters -- lives in Part I Item 2, the MD&A. In
+    a 10-K the reverse holds: Item 1A is the section real filers
+    organize under named sub-themes ("Risks Related to Demand, Supply
+    and Manufacturing"), and it is where a year's change of tone shows.
+
+    A 10-Q whose MD&A carries no internal headings at all degrades on
+    its own, without a special case: `list_subthemes` returns nothing,
+    the selection comes back empty and says so, and the whole MD&A is
+    used as the material. That is the honest outcome, not a failure.
+    """
+    form = getattr(filing.form_type, "value", filing.form_type)
+    return "mdna" if form == "10-Q" else "risk_factors"
+
+
+_SECTION_LABELS = {
+    "mdna": "MD&A (Item 2 du 10-Q)",
+    "risk_factors": "Risk Factors (Item 1A)",
+}
+
+
+def _selection_source(report, section_key: str):
+    """
+    Returns (diff_section, current_text, unavailable_reason) for the
+    section being selected from -- the already-computed grouped diff to
+    mark up, and the current filing's text to list sub-themes in.
+    """
+    text_sections = report.filing.text_sections
+    if section_key == "mdna":
+        section = report.mdna_diff
+        if section is None or not section.available:
+            return None, None, "diff MD&A indisponible — aucune sous-section à sélectionner"
+        return section, (text_sections.item_7_mdna if text_sections else None), None
+
+    section = report.risk_factors_diff
+    if section is None or not section.available or section.value.skipped:
+        return None, None, "diff Risk Factors indisponible — aucune sous-section à sélectionner"
+    return section, (text_sections.item_1a_risk_factors if text_sections else None), None
+
+
 def attach_theme_selection(
     report,
     *,
+    section: Optional[str] = None,
     api_key: Optional[str] = None,
     model: Optional[str] = None,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
 ):
     """
-    Returns a NEW ReportData whose Risk Factors diff carries the
-    analyst-relevant sub-theme selection (step 2 of the three-step flow
-    in this module's docstring), plus a `theme_selection` section
-    recording how that selection was made.
+    Returns a NEW ReportData whose diff for the relevant section carries
+    the analyst-relevant sub-theme selection (step 2 of the three-step
+    flow in this module's docstring), plus a `theme_selection` section
+    recording how that selection was made and which part of the filing
+    it was made over.
 
-    Applied to Risk Factors only, deliberately: that's the section real
-    filings organize under named sub-themes, and the only one where
-    `split_into_groups` finds anything to select FROM. The MD&A is
-    almost always one unheaded block, so "selecting sub-themes" in it
-    would be selecting the whole thing -- a no-op dressed up as a
-    decision.
+    `section` is "mdna" or "risk_factors"; left out, it follows the form
+    type (see `default_section_for`) -- the MD&A for a quarter, Risk
+    Factors for an annual report.
 
     Never raises. Import is local to avoid a circular import at module
     load (report_data imports the diff layer, this imports report_data's
@@ -344,21 +408,29 @@ def attach_theme_selection(
 
     from .report_data import SectionResult
 
-    rf_section = report.risk_factors_diff
-    if rf_section is None or not rf_section.available or rf_section.value.skipped:
-        reason = "diff Risk Factors indisponible — aucune sous-section à sélectionner"
+    section_key = section or default_section_for(report.filing)
+    section_label = _SECTION_LABELS[section_key]
+
+    diff_section, current_text, reason = _selection_source(report, section_key)
+    if diff_section is None or not current_text:
         return dataclasses.replace(
             report,
-            theme_selection=SectionResult(value=None, unavailable_reason=reason),
+            theme_selection=SectionResult(
+                value=None,
+                unavailable_reason=reason or f"{section_label} absent de ce dépôt",
+            ),
         )
 
-    current_text = report.filing.text_sections.item_1a_risk_factors
     selection = select_key_subthemes(
         current_text,
         company=f"{report.filing.company_name} ({report.filing.ticker})",
+        section_label=section_label,
         api_key=api_key,
         model=model,
         timeout_seconds=timeout_seconds,
+    )
+    selection = dataclasses.replace(
+        selection, section_key=section_key, section_label=section_label
     )
     if not selection.headings:
         return dataclasses.replace(
@@ -366,12 +438,20 @@ def attach_theme_selection(
             theme_selection=SectionResult(value=selection, unavailable_reason=None),
         )
 
-    rf_result = rf_section.value
-    selected_diff = apply_theme_selection(rf_result.diff, selection.headings)
+    if section_key == "mdna":
+        marked = apply_theme_selection(diff_section.value, selection.headings)
+        return dataclasses.replace(
+            report,
+            mdna_diff=SectionResult(value=marked, unavailable_reason=None),
+            theme_selection=SectionResult(value=selection, unavailable_reason=None),
+        )
+
+    rf_result = diff_section.value
+    marked = apply_theme_selection(rf_result.diff, selection.headings)
     return dataclasses.replace(
         report,
         risk_factors_diff=SectionResult(
-            value=dataclasses.replace(rf_result, diff=selected_diff),
+            value=dataclasses.replace(rf_result, diff=marked),
             unavailable_reason=None,
         ),
         theme_selection=SectionResult(value=selection, unavailable_reason=None),
@@ -384,6 +464,7 @@ __all__ = [
     "ThemeSelection",
     "ThemeSelectionError",
     "attach_theme_selection",
+    "default_section_for",
     "list_subthemes",
     "select_key_subthemes",
 ]

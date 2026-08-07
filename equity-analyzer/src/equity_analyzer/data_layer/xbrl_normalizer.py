@@ -16,10 +16,25 @@ Rigor points handled explicitly here:
    ORIGINALLY REPORTED in that filing -- unless the caller explicitly asks
    for the latest restated value.
 
-3. PERIOD DURATION: for each fact we classify its duration
-   (instant / 3M / 6M / 9M / 12M) from (start, end) rather than assuming
-   based on form type, because 10-Qs commonly report both a quarter-alone
-   and a year-to-date cumulative figure for the same concept.
+3. PERIOD DURATION AND COMPARATIVES -- one accession contains MANY
+   periods, not one. This is the single most dangerous property of
+   companyfacts, because ignoring it produces a plausible-looking number
+   that is simply the wrong period:
+   - a 10-Q tags the SAME concept twice for the current period, once
+     quarter-alone (3M) and once year-to-date cumulative (6M/9M);
+   - every filing also tags its COMPARATIVE prior-period columns (a 10-K
+     carries three years of income statement, a 10-Q carries the
+     year-ago quarter) with its own accession number.
+   So "the entries whose accn matches this filing" is a set of half a
+   dozen values spanning several periods, and taking whichever comes
+   first in the array means taking an arbitrary one -- in practice the
+   OLDEST comparative, since companyfacts orders entries by end date
+   ascending. `_select_entry` resolves this explicitly: it keeps the
+   entries whose classified duration matches what the filing is FOR
+   (12M for an annual filing, 3M for a quarter, instant for a balance
+   sheet fact) and, among those, the one with the latest period end.
+   Mixing a quarter-alone revenue with a year-to-date COGS would corrupt
+   every downstream ratio while looking entirely normal.
 
 4. NOT EVERY GAP IS A MISSING TAG -- some are structural, not fixable by
    adding a candidate name:
@@ -179,11 +194,49 @@ def _parse_date(s: str) -> date:
     return date.fromisoformat(s)
 
 
+def _select_entry(candidates: list, preferred_duration: Optional[PeriodDuration]):
+    """
+    Picks ONE entry out of every entry a filing tagged for a given
+    concept. See module docstring point 3: that set spans the current
+    period AND its comparatives, and for a 10-Q also both the
+    quarter-alone and the year-to-date view of the current period.
+
+    Two rules, in order:
+    1. Keep only the entries whose duration is what the filing is FOR
+       (`preferred_duration`). Dropped if nothing matches, rather than
+       returning nothing: a filer that reports a metric only
+       year-to-date is better served by a labelled 9M value than by a
+       silent None, and `FactValue.duration` carries what it really is
+       so a caller can still tell.
+    2. Among those, take the latest period end -- the current period,
+       never a comparative column.
+
+    `candidates` is a list of (entry, unit_name) pairs. The tiebreak on
+    equal end dates prefers the SHORTEST period (latest start), which
+    only ever fires when rule 1 found no match at all.
+    """
+    if not candidates:
+        return None
+
+    def duration_of(entry: dict) -> PeriodDuration:
+        start = _parse_date(entry["start"]) if "start" in entry else None
+        return classify_duration(start, _parse_date(entry["end"]))
+
+    pool = candidates
+    if preferred_duration is not None:
+        matching = [c for c in candidates if duration_of(c[0]) == preferred_duration]
+        if matching:
+            pool = matching
+
+    return max(pool, key=lambda c: (c[0]["end"], c[0].get("start", "")))
+
+
 def _extract_single_tag(
     company_facts: dict,
     namespace: str,
     tag: str,
     accession_number: str,
+    preferred_duration: Optional[PeriodDuration] = None,
 ) -> Optional[FactValue]:
     """
     Looks up ONE specific (namespace, tag) pair -- e.g. ("us-gaap",
@@ -191,39 +244,49 @@ def _extract_single_tag(
     for the given accession. Shared by the candidate-list search below
     and by the dei/derived fallbacks, which each need a single named tag
     rather than "search this whole list".
+
+    Every entry that filing tagged for the concept is collected first,
+    then ONE is chosen by `_select_entry` -- returning the first one
+    encountered would return an arbitrary period (see module docstring
+    point 3).
     """
     facts_ns = company_facts.get("facts", {}).get(namespace, {})
     concept_data = facts_ns.get(tag)
     if not concept_data:
         return None
-    units = concept_data.get("units", {})
-    for unit_name, entries in units.items():
-        for entry in entries:
-            if entry.get("accn") != accession_number:
-                continue
-            period_end = _parse_date(entry["end"])
-            period_start = (
-                _parse_date(entry["start"]) if "start" in entry else None
-            )
-            concept_label = tag if namespace == "us-gaap" else f"{namespace}:{tag}"
-            return FactValue(
-                concept=concept_label,
-                value=float(entry["val"]),
-                unit=unit_name,
-                period_start=period_start,
-                period_end=period_end,
-                duration=classify_duration(period_start, period_end),
-                accession_number=entry["accn"],
-                filed_date=_parse_date(entry["filed"]),
-                frame=entry.get("frame"),
-            )
-    return None
+
+    candidates = [
+        (entry, unit_name)
+        for unit_name, entries in concept_data.get("units", {}).items()
+        for entry in entries
+        if entry.get("accn") == accession_number
+    ]
+    chosen = _select_entry(candidates, preferred_duration)
+    if chosen is None:
+        return None
+
+    entry, unit_name = chosen
+    period_end = _parse_date(entry["end"])
+    period_start = _parse_date(entry["start"]) if "start" in entry else None
+    concept_label = tag if namespace == "us-gaap" else f"{namespace}:{tag}"
+    return FactValue(
+        concept=concept_label,
+        value=float(entry["val"]),
+        unit=unit_name,
+        period_start=period_start,
+        period_end=period_end,
+        duration=classify_duration(period_start, period_end),
+        accession_number=entry["accn"],
+        filed_date=_parse_date(entry["filed"]),
+        frame=entry.get("frame"),
+    )
 
 
 def _extract_fact_for_accession(
     company_facts: dict,
     metric: str,
     accession_number: str,
+    preferred_duration: Optional[PeriodDuration] = None,
 ) -> Optional[FactValue]:
     """
     Search candidate tags (in order) for a value reported specifically
@@ -231,7 +294,9 @@ def _extract_fact_for_accession(
     which concept name resolved it.
     """
     for tag in CANDIDATE_TAGS[metric]:
-        fact = _extract_single_tag(company_facts, "us-gaap", tag, accession_number)
+        fact = _extract_single_tag(
+            company_facts, "us-gaap", tag, accession_number, preferred_duration
+        )
         if fact is not None:
             return fact
     return None
@@ -243,7 +308,9 @@ def _extract_dei_fact_for_accession(
     accession_number: str,
 ) -> Optional[FactValue]:
     """dei-namespace fallback -- see module docstring point 4."""
-    return _extract_single_tag(company_facts, "dei", tag, accession_number)
+    return _extract_single_tag(
+        company_facts, "dei", tag, accession_number, PeriodDuration.INSTANT
+    )
 
 
 def _derive_total_liabilities(
@@ -258,10 +325,12 @@ def _derive_total_liabilities(
     SAME period_end -- otherwise we'd silently mix mismatched periods.
     """
     total = _extract_single_tag(
-        company_facts, "us-gaap", "LiabilitiesAndStockholdersEquity", accession_number
+        company_facts, "us-gaap", "LiabilitiesAndStockholdersEquity",
+        accession_number, PeriodDuration.INSTANT,
     )
     equity = _extract_single_tag(
-        company_facts, "us-gaap", "StockholdersEquity", accession_number
+        company_facts, "us-gaap", "StockholdersEquity",
+        accession_number, PeriodDuration.INSTANT,
     )
     if total is None or equity is None or total.period_end != equity.period_end:
         return None
@@ -278,15 +347,53 @@ def _derive_total_liabilities(
     )
 
 
+def report_period_for_accession(company_facts: dict, accession_number: str) -> tuple:
+    """
+    The fiscal year and fiscal period ("FY", "Q1", "Q2", "Q3") that a
+    filing itself covers, read from the `fy`/`fp` labels XBRL puts on
+    every fact, as `(fiscal_year, fiscal_period)`; `(None, None)` when
+    the accession has no facts.
+
+    Needed because the submissions endpoint -- where filings are listed
+    -- does NOT say which fiscal quarter a 10-Q is. Deriving it from the
+    calendar instead would be wrong for every filer whose fiscal year
+    doesn't end in December (Apple, NVIDIA, Micron, Microsoft...), which
+    is exactly the population this tool is pointed at. `fy`/`fp` describe
+    the REPORT, not the individual fact, so any fact of the filing
+    answers the question.
+    """
+    for namespace_facts in company_facts.get("facts", {}).values():
+        for concept_data in namespace_facts.values():
+            for entries in concept_data.get("units", {}).values():
+                for entry in entries:
+                    if entry.get("accn") != accession_number:
+                        continue
+                    if entry.get("fp"):
+                        return entry.get("fy"), entry["fp"]
+    return None, None
+
+
 def build_financial_period(
     company_facts: dict,
     accession_number: str,
-    fiscal_year: int,
-    fiscal_period: str,
+    fiscal_year: Optional[int] = None,
+    fiscal_period: Optional[str] = None,
 ) -> FinancialPeriod:
     """
     Builds a FinancialPeriod by pulling every metric's value AS REPORTED
     in the specific filing identified by `accession_number`.
+
+    `fiscal_year` / `fiscal_period` may be left out, in which case
+    they're read off the filing's own XBRL labels
+    (`report_period_for_accession`). That is the better source for a
+    10-Q: the caller listing filings has no way to know whether a
+    quarter ending in October is Q1 or Q3 without knowing the filer's
+    fiscal calendar, and the filing already states it.
+
+    `fiscal_period` also decides WHICH period each metric is read at: a
+    quarterly filing wants the quarter-alone (3M) figures, an annual one
+    the full-year (12M) figures, and both tag their comparatives under
+    the same accession (module docstring point 3).
 
     If a metric has no value for this accession (company doesn't report
     it, or it uses a tag not in our candidate list), the corresponding
@@ -296,10 +403,31 @@ def build_financial_period(
     for shares_outstanding, a derived computation for total_liabilities)
     -- see the module docstring for why those two specifically need one.
     """
+    if fiscal_year is None or fiscal_period is None:
+        labelled_year, labelled_period = report_period_for_accession(
+            company_facts, accession_number
+        )
+        fiscal_year = fiscal_year if fiscal_year is not None else labelled_year
+        fiscal_period = fiscal_period if fiscal_period is not None else labelled_period
+
+    # An unlabelled filing is treated as annual: that's the shape of
+    # every filing this tool read before quarterly support existed, so
+    # it's the behaviour that stays correct by default.
+    flow_duration = (
+        PeriodDuration.THREE_MONTH
+        if fiscal_period and fiscal_period.upper().startswith("Q")
+        else PeriodDuration.TWELVE_MONTH
+    )
+
     resolved: dict = {}
     values: dict = {}
     for metric in CANDIDATE_TAGS:
-        fact = _extract_fact_for_accession(company_facts, metric, accession_number)
+        preferred = (
+            PeriodDuration.INSTANT if metric in INSTANT_METRICS else flow_duration
+        )
+        fact = _extract_fact_for_accession(
+            company_facts, metric, accession_number, preferred
+        )
         values[metric] = fact
         if fact is not None:
             resolved[metric] = fact.concept

@@ -75,13 +75,15 @@ def test_full_pipeline_produces_a_pdf_with_real_fixtures():
 
     report = build_report_data(current_filing, prior_filing, dictionary)
 
-    # The fixture's companyfacts.json doesn't include cogs/sga_expense/
-    # long_term_debt (see tests/fixtures/sample_companyfacts.json), and
-    # the periods are quarterly -- so red flags degrade gracefully rather
-    # than computing full (and misleadingly precise-looking) scores from
-    # incomplete data. This is the realistic case, not a special one.
+    # Both filings here are 10-Qs, and no annual filing was supplied, so
+    # all three red flags decline to compute: they are annual models
+    # (see build_report_data). The refusal happens before the individual
+    # calculators are even reached -- previously this same case was
+    # caught one level down by Altman rejecting a non-12-month duration,
+    # which was right about this fixture but wouldn't have stopped a
+    # quarterly Piotroski from returning a confident, meaningless score.
     assert not report.altman_z.available
-    assert "12-month" in report.altman_z.unavailable_reason
+    assert "annual models" in report.altman_z.unavailable_reason
     assert not report.beneish_m.available
     assert not report.piotroski_f.available
 
@@ -96,7 +98,7 @@ def test_full_pipeline_produces_a_pdf_with_real_fixtures():
     # reason in its own row rather than a standalone "Indisponible —"
     # paragraph; the reason text itself is what must survive.
     assert '<td class="unavailable">' in html
-    assert "12-month" in html
+    assert "annual models" in html
 
     pdf_bytes = render_pdf(html)
     assert pdf_bytes[:5] == b"%PDF-"
