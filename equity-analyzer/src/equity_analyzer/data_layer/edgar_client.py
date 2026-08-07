@@ -137,6 +137,24 @@ class EdgarClient:
                f"{primary_document}")
         return self._get(url, expect_json=False)
 
+    def fetch_filing_index(self, cik: str, accession_number: str) -> dict:
+        """
+        The machine-readable listing of EVERY document filed under one
+        accession, not just the primary one.
+
+        Needed for 8-K earnings filings, where the thing worth reading is
+        never the primary document. An 8-K's own body is three sentences
+        of cross-reference ("the information in Exhibit 99.1 is furnished
+        herewith"); the earnings press release lives in EX-99.1 and, for
+        the minority of filers who publish it, the call transcript or
+        prepared remarks in EX-99.2. The submissions endpoint names only
+        the primary document, so exhibits are unreachable without this.
+        """
+        cik_int = str(int(cik))
+        accession_no_dashes = accession_number.replace("-", "")
+        url = f"{SEC_ARCHIVES_BASE}/{cik_int}/{accession_no_dashes}/index.json"
+        return self._get(url)
+
 
 def filing_index_url(cik: str, accession_number: str) -> str:
     """
