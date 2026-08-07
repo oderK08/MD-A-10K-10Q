@@ -32,3 +32,9 @@ env/
 data/*
 !data/README.md
 !data/Loughran-McDonald_MasterDictionary_1993-2025.csv
+
+# Transcripts mis en cache par scripts/latest_call.py. Un transcript
+# passé ne change jamais, donc le cache évite de redépenser le quota.
+# Décommenter pour les committer et les partager entre exécutions.
+#transcripts/
+dernier_call.md
