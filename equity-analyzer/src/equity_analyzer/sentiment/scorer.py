@@ -87,7 +87,7 @@ def compare_sentiment(current: SentimentResult, prior: SentimentResult) -> Senti
     flags) since proportions are already normalized for document length --
     but for the cleanest read, compare the same kind of section across
     consecutive filings of the same form type (10-Q vs 10-Q, or 10-K vs
-    10-K), matching the diff module's convention.
+    10-K), so that a shift in tone is not really a shift in document type.
     """
     categories = set(current.proportions) | set(prior.proportions)
     proportion_deltas = {

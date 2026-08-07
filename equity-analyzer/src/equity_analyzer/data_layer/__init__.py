@@ -15,6 +15,14 @@ from .models import (
     FormType,
     PeriodDuration,
 )
+from .earnings_expectations import (
+    EarningsExpectations,
+    ExpectationsRefused,
+    ExpectationsUnavailable,
+    QuarterExpectation,
+    fetch_earnings_expectations,
+    parse_earnings_payload,
+)
 from .earnings_release import (
     EarningsRelease,
     Exhibit,
@@ -58,6 +66,12 @@ __all__ = [
     "PeriodDuration",
     "extract_sections",
     "html_to_text",
+    "EarningsExpectations",
+    "ExpectationsRefused",
+    "ExpectationsUnavailable",
+    "QuarterExpectation",
+    "fetch_earnings_expectations",
+    "parse_earnings_payload",
     "EarningsRelease",
     "Exhibit",
     "fetch_earnings_release",

@@ -1,21 +1,27 @@
 """
-Reading an earnings call the way an analyst does: what was said that
-matters, and what to watch next.
+Reading an earnings call the way an analyst does: what was said, whether
+it beat what was expected, and what to watch next.
 
-Deliberately NOT a diff. The rest of this project compares a filing
-against the previous quarter's, because filings are largely copy-pasted
-and the edits are the signal. An earnings call is not written that way:
-the first live comparison of two Microsoft calls came back at 7%
-sentence overlap. Management writes a fresh script every quarter, so a
-diff reports that almost everything changed -- true, and worthless.
+DELIBERATELY NOT A DIFF. Everything else this project ever did to a
+document was compare it against the previous quarter's, because filings
+are largely copy-pasted and the edits are the signal. An earnings call
+is not written that way: the first live comparison of two Microsoft
+calls came back at 7% sentence overlap. Management writes a fresh script
+every quarter, so a diff reports that almost everything changed, which
+is true and worthless. Reading the call is the right tool for a call.
 
-What is worth doing instead is reading it. A call is 8,000 words of
-prepared narrative and unscripted answers, and the useful output is the
-handful of points that move a thesis: what management committed to, what
-they hedged, what an analyst pushed on and did not get answered.
+WHAT MAKES THE READING WORTH ANYTHING is that it is measured against
+something. "Revenue grew 14%" is a fact with no direction; "revenue grew
+14% against a consensus that had them at 11%, and management spent the
+call explaining why that will not repeat" is a position. So the
+consensus EPS for the exact quarter being read, plus the beat/miss
+record of the quarters before it, go into the prompt alongside the
+transcript. When they are unavailable the prompt SAYS SO explicitly
+rather than omitting the section, because a model given no expectations
+and no notice of their absence will supply expectations from memory.
 
-TWO PROPERTIES THIS MUST HAVE, both of which come from the prompt rather
-than from code:
+THREE PROPERTIES THIS MUST HAVE, all of which come from the prompt
+rather than from code:
 
   IT QUOTES. The transcript is a real verbatim record, not a machine
   transcription, so quoting is legitimate and it is the only way a
@@ -26,6 +32,12 @@ than from code:
   is decelerating" is an inference. A summary that blends them is worse
   than useless for advisory work, because the reader cannot tell which
   part to verify.
+
+  IT FITS ON ONE PAGE. Not a stylistic preference: page 1 of the report
+  is this reading and nothing else, and the page budget is enforced
+  downstream by measuring the rendered PDF. A model that overruns gets
+  truncated at a sentence boundary, which loses its conclusion. Asking
+  for the right length up front is how that is avoided.
 """
 
 from __future__ import annotations
@@ -33,20 +45,29 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from .ai_summary import (
-    AISummaryError,
+from .claude_client import (
     DEFAULT_MODEL,
     DEFAULT_TIMEOUT_SECONDS,
-    _call_claude_api,
+    ClaudeError,
+    call_claude,
 )
 
 # A call runs 6,000-12,000 words, comfortably inside any current model's
 # context, so the transcript goes in whole. Excerpting it would mean
-# choosing what matters before the model has read it -- which is the
-# job being delegated.
+# choosing what matters before the model has read it, which is the
+# judgement being delegated.
 MAX_TOKENS = 2000
 
-_SYSTEM_PROMPT = """Tu es un analyste equity chevronne. Tu viens d'ecouter un earnings call et tu dois en rendre compte a un gerant qui n'a pas eu le temps de l'ecouter et qui doit decider s'il bouge sa ligne.
+# The word budget page 1 can actually hold, measured against a real
+# rendered PDF rather than estimated (see
+# tests/report/test_call_report.py::test_a_reading_at_the_cap_still_
+# leaves_the_report_at_two_pages). The prompt asks for less than the cap
+# so the cap stays a safety net for a model that overruns, not the
+# working target.
+TARGET_WORDS_LOW = 450
+TARGET_WORDS_HIGH = 600
+
+_SYSTEM_PROMPT = f"""Tu es un analyste equity chevronne. Tu viens de lire le transcript integral d'un earnings call et tu dois en rendre compte a un gerant qui n'a pas eu le temps de l'ecouter et qui doit decider s'il bouge sa ligne.
 
 REGLES ABSOLUES
 
@@ -54,50 +75,127 @@ REGLES ABSOLUES
 
 2. Tu separes toujours ce qui est DIT de ce que tu en DEDUIS. Une citation est un fait ; ton interpretation est une lecture. Un gerant doit pouvoir distinguer d'un coup d'oeil ce qu'il doit verifier de ce qu'il doit soupeser.
 
-3. Tu ne remplis pas. Si le call ne dit rien d'interessant sur un point, tu ecris qu'il n'en dit rien. Un rapport court et vrai vaut mieux qu'un rapport complet et delaye.
+3. TU LIS LE CALL CONTRE LES ATTENTES, pas dans l'absolu. On te donne le consensus de BPA du trimestre et le palmares des trimestres precedents. Un chiffre n'a pas de direction tout seul : une croissance de 14% est bonne ou mauvaise selon ce qui etait attendu, et une societe qui bat de deux centimes pour la huitieme fois d'affilee a tenu les attentes, elle ne les a pas depassees. Si ces donnees ne te sont pas fournies, la section te le dira explicitement : dans ce cas tu ecris que tu ne peux pas situer le trimestre par rapport au consensus, et tu n'inventes surtout pas un chiffre attendu de memoire.
 
-4. Tu ne repetes pas les chiffres du communique. Le gerant les a deja. Ce qui t'interesse, c'est ce qui n'est PAS dans les chiffres : le ton, les engagements, les esquives, ce que la direction a choisi de mettre en avant et ce qu'elle a laisse de cote.
+4. Tu n'importes AUCUN fait exterieur sur cette societe : ni cours de bourse, ni actualite, ni autre publication, ni souvenir d'entrainement. Ta matiere est le transcript et les attentes fournies, rien d'autre. En revanche raisonner economiquement sur un fait fourni (une hausse de prix annoncee implique plus de revenu) est attendu de toi : la limite est de ne pas importer de faits, pas de t'interdire de reflechir.
 
-CE QUE TU PRODUIS, dans cet ordre
+5. Tu ne donnes jamais de recommandation d'achat ou de vente, ni d'objectif de cours. Trancher sur la balance de ce call est demande ; dire d'acheter le titre est une affirmation d'une autre nature, que cet outil ne fait pas.
 
-## L'essentiel
-Trois a cinq points maximum. Ce qu'un gerant doit retenir s'il ne lit que ca. Chacun appuye sur une citation.
+6. Tu ne remplis pas. Si le call ne dit rien sur un point, tu ecris qu'il n'en dit rien. Un rapport court et vrai vaut mieux qu'un rapport complet et delaye.
 
-## Ce que la direction s'engage a faire
-Les engagements chiffres et datables : guidance, marges visees, capex, calendrier produit. Citation exacte a chaque fois. Si la guidance a change de formulation par rapport a ce qui etait dit avant, dis-le.
+7. Tu n'utilises jamais le tiret cadratin ni le tiret demi cadratin comme ponctuation. Virgule, deux points ou parenthese. Les traits d'union a l'interieur d'un mot ou d'un nom propre sont normaux et ne sont pas concernes.
+
+CE QUE TU PRODUIS, exactement ces cinq sections, dans cet ordre, en markdown avec des titres de niveau 2 (##)
+
+## Verdict
+Une a deux phrases. Commence par "Plutot bullish", "Plutot bearish", "Mitige" ou "Neutre", suivi de la raison principale. C'est la premiere chose que le lecteur voit, ne la noie pas.
+
+## Face aux attentes
+Le trimestre a-t-il battu, manque ou tenu le consensus, et surtout : qu'est-ce que la direction en dit. Un beat que le management passe sous silence et un beat qu'il met en avant ne se lisent pas pareil. Situe aussi ce trimestre dans le palmares des precedents. Citation a l'appui.
+
+## Les declarations cles
+Les engagements chiffres et datables : guidance, marges visees, capex, calendrier produit, prix. Citation exacte a chaque fois, puis en une phrase ce que ca implique. C'est le coeur de ton analyse, donne lui le plus de place.
 
 ## Les esquives
-Les questions d'analystes ou la reponse ne repond pas. C'est souvent l'endroit le plus informatif d'un call. Cite la question, puis la reponse, puis dis en une phrase ce qui manque. S'il n'y a pas d'esquive nette, ecris-le.
+Les questions d'analystes ou la reponse ne repond pas. C'est souvent l'endroit le plus informatif d'un call. Cite la question, puis la reponse, puis dis en une phrase ce qui manque. S'il n'y a pas d'esquive nette, ecris le en une ligne et passe.
 
-## Ce qu'il faut surveiller au prochain trimestre
-Les points precis qui trancheront. Formule-les comme des questions verifiables, pas comme des generalites.
+## A surveiller
+Deux a quatre points precis qui trancheront au prochain trimestre. Formule les comme des questions verifiables, pas comme des generalites.
 
-STYLE
-Francais. Direct, sans jargon inutile, sans formules de politesse. Tu ecris pour quelqu'un de presse et competent. Pas de conclusion qui resume ce que tu viens d'ecrire."""
+LONGUEUR ET STYLE
+Entre {TARGET_WORDS_LOW} et {TARGET_WORDS_HIGH} mots au total, titres compris. Cette limite est dure : ton texte occupe une page et une seule, et ce qui deborde est coupe. Francais. Direct, sans jargon inutile, sans formule de politesse. Tu ecris pour quelqu'un de presse et competent. Pas de conclusion qui resume ce que tu viens d'ecrire."""
 
 
 @dataclass(frozen=True)
 class CallAnalysis:
     """The model's reading, with the provenance needed to check it."""
+
     ticker: str
     quarter: str
     text: str
     model: str
     transcript_words: int
+    # False when the consensus figures could not be fetched: the report
+    # prints the caveat rather than letting a reading that had nothing
+    # to measure against look like one that did.
+    had_expectations: bool = False
 
 
-def build_prompt(ticker: str, quarter: str, transcript_text: str,
-                 company_name: Optional[str] = None) -> str:
+def _eps(value: Optional[float]) -> str:
+    return "non publie" if value is None else f"{value:.2f}"
+
+
+def expectations_block(expectation, history=()) -> str:
     """
-    The transcript, whole, with just enough framing to anchor it.
+    The consensus section of the prompt, or an explicit statement that
+    there is none.
 
-    Nothing is summarised or pre-selected on the way in. Trimming the
-    call before the model reads it would mean deciding what matters
-    first, which is exactly the judgement being asked for.
+    Never silently omitted. A model handed a transcript with no mention
+    of expectations does not conclude that expectations are unknown, it
+    fills them in from whatever it remembers about the company, and the
+    resulting sentence ("slightly below what the street was looking for")
+    is indistinguishable from a grounded one.
+    """
+    if expectation is None:
+        return (
+            "ATTENTES DU MARCHE : NON DISPONIBLES pour ce trimestre. "
+            "Tu n'as aucun consensus a ta disposition. Dis le explicitement dans "
+            "la section \"Face aux attentes\" et n'avance aucun chiffre attendu."
+        )
+
+    lines = [
+        "ATTENTES DU MARCHE, pour le trimestre lu ci-dessous :",
+        f"  BPA attendu (consensus)  : {_eps(expectation.estimated_eps)}",
+        f"  BPA publie               : {_eps(expectation.reported_eps)}",
+    ]
+    if expectation.surprise_pct is not None:
+        lines.append(
+            f"  Ecart                    : {expectation.surprise_pct:+.1f}% "
+            f"({expectation.verdict})"
+        )
+    if expectation.reported_date is not None:
+        lines.append(f"  Publie le                : {expectation.reported_date.isoformat()}")
+
+    past = [q for q in history if q.estimated_eps is not None or q.reported_eps is not None]
+    if past:
+        lines.append("")
+        lines.append("PALMARES DES TRIMESTRES PRECEDENTS (du plus recent au plus ancien) :")
+        for quarter in past:
+            surprise = (
+                f"{quarter.surprise_pct:+.1f}%" if quarter.surprise_pct is not None else "n/a"
+            )
+            lines.append(
+                f"  {quarter.fiscal_date_ending.isoformat()} : "
+                f"attendu {_eps(quarter.estimated_eps)}, "
+                f"publie {_eps(quarter.reported_eps)}, "
+                f"ecart {surprise} ({quarter.verdict})"
+            )
+    return "\n".join(lines)
+
+
+def build_prompt(
+    ticker: str,
+    quarter: str,
+    transcript_text: str,
+    company_name: Optional[str] = None,
+    expectation=None,
+    history=(),
+) -> str:
+    """
+    The transcript, whole, with the expectations in front of it.
+
+    Nothing in the call is summarised or pre-selected on the way in.
+    Trimming it before the model reads it would mean deciding what
+    matters first, which is exactly the judgement being asked for.
+
+    The expectations come FIRST and the transcript second, so the model
+    reads the call already knowing what it has to be measured against
+    rather than forming a view and then checking it.
     """
     who = company_name or ticker
     return (
-        f"Earnings call de {who} ({ticker}), trimestre {quarter}.\n"
+        f"Earnings call de {who} ({ticker}), trimestre {quarter}.\n\n"
+        f"{expectations_block(expectation, history)}\n\n"
         f"Transcript integral ci-dessous, tel que publie.\n\n"
         f"---DEBUT DU TRANSCRIPT---\n{transcript_text}\n---FIN DU TRANSCRIPT---"
     )
@@ -110,6 +208,8 @@ def analyse_call(
     *,
     api_key: str,
     company_name: Optional[str] = None,
+    expectation=None,
+    history=(),
     model: str = DEFAULT_MODEL,
     max_tokens: int = MAX_TOKENS,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
@@ -117,23 +217,21 @@ def analyse_call(
     """
     Sends the call to Claude and returns its reading.
 
-    Raises AISummaryError rather than returning a placeholder when the
-    call cannot be made: a report that silently degrades to "no analysis
-    available" text, printed in the same style as a real one, is how a
-    reader ends up trusting an empty page.
+    Raises rather than returning a placeholder when the call cannot be
+    made: page 1 of this report IS the reading, so a report whose page 1
+    degrades to an apology set in the same type as a real analysis is
+    worse than no report at all.
     """
     if not transcript_text.strip():
-        raise AISummaryError("transcript vide : rien a analyser")
-    if not api_key:
-        raise AISummaryError("ANTHROPIC_API_KEY absent")
+        raise ClaudeError("transcript vide : rien a analyser")
 
-    text = _call_claude_api(
-        build_prompt(ticker, quarter, transcript_text, company_name),
+    text = call_claude(
+        build_prompt(ticker, quarter, transcript_text, company_name, expectation, history),
         api_key=api_key,
+        system_prompt=_SYSTEM_PROMPT,
         model=model,
         max_tokens=max_tokens,
         timeout_seconds=timeout_seconds,
-        system_prompt=_SYSTEM_PROMPT,
     )
     return CallAnalysis(
         ticker=ticker,
@@ -141,7 +239,16 @@ def analyse_call(
         text=text,
         model=model,
         transcript_words=len(transcript_text.split()),
+        had_expectations=expectation is not None,
     )
 
 
-__all__ = ["CallAnalysis", "MAX_TOKENS", "analyse_call", "build_prompt"]
+__all__ = [
+    "CallAnalysis",
+    "MAX_TOKENS",
+    "TARGET_WORDS_HIGH",
+    "TARGET_WORDS_LOW",
+    "analyse_call",
+    "build_prompt",
+    "expectations_block",
+]

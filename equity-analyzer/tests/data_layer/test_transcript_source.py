@@ -255,18 +255,18 @@ def test_the_alpha_vantage_preset_authenticates_by_query_string_not_header(monke
     assert "What drove the margin change?" in transcript.qa
 
 
-def test_speaker_turns_arrive_pre_grouped_by_speaker(monkeypatch):
+def test_speaker_turns_arrive_attributed_to_who_said_them(monkeypatch):
     """
     A turn list is the better shape to receive, not a complication to
-    flatten away. The speaker line is short, title-cased and
-    unpunctuated -- exactly what this project's sub-theme detection
-    already treats as a heading -- so the call arrives grouped, and the
-    diff compares what the CFO said this quarter against what the CFO
-    said last quarter instead of treating the call as one block.
+    flatten away. Attribution is load-bearing for the reading: "we
+    expect prices to increase 5%" from the CEO in prepared remarks and
+    the same sentence from an analyst asking a question are opposite
+    facts, and a flattened transcript cannot tell them apart. The
+    speaker goes on its own line above the content so the model reads
+    the call the way a listener heard it.
     """
     from equity_analyzer.data_layer import transcript_source
     from equity_analyzer.data_layer.transcript_source import alpha_vantage_source
-    from equity_analyzer.diff.grouped_diff import split_into_groups
 
     monkeypatch.setenv("ALPHAVANTAGE_API_KEY", "av-test")
     monkeypatch.setattr(
@@ -280,10 +280,12 @@ def test_speaker_turns_arrive_pre_grouped_by_speaker(monkeypatch):
     )
     transcript = alpha_vantage_source().fetch("AAOI", "0001158114", quarter="2026Q3")
 
-    assert "Chun Lin Hsieh -- CEO" in transcript.full_text
-    headings = [h for h, _ in split_into_groups(transcript.full_text)]
-    assert "Chun Lin Hsieh -- CEO" in headings
-    assert "Stefan Murry -- CFO" in headings
+    lines = transcript.full_text.split("\n")
+    assert "Chun Lin Hsieh -- CEO" in lines
+    assert "Stefan Murry -- CFO" in lines
+    # Each speaker's words follow their own line, in order.
+    assert lines.index("Stefan Murry -- CFO") == lines.index("Chun Lin Hsieh -- CEO") + 2
+    assert "Gross margin was 32% in the quarter." in lines
 
 
 def test_an_empty_turn_list_is_unavailable_not_an_empty_transcript(monkeypatch):

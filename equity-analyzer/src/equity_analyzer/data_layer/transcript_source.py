@@ -2,15 +2,15 @@
 Where a call transcript comes from.
 
 The earnings call is where the information the user is after actually
-lives: the prepared remarks are scripted and quarter-over-quarter
-comparable, and the Q&A is the only place management is asked questions
-it did not choose. Neither is on EDGAR for most filers.
+lives: the prepared remarks are what management chose to say about its
+own quarter, and the Q&A is the only place it is asked questions it did
+not choose. Neither is on EDGAR for most filers.
 
 This module is the seam. Everything upstream (fetching) varies by
-source; everything downstream (diffing, sub-theme selection, the
-summary) does not care where the text came from, as long as it arrives
-as a `CallTranscript`. So the pipeline is written against this
-interface, and a source is plugged in behind it.
+source; everything downstream (the reading, the tone scoring) does not
+care where the text came from, as long as it arrives as a
+`CallTranscript`. So the pipeline is written against this interface, and
+a source is plugged in behind it.
 
 THE FOUR SOURCES, and what each really costs:
 
@@ -64,9 +64,10 @@ _SOFT_ERROR_KEYS = ("Information", "Note", "Error Message")
 
 # The operator's handover lines, which mark where prepared remarks stop
 # and Q&A starts. Both halves are worth reading and they are worth
-# reading DIFFERENTLY: prepared remarks are scripted and diff cleanly
-# against last quarter's, while Q&A is unscripted and its value is in
-# which topics analysts pushed on, not in textual overlap.
+# reading DIFFERENTLY: prepared remarks are written, lawyered and
+# rehearsed, so their tone is a decision management made, while the Q&A
+# is unscripted and its value is in which topics analysts pushed on and
+# what they did not get answered.
 # Matched anywhere in a line, not anchored at its start: the operator's
 # handover is a sentence ("We will now begin the question-and-answer
 # session"), and the wording of the surrounding clause varies far more
@@ -123,8 +124,9 @@ class TranscriptUnavailable(Exception):
 
     Raised rather than returned as an empty transcript, because "we
     could not get it" and "the call said nothing" must never be
-    confusable downstream: the summariser refuses to run without
-    material, and it can only do that if the absence is unambiguous.
+    confusable downstream: page 1 of the report is a reading of the
+    call, and it can refuse to run without material only if the absence
+    is unambiguous.
     """
 
 
@@ -148,9 +150,10 @@ class CallTranscript:
     One earnings call, as text.
 
     `prepared_remarks` and `qa` are split when the operator's handover
-    can be located, because the two behave differently under a diff.
-    When it cannot, `prepared_remarks` holds the whole call and `qa` is
-    None -- stated, not silently merged.
+    can be located, because the two are different acts and are scored
+    separately (see report/report_data.build_call_report). When it
+    cannot be located, `prepared_remarks` holds the whole call and `qa`
+    is None, stated rather than silently merged.
     """
     ticker: str
     call_date: Optional[date]
@@ -366,12 +369,13 @@ def _join_turns(turns: list, config) -> str:
     its own line.
 
     A turn list is the BETTER shape to receive, not a complication to
-    flatten away: the speaker line is short, title-cased and
-    unpunctuated, which is exactly what this project's sub-theme
-    detection already recognises as a heading. So the call arrives
-    pre-grouped by speaker, and the diff compares what the CFO said this
-    quarter against what the CFO said last quarter rather than treating
-    the call as one undivided block.
+    flatten away. Attribution is load-bearing for the reading: "we
+    expect prices to increase 5%" said by the CEO in prepared remarks
+    and the same sentence said by an analyst framing a question are
+    opposite facts, and a flattened wall of text cannot tell them
+    apart. Keeping the speaker on its own line is also what lets the
+    prepared/Q&A split and the model both read the call the way a
+    listener heard it.
     """
     lines = []
     for turn in turns:

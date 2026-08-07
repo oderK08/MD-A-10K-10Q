@@ -33,8 +33,11 @@ data/*
 !data/README.md
 !data/Loughran-McDonald_MasterDictionary_1993-2025.csv
 
-# Transcripts mis en cache par scripts/latest_call.py. Un transcript
-# passé ne change jamais, donc le cache évite de redépenser le quota.
+# Transcripts mis en cache par scripts/rapport.py. Un transcript passé
+# ne change jamais, donc le cache évite de redépenser le quota du jour.
 # Décommenter pour les committer et les partager entre exécutions.
 #transcripts/
-dernier_call.md
+
+# PDF générés. Le rapport se regénère à la demande, et un PDF committé
+# est surtout un moyen de croire qu'on regarde le dernier trimestre.
+rapports/

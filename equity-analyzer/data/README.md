@@ -4,7 +4,7 @@ Ce dossier accueille les fichiers de données externes du projet.
 
 ## Loughran-McDonald Master Dictionary
 
-Requis par le Module 4 (`equity_analyzer.sentiment`).
+Requis par `equity_analyzer.sentiment`, qui score la tonalité de la page 2 du rapport.
 
 `Loughran-McDonald_MasterDictionary_1993-2025.csv` est déjà présent dans
 ce dossier et **suivi par Git** (choix délibéré, voir `.gitignore`) —

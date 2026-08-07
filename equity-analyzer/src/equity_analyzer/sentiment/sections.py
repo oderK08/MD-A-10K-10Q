@@ -1,14 +1,13 @@
 """
-Sentiment scoring wired directly to FilingTextSections (Module 1), mirroring
-the diff module's item-specific wrappers (Module 3) so both text-based
-modules share the same shape: a plain MD&A function, and a Risk Factors
-function that explicitly skips 10-Q boilerplate rather than scoring it.
+Sentiment scoring wired directly to FilingTextSections: a plain MD&A
+function, and a Risk Factors function that explicitly skips 10-Q
+boilerplate rather than scoring it.
 
 Scoring the boilerplate "no material changes" disclaimer would produce a
 technically valid but meaningless SentimentResult -- a couple of neutral
 sentences, not the tone of the actual risk factors on file (those are
 still whatever the most recent 10-K said). We refuse to score it and say
-why, the same way Module 3 refuses to diff it.
+why.
 """
 
 from __future__ import annotations
