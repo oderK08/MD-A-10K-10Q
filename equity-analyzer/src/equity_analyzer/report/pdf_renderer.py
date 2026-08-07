@@ -100,6 +100,15 @@ def render_pdf_fitted(html: str, max_pages: int) -> bytes:
     long report is far more useful to the reader than no report, and the
     caller can compare `page_count()` against its budget if it needs to
     know. Never silently drops content.
+
+    Measured range: the steps below recover a document that naturally
+    needs THREE pages down to two; one that needs four does not come
+    back (see test_the_page_fitter_actually_compacts_overflowing_content,
+    which is sized to the real limit rather than to a range this doesn't
+    have). That is comfortably wider than the actual report needs -- the
+    heaviest report the pipeline can produce fits in two pages at
+    natural size -- so this is a safety net, not the load-bearing
+    mechanism it was before the "Chiffres clés" table was removed.
     """
     rendered = render_pdf(html)
     if page_count(rendered) <= max_pages:

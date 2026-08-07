@@ -8,11 +8,11 @@ compilés dans un rapport PDF structuré.
 
 | Module | Statut | Description |
 |---|---|---|
-| 1. Data Layer | ✅ Terminé (42 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
+| 1. Data Layer | ✅ Terminé (46 tests) | Client SEC EDGAR, normalisation XBRL, extraction de sections textuelles |
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
 | 3. Diff textuel | ✅ Terminé (30 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
-| 5. Report Builder | ✅ Terminé (59 tests) | Rapport principal 2 pages + rapport « détail » séparé, en niveaux de gris, police Lato intégrée |
+| 5. Report Builder | ✅ Terminé (61 tests) | Rapport principal 2 pages + rapport « détail » séparé, en niveaux de gris, police Lato intégrée |
 | 6. Sélection + lecture IA (opt-in) | ✅ Terminé (26 tests) | Deux passes : l'IA choisit les sous-thématiques suivies par les analystes, Python les diffe, l'IA rédige le résumé exécutif dessus |
 
 ## Module 1 — Data Layer
@@ -97,6 +97,28 @@ compilés dans un rapport PDF structuré.
     sentiment de tokens parasites, et la ligne vide introduite trompe le
     découpage en paragraphes du Module 3 (une phrase réelle coupée en
     deux blocs). Supprimé avant tout traitement en aval.
+  - **(trouvé sur un vrai run Microsoft, Item 1A extrait à 22 mots)** le
+    numéro d'item et son titre **sur deux lignes différentes**. Les
+    motifs utilisaient `\s` entre les deux, ce qui traverse les sauts de
+    ligne — deux conséquences :
+    - une **ligne de table des matières** met le numéro et le titre dans
+      deux cellules, rendues sur deux lignes (`"Item 1A. \n\n\n\n Risk
+      Factors Item 1B."`), donc elle matchait comme un vrai titre et,
+      étant plus haut dans le document, gagnait. C'est un cas **distinct**
+      du point 1 : le départage « le plus de contenu gagne » ne protège
+      que si le vrai titre matche aussi, or ici il ne matchait pas ;
+    - l'imprimeur répète un en-tête courant nu `"PART I \n Item 1A"` à
+      chaque saut de page **à l'intérieur** de la section ; avec le saut
+      de ligne autorisé, ce marqueur avalait la prose suivante comme
+      « titre » et faisait office de frontière de section, coupant la
+      section au premier saut de page.
+    Corrigé en exigeant le titre **sur la même ligne** que le numéro
+    (`_H`, espaces horizontaux uniquement).
+    S'y ajoutait le vrai titre lu `"ITEM 1A. RIS K FACTORS"` : même
+    problème de mot coupé qu'au point ci-dessus, mais survivant sous
+    forme d'un vrai espace au lieu d'être réparé — si bien que **seule**
+    la table des matières matchait encore. `_split_tolerant` laisse
+    chaque mot-clé absorber un espace parasite.
 
 ### Ce qu'il ne fait PAS encore
 
@@ -655,7 +677,7 @@ distincts removed/added, pas un "modified" forcé).
 
 ### Tests
 
-59 tests, dont deux tests d'intégration bout-en-bout qui font tourner
+61 tests, dont deux tests d'intégration bout-en-bout qui font tourner
 **Module 1 → Module 5** sur les vraies fixtures (XBRL + HTML) jusqu'à un
 vrai PDF généré (vérifie les octets magiques `%PDF-`) — un pour un rapport
 single-période, un pour une tendance sur 2 exercices. Avec cette fixture
@@ -935,7 +957,7 @@ python -m pytest tests/report/test_ai_summary.py -v
 ## Statut : projet complet, validé contre de vraies données
 
 Les 5 modules principaux (+ le module 6 optionnel) sont terminés et
-testés (204 tests). Le pipeline a été validé
+testés (207 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,

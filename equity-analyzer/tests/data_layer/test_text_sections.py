@@ -179,3 +179,88 @@ def test_html_to_text_leaves_a_genuine_bare_number_sentence_fragment_alone():
     html = "<p>We identified 13 distinct supply chain risks this year.</p>"
     text = html_to_text(html)
     assert "We identified 13 distinct supply chain risks this year." in text
+
+
+# --- Regression tests for a real Microsoft 10-K run (2026-08-07) that
+# extracted Item 1A as 22 words. Two independent causes, both visible in
+# that run's own debug dump, reproduced verbatim here. ---
+
+def test_item_header_must_have_its_title_on_the_same_line_as_its_number():
+    """
+    A table-of-contents row puts the item number and its title in
+    separate cells, which html_to_text renders on separate lines. The
+    header patterns used `\\s*` between the two, which matches newlines,
+    so a TOC row was indistinguishable from a real heading -- and being
+    earlier in the document, it won. Verbatim from the MSFT run's debug
+    dump.
+    """
+    import re
+
+    from equity_analyzer.data_layer.text_sections import ITEM_PATTERNS
+
+    pattern = re.compile(ITEM_PATTERNS["item_1a_risk_factors"][0], re.IGNORECASE)
+    toc_row = "Executive Officers Item 1A. \n\n\n\n Risk Factors Item 1B. \n\n Unresolved"
+    real_heading = "ITEM 1A. RISK FACTORS \n Our operations are subject to various risks."
+
+    assert pattern.search(toc_row) is None
+    assert pattern.search(real_heading) is not None
+
+
+def test_item_header_matches_a_word_split_by_the_printer():
+    """
+    Same MSFT filing, same debug dump: the real heading reads "ITEM 1A.
+    RIS K FACTORS" -- the printer split the word, and the split survives
+    into the extracted text as a space. A plain `risk` never matched it,
+    so the only thing left matching was the TOC row.
+    """
+    import re
+
+    from equity_analyzer.data_layer.text_sections import ITEM_PATTERNS
+
+    pattern = re.compile(ITEM_PATTERNS["item_1a_risk_factors"][0], re.IGNORECASE)
+    assert pattern.search("ITEM 1A. RIS K FACTORS \n Our operations") is not None
+    # and the ordinary spelling still matches
+    assert pattern.search("Item 1A. Risk Factors \n Our operations") is not None
+
+
+def test_a_repeated_bare_running_page_header_is_not_a_section_boundary():
+    """
+    The same filing repeats "PART I \\n Item 1A" as a running header at
+    every page break INSIDE the section. With `\\s` spanning the newline,
+    that bare marker absorbed the following prose as its "title" and read
+    as a real section boundary, cutting the section at the first page
+    break. A real boundary has a title on the number's own line.
+    """
+    from equity_analyzer.data_layer.text_sections import ANY_ITEM_HEADER
+
+    running_header = "our objectives. PART I \n Item 1A \n\n For all of these reasons, we may"
+    assert ANY_ITEM_HEADER.search(running_header) is None
+    # a genuine next-section heading is still found
+    assert ANY_ITEM_HEADER.search("ITEM 1B. UNRESOLVED STAFF COMMENTS \n None.") is not None
+
+
+def test_microsoft_shaped_filing_extracts_the_real_section_not_the_toc():
+    """
+    End-to-end on a filing reproducing all three MSFT quirks at once:
+    a TOC row, a printer-split heading, and running page headers inside
+    the section. Before the fix this returned 22 words.
+    """
+    from equity_analyzer.data_layer.text_sections import extract_sections
+
+    body = " ".join(f"Risk sentence number {i} about our operations." for i in range(40))
+    html = (
+        "<p>Business Information about our Executive Officers Item 1A.</p>"
+        "<p>Risk Factors Item 1B.</p><p>Unresolved Staff Comments</p>"
+        "<p>PART I</p><p>Item 1A</p>"
+        "<p>ITEM 1A. RIS<span>K</span> FACTORS</p>"
+        f"<p>{body}</p>"
+        "<p>PART I</p><p>Item 1A</p>"
+        f"<p>{body}</p>"
+        "<p>ITEM 1B. UNRESOLVED STAFF COMMENTS</p><p>None.</p>"
+    )
+    sections = extract_sections(html)
+    assert sections.item_1a_risk_factors is not None
+    word_count = len(sections.item_1a_risk_factors.split())
+    assert word_count > 200, f"section truncated to {word_count} words"
+    # it must stop at the real next section, not run past it
+    assert "UNRESOLVED STAFF COMMENTS" not in sections.item_1a_risk_factors

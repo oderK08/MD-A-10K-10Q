@@ -2,7 +2,7 @@
 Extracts the sections we care about (Risk Factors, MD&A, Controls) from the
 raw HTML of a 10-K or 10-Q.
 
-Six rigor problems solved here, all real and all silent-failure-prone
+Seven rigor problems solved here, all real and all silent-failure-prone
 if ignored -- all but the first two were only discovered by running
 against real filings (Microsoft, Coca-Cola, NVIDIA) via the project's
 GitHub Actions reliability run, not against the hand-written test
@@ -66,6 +66,27 @@ fixtures:
    module's paragraph splitter into treating one real sentence as two.
    `_PAGE_FURNITURE_RUN_RE` drops these runs (and the newlines around
    them) before anything downstream sees the text.
+
+7. ITEM NUMBER AND TITLE ON SEPARATE LINES: found on a real Microsoft
+   10-K run that extracted Item 1A as TWENTY-TWO words. Two causes, both
+   from allowing `\s` (which matches newlines) between an item number
+   and its title:
+   - a table-of-contents ROW puts the two in separate cells, rendered as
+     separate lines -- "Item 1A. \n\n\n\n Risk Factors Item 1B." --
+     so the TOC row matched the heading pattern and, being earlier in
+     the document, won. Note this is a DIFFERENT failure from point 1:
+     the most-content-wins tie-break there only helps when the real
+     heading also matches, and here it did not (see below);
+   - the printer repeats a bare "PART I \n Item 1A" running header at
+     every page break INSIDE the section, and with the newline allowed
+     that bare marker absorbed the following prose as its "title",
+     reading as a real section boundary.
+   Both are fixed by requiring the title on the SAME line as the number
+   (`_H`, horizontal whitespace only).
+   Compounding it, the real heading read "ITEM 1A. RIS K FACTORS": the
+   same split-word problem as point 3, but surviving as a real space
+   rather than being repaired -- so the only thing left matching was the
+   TOC. `_split_tolerant` lets each keyword absorb one stray space.
 """
 
 from __future__ import annotations
@@ -76,26 +97,82 @@ from html import unescape as _html_unescape
 
 from .models import FilingTextSections
 
+# HORIZONTAL whitespace only -- deliberately NOT `\s`, which matches
+# newlines. A real item heading has its number and its title on the SAME
+# line ("ITEM 1A. RISK FACTORS"); a table-of-contents row has them in
+# separate cells, which `html_to_text` renders as separate lines. Using
+# `\s*` between the two made a TOC row indistinguishable from a heading,
+# and that is exactly how a real Microsoft 10-K run anchored Item 1A on
+# the table of contents and extracted 22 words instead of the section
+# (verbatim from that run's debug dump: "Item 1A. \n\n\n\n Risk Factors
+# Item 1B."). See the module docstring, point 7.
+_H = r"[ \t\xa0]"
+# The same set as the BODY of a character class, for embedding inside a
+# larger one. Interpolating `_H` there instead would nest `[...]` in
+# `[...]`, whose first `]` closes the class early and silently changes
+# what the pattern means -- which is exactly what happened while writing
+# this fix, and is why the two forms are now named separately.
+_HC = r" \t\xa0"
+
+
+def _split_tolerant(word: str) -> str:
+    """
+    A regex matching `word` even when the financial printer has split it
+    with a stray space.
+
+    Real Microsoft 10-K, verbatim from the extracted plaintext: "ITEM
+    1A. RIS K FACTORS" -- the printer put markup inside the word, which
+    survives tag-stripping as a space (or arrives as a `&#160;` that
+    decodes to NBSP). A plain `risk` never matches that, so the real
+    heading was invisible to the extractor and only the TOC row matched.
+
+    Allows at most ONE horizontal space between consecutive letters,
+    which covers the observed one-split-per-word case without letting
+    the pattern wander across unrelated prose.
+    """
+    return (_H + r"?").join(re.escape(c) for c in word)
+
+
+def _heading(number: str, *title_words: str) -> str:
+    """
+    Builds an item-heading pattern: the item number and its title, on the
+    same line, tolerant of printer-injected splits inside each word.
+    """
+    title = (_H + r"+").join(_split_tolerant(w) for w in title_words)
+    return rf"item{_H}+{number}\.?{_H}*[-–—:]?{_H}*{title}"
+
+
 # Item headers we look for. Order matters: we search 10-K style first,
 # fall back to 10-Q style (Part I/II numbering differs).
 ITEM_PATTERNS = {
     "item_1a_risk_factors": [
-        r"item\s+1a\.?\s*[-–—:]?\s*risk\s+factors",
+        _heading("1a", "risk", "factors"),
     ],
     "item_7_mdna": [
-        r"item\s+7\.?\s*[-–—:]?\s*management.?s\s+discussion\s+and\s+analysis",
-        r"item\s+2\.?\s*[-–—:]?\s*management.?s\s+discussion\s+and\s+analysis",
+        _heading("7", "management") + rf".?s{_H}+" + (_H + r"+").join(
+            _split_tolerant(w) for w in ("discussion", "and", "analysis")
+        ),
+        _heading("2", "management") + rf".?s{_H}+" + (_H + r"+").join(
+            _split_tolerant(w) for w in ("discussion", "and", "analysis")
+        ),
     ],
     "item_9a_controls": [
-        r"item\s+9a\.?\s*[-–—:]?\s*controls\s+and\s+procedures",
-        r"item\s+4\.?\s*[-–—:]?\s*controls\s+and\s+procedures",
+        _heading("9a", "controls", "and", "procedures"),
+        _heading("4", "controls", "and", "procedures"),
     ],
 }
 
 # Any item header at all, used as the "next section" boundary when
 # extracting the content that follows a chosen header.
+#
+# The title must sit on the SAME line as the item number, for the same
+# reason as above plus a second one found on the same Microsoft run: the
+# printer repeats a bare "PART I \n Item 1A" running header at every page
+# break inside the section. With `\s` allowing the newline, that bare
+# marker swallowed the following prose as its "title" and read as a real
+# section boundary, truncating the section at the first page break.
 ANY_ITEM_HEADER = re.compile(
-    r"item\s+\d+[a-c]?\.?\s*[-–—:]?\s*[a-z][a-z\s,'&]{2,80}",
+    rf"item{_H}+\d+[a-c]?\.?{_H}*[-–—:]?{_H}*[a-z][a-z{_HC},'&]{{2,80}}",
     re.IGNORECASE,
 )
 
