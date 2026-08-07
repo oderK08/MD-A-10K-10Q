@@ -106,19 +106,19 @@ def _css() -> str:
 
 
 def _fmt_currency(value):
-    return "—" if value is None else f"${value:,.0f}"
+    return "n/a" if value is None else f"${value:,.0f}"
 
 
 def _fmt_ratio(value):
-    return "—" if value is None else f"{value:.2f}"
+    return "n/a" if value is None else f"{value:.2f}"
 
 
 def _fmt_pct(value):
-    return "—" if value is None else f"{value * 100:.1f}%"
+    return "n/a" if value is None else f"{value * 100:.1f}%"
 
 
 def _unavailable_html(section: SectionResult) -> str:
-    return f'<p class="unavailable">Indisponible — {_e(section.unavailable_reason)}</p>'
+    return f'<p class="unavailable">Indisponible : {_e(section.unavailable_reason)}</p>'
 
 
 def _executive_summary_lines(report: ReportData) -> list:
@@ -176,11 +176,18 @@ def _executive_summary_lines(report: ReportData) -> list:
 
 
 # Hard cap on the executive summary, so page 1 can never spill onto
-# page 2 and push the whole two-page layout out by a page. The model is
-# already asked for 200 words; this is the backstop for when it
-# overruns, and it truncates at a sentence boundary with an explicit
-# note rather than cutting mid-word or silently dropping the tail.
-_MAX_SUMMARY_WORDS = 340
+# page 2 and push the whole two-page layout out by a page.
+#
+# Measured, not guessed: at this body size page 1 holds the summary up
+# to somewhere between 850 and 899 words (850 renders two pages, 900
+# renders three). The prompt asks for 650-780 so the page fills, and
+# this cap sits above that band with margin for prose that runs wider
+# than the measurement text. It is the backstop for a model that
+# overruns its brief, not the working target.
+#
+# Truncation lands on a sentence boundary and says so, rather than
+# cutting mid-word or silently dropping the tail.
+_MAX_SUMMARY_WORDS = 820
 
 
 def _truncate_summary(text: str) -> tuple:
@@ -216,7 +223,7 @@ def _render_executive_summary(report: ReportData) -> str:
         note = ""
         if truncated:
             note = (
-                '<p class="muted">Synthèse tronquée pour tenir en une page — '
+                '<p class="muted">Synthèse tronquée pour tenir en une page. '
                 "le détail complet des changements figure dans le rapport « détail ».</p>"
             )
         return f"""
@@ -235,7 +242,7 @@ def _render_executive_summary(report: ReportData) -> str:
     unavailable = ""
     if report.ai_summary is not None and not report.ai_summary.available:
         unavailable = (
-            f'<p class="muted">Lecture bullish/bearish indisponible — '
+            f'<p class="muted">Lecture bullish/bearish indisponible : '
             f"{_e(report.ai_summary.unavailable_reason)}</p>"
         )
     return f"""
@@ -278,26 +285,33 @@ def _render_ai_disclaimer(report: ReportData) -> str:
     if report.ai_summary is None or not report.ai_summary.available:
         return ""
     model = _e(report.ai_summary.value["model"])
+    # The old wording claimed "aucune connaissance externe sur la société",
+    # which the user asked to remove. It was also no longer strictly
+    # accurate: the sub-theme SELECTION pass does draw on sector
+    # knowledge (that is the point of it), even though the summary itself
+    # still may not import outside facts. Dropped rather than reworded
+    # into something longer. What stays is the part that protects the
+    # reader: this is a read of the filing's changes, not investment
+    # advice.
     return f"""
-    <p class="muted">Lecture rédigée par {model} à partir des seules données calculées
-    dans ce rapport (aucune connaissance externe sur la société) ; porte sur la balance
-    des changements de ce dépôt, pas sur la valorisation du titre. À vérifier ;
-    ne constitue pas un conseil en investissement.</p>
+    <p class="muted">Lecture rédigée par {model}. Porte sur la balance des changements
+    de ce dépôt, pas sur la valorisation du titre.
+    À vérifier ; ne constitue pas un conseil en investissement.</p>
     """
 
 
 def _render_header(report: ReportData) -> str:
     filing = report.filing
     source_link = (
-        f' — <a href="{_e(report.source_filing_url)}">source SEC EDGAR</a>'
+        f' · <a href="{_e(report.source_filing_url)}">source SEC EDGAR</a>'
         if report.source_filing_url else ""
     )
     return f"""
     <h1>{_e(filing.company_name)} ({_e(filing.ticker)})</h1>
     <p class="subtitle">
-      {_e(filing.form_type.value)} — exercice {filing.fiscal_year} {_e(filing.fiscal_period)}
-      — déposé le {filing.filed_date.isoformat()}
-      — CIK {_e(filing.cik)} — accession {_e(filing.accession_number)}{source_link}
+      {_e(filing.form_type.value)} · exercice {filing.fiscal_year} {_e(filing.fiscal_period)}
+      · déposé le {filing.filed_date.isoformat()}
+      · CIK {_e(filing.cik)} · accession {_e(filing.accession_number)}{source_link}
     </p>
     """
 
@@ -324,7 +338,7 @@ def _red_flag_rows(report: ReportData) -> str:
         )
     else:
         rows.append(
-            "<tr><td>Altman Z-Score</td><td class=\"num\">—</td>"
+            "<tr><td>Altman Z-Score</td><td class=\"num\">n/a</td>"
             f'<td class="unavailable">{_e(report.altman_z.unavailable_reason)}</td></tr>'
         )
 
@@ -339,7 +353,7 @@ def _red_flag_rows(report: ReportData) -> str:
         )
     else:
         rows.append(
-            "<tr><td>Beneish M-Score</td><td class=\"num\">—</td>"
+            "<tr><td>Beneish M-Score</td><td class=\"num\">n/a</td>"
             f'<td class="unavailable">{_e(report.beneish_m.unavailable_reason)}</td></tr>'
         )
 
@@ -356,7 +370,7 @@ def _red_flag_rows(report: ReportData) -> str:
         )
     else:
         rows.append(
-            "<tr><td>Piotroski F-Score</td><td class=\"num\">—</td>"
+            "<tr><td>Piotroski F-Score</td><td class=\"num\">n/a</td>"
             f'<td class="unavailable">{_e(report.piotroski_f.unavailable_reason)}</td></tr>'
         )
 
@@ -435,7 +449,7 @@ def _render_theme_change_table(report: ReportData) -> str:
         # exist beyond the retained set, and where to read them.
         unselected_note = (
             f'<p class="note">{len(unselected)} autre(s) sous-thématique(s) non retenue(s) '
-            f"dans la sélection ci-dessus — comptabilisées dans le total Item 1A, "
+            f"dans la sélection ci-dessus, comptabilisées dans le total Item 1A et "
             f"détaillées dans le rapport « détail ».</p>"
         )
 
@@ -524,7 +538,7 @@ def _text_diff_summary_html(title: str, grouped) -> str:
     return f"""
     <h3>{_e(title)}</h3>
     <p>Similarité : {_fmt_pct(overall.similarity_ratio)}
-       — {len(added)} ajout(s), {len(removed)} suppression(s), {len(modified)} phrase(s)
+       · {len(added)} ajout(s), {len(removed)} suppression(s), {len(modified)} phrase(s)
        reformulée(s), {equal_count} inchangé(s)</p>
     """
 
@@ -594,7 +608,7 @@ def _text_diff_detail_html(title: str, grouped) -> str:
             compact_count += 1
             parts.append(
                 f'<p class="group-stats"><strong>{heading_label}</strong>{status_note}'
-                f" — {stats}</p>"
+                f" · {stats}</p>"
             )
             continue
         parts.append(f"""
@@ -664,14 +678,14 @@ def _render_risk_factors_diff_detail(section: SectionResult) -> str:
 def _sentiment_row(label: str, section: SectionResult, skipped_attr: bool = False) -> str:
     if not section.available:
         return (
-            f"<tr><td>{label}</td><td class=\"num\">—</td>"
+            f"<tr><td>{label}</td><td class=\"num\">n/a</td>"
             f'<td class="unavailable">{_e(section.unavailable_reason)}</td></tr>'
         )
     result = section.value
     if skipped_attr:
         if result.skipped:
             return (
-                f'<tr><td>{label}</td><td class="num">—</td>'
+                f'<tr><td>{label}</td><td class="num">n/a</td>'
                 f'<td class="skip-note">{_e(result.skip_reason)}</td></tr>'
             )
         result = result.result
@@ -739,7 +753,7 @@ def render_html(report: ReportData) -> str:
     """
     filing = report.filing
     title = (
-        f"{_e(filing.company_name)} — {_e(filing.form_type.value)} "
+        f"{_e(filing.company_name)} · {_e(filing.form_type.value)} "
         f"{filing.fiscal_year} {_e(filing.fiscal_period)}"
     )
     body = f"""
@@ -772,7 +786,7 @@ def render_detail_html(report: ReportData) -> str:
     """
     filing = report.filing
     title = (
-        f"{_e(filing.company_name)} — détail des changements "
+        f"{_e(filing.company_name)} · détail des changements "
         f"{filing.fiscal_year} {_e(filing.fiscal_period)}"
     )
     rf_detail = _render_risk_factors_diff_detail(report.risk_factors_diff)
@@ -801,14 +815,14 @@ def render_detail_html(report: ReportData) -> str:
 
 def _trend_altman_cell(section: SectionResult) -> str:
     if not section.available:
-        return '<span class="unavailable">—</span>'
+        return '<span class="unavailable">n/a</span>'
     result = section.value
     return f'{_fmt_ratio(result.score)} ({_e(_ZONE_LABELS.get(result.zone, result.zone))})'
 
 
 def _trend_beneish_cell(section: SectionResult) -> str:
     if not section.available:
-        return '<span class="unavailable">—</span>'
+        return '<span class="unavailable">n/a</span>'
     result = section.value
     emphasis = "flag-on" if result.flagged else "flag-off"
     return f'<span class="{emphasis}">{_fmt_ratio(result.score)}</span>'
@@ -816,14 +830,14 @@ def _trend_beneish_cell(section: SectionResult) -> str:
 
 def _trend_piotroski_cell(section: SectionResult) -> str:
     if not section.available:
-        return '<span class="unavailable">—</span>'
+        return '<span class="unavailable">n/a</span>'
     result = section.value
     return f"{result.score} / {result.max_score}"
 
 
 def _trend_sentiment_cell(section: SectionResult) -> str:
     if not section.available:
-        return '<span class="unavailable">—</span>'
+        return '<span class="unavailable">n/a</span>'
     return _fmt_ratio(section.value.net_tone)
 
 
@@ -834,7 +848,7 @@ def _render_trend_row(point: TrendPoint) -> str:
     report = point.report
     source_link = (
         f'<a href="{_e(report.source_filing_url)}">filing</a>'
-        if report.source_filing_url else "—"
+        if report.source_filing_url else "n/a"
     )
     return f"""
     <tr>
@@ -853,14 +867,14 @@ def _render_trend_row(point: TrendPoint) -> str:
 
 def _render_trend_cover(trend: TrendAnalysis) -> str:
     last_filing = trend.points[-1].filing
-    years_span = f"{trend.points[0].fiscal_year}–{trend.points[-1].fiscal_year}"
+    years_span = f"{trend.points[0].fiscal_year} à {trend.points[-1].fiscal_year}"
     return f"""
     <div class="cover">
       <div class="cover-kicker">Analyse de tendance</div>
       <div class="cover-title">{_e(last_filing.company_name)} ({_e(last_filing.ticker)})</div>
       <div class="cover-subtitle">Exercices {years_span}</div>
       <div class="cover-meta">
-        Généré automatiquement à partir des données SEC EDGAR — {len(trend.points)} exercice(s) analysé(s)
+        Généré automatiquement à partir des données SEC EDGAR · {len(trend.points)} exercice(s) analysé(s)
       </div>
     </div>
     """
@@ -955,7 +969,7 @@ def _render_trend_charts(trend: TrendAnalysis) -> str:
         piotroski_uri = bar_chart_data_uri(
             piotroski_values,
             labels=fiscal_years,
-            value_labels=[f"{v} / 9" if v is not None else "—" for v in piotroski_values],
+            value_labels=[f"{v} / 9" if v is not None else "n/a" for v in piotroski_values],
             max_value=9,
             width=220,
         )
@@ -984,23 +998,23 @@ def render_trend_html(trend: TrendAnalysis) -> str:
     if not trend.points:
         raise ValueError("trend has no points to render")
     last_filing = trend.points[-1].filing
-    years_span = f"{trend.points[0].fiscal_year}–{trend.points[-1].fiscal_year}"
+    years_span = f"{trend.points[0].fiscal_year} à {trend.points[-1].fiscal_year}"
     rows = "\n".join(_render_trend_row(p) for p in trend.points)
     return f"""<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>{_e(last_filing.company_name)} — historique {years_span}</title>
+  <title>{_e(last_filing.company_name)} · historique {years_span}</title>
   <style>{_css()}</style>
 </head>
 <body>
   <div id="footer_content">Page <pdf:pagenumber /> / <pdf:pagecount /></div>
   {_render_trend_cover(trend)}
   <div class="page-break">
-    <h1>{_e(last_filing.company_name)} ({_e(last_filing.ticker)}) — historique {years_span}</h1>
+    <h1>{_e(last_filing.company_name)} ({_e(last_filing.ticker)}) · historique {years_span}</h1>
     <p class="subtitle">
       Chaque exercice est comparé à celui immédiatement précédent dans la série
-      (jamais une année sautée) — Beneish M, Piotroski F et la tonalité MD&amp;A
+      (jamais une année sautée). Beneish M, Piotroski F et la tonalité MD&amp;A
       reflètent donc toujours une vraie comparaison année sur année.
     </p>
     {_render_trend_executive_summary(trend)}
@@ -1016,7 +1030,7 @@ def render_trend_html(trend: TrendAnalysis) -> str:
     </table>
     <p class="footer">
       Rapport de tendance généré automatiquement à partir des données SEC EDGAR.
-      Pas de comparaison sectorielle dans cette vue — voir le rapport détaillé
+      Pas de comparaison sectorielle dans cette vue, voir le rapport détaillé
       de chaque exercice pour le détail complet de chaque section.
     </p>
   </div>
