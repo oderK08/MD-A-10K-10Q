@@ -17,6 +17,7 @@ from .report_data import (
     SectionResult,
     build_report_data,
 )
+from .risk_alert import RiskFactorsAlert, evaluate_risk_alert
 from .trend import TrendAnalysis, TrendPoint, build_trend_analysis
 
 __all__ = [
@@ -41,4 +42,6 @@ __all__ = [
     "ThemeSelection",
     "attach_theme_selection",
     "select_key_subthemes",
+    "RiskFactorsAlert",
+    "evaluate_risk_alert",
 ]

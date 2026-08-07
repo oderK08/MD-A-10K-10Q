@@ -6,6 +6,22 @@ across real, diverse filings rather than validating against just one
 company (which is how the MSFT run surfaced the Item 1A extraction gap
 this diagnostic mode exists to help fix).
 
+WHICH FILINGS EACH TICKER IS ANALYSED ON, and why they aren't the same
+ones for the text and for the numbers:
+
+- TEXT: the newest 10-Q, against the filing immediately before it (the
+  previous 10-Q, or the 10-K when the newest quarter is a Q1). The point
+  of the report is quarterly news flow -- what management said this
+  quarter and didn't say last quarter, and what it stopped saying. This
+  script used to fetch two consecutive 10-Ks instead, which meant a
+  company that had just published its Q3 was analysed on annual text up
+  to a year old and its Q3 was never read at all.
+- NUMBERS: the two most recent 10-Ks. Altman Z, Beneish M and Piotroski
+  F are annual models and produce a category error on a quarter, not
+  merely a noisier estimate (see report_data.build_report_data). The
+  report labels which year they came from rather than letting the reader
+  assume they describe the quarter.
+
 Meant to be triggered from GitHub Actions (see
 .github/workflows/test-real-sec-api.yml), which runs on GitHub's own
 servers -- unlike the sandboxes this project was developed in, those have
@@ -58,6 +74,7 @@ from equity_analyzer.data_layer import (
     FormType,
     build_financial_period,
     extract_sections,
+    latest_quarterly_pair,
     list_filings,
 )
 from equity_analyzer.data_layer.text_sections import html_to_text
@@ -101,8 +118,10 @@ SUMMARY_CSV = ROOT / "summary.csv"
 MIN_EXPECTED_SECTION_WORDS = 200
 
 SUMMARY_FIELDS = [
-    "ticker", "cik", "revenue", "net_income",
+    "ticker", "cik", "period", "compared_to", "annual_basis",
+    "revenue", "net_income",
     "risk_factors_found", "risk_factors_words", "mdna_found", "mdna_words",
+    "risk_alert",
     "altman_z", "beneish_m", "piotroski_f",
     "mdna_diff", "risk_factors_diff",
     "mdna_sentiment", "risk_factors_sentiment",
@@ -122,6 +141,16 @@ def _warn(msg: str) -> None:
 
 def _fail(msg: str) -> None:
     print(f"  [FAIL] {msg}")
+
+
+def _alert(msg: str) -> None:
+    """
+    A real finding about the company, not a problem with the run.
+    Distinct from [FAIL] on purpose: a quarter that adds risk factors is
+    the pipeline working, and logging it as a failure would train the
+    reader to skip exactly the line worth reading.
+    """
+    print(f"  [!!]   {msg}")
 
 
 def _dump_extraction_debug(ticker: str, label: str, html: str) -> None:
@@ -144,33 +173,70 @@ def _dump_extraction_debug(ticker: str, label: str, html: str) -> None:
         print(f"    ...{context}...")
 
 
-def _build_filing(client, cik, filing_ref, ticker) -> Filing:
-    company_facts = client.fetch_company_facts(cik)
-    financials = build_financial_period(
-        company_facts,
-        accession_number=filing_ref.accession_number,
-        fiscal_year=(filing_ref.period_of_report or filing_ref.filed_date).year,
-        fiscal_period="FY",
-    )
-    html = client.fetch_filing_document(cik, filing_ref.accession_number, filing_ref.primary_document)
-    sections = extract_sections(html)
+def _build_filing(client, cik, filing_ref, ticker, company_facts=None, with_text=True) -> Filing:
+    """
+    Fetches one filing's financials and, unless `with_text` is False, its
+    text sections.
 
-    if sections.item_1a_risk_factors is None:
-        _dump_extraction_debug(ticker, "item1a", html)
-    elif len(sections.item_1a_risk_factors.split()) < MIN_EXPECTED_SECTION_WORDS:
-        _dump_extraction_debug(ticker, "item1a", html)
-    if sections.item_7_mdna is None:
-        _dump_extraction_debug(ticker, "item7", html)
-    elif len(sections.item_7_mdna.split()) < MIN_EXPECTED_SECTION_WORDS:
-        _dump_extraction_debug(ticker, "item7", html)
+    `with_text=False` is for the two 10-Ks fetched purely to feed the
+    annual red-flag models: their scores come entirely from XBRL, so
+    downloading the filing document would pull tens of megabytes of HTML
+    per company for text nothing reads. The quarterly pair, whose text IS
+    the report, always fetches it.
+
+    `fiscal_year` / `fiscal_period` are deliberately NOT passed to
+    `build_financial_period`: it reads them off the filing's own XBRL
+    labels. Hardcoding "FY" was correct only as long as this script
+    downloaded 10-Ks, and deriving a quarter from the calendar would be
+    wrong for every filer whose fiscal year doesn't end in December,
+    which is most of the ones this tool is pointed at.
+
+    `company_facts` is passed in by callers building several filings for
+    the same company: the companyfacts JSON is one of the largest
+    documents SEC serves (tens of megabytes for a large filer) and is
+    identical for every accession of that CIK, so fetching it once per
+    ticker instead of once per filing removes three quarters of this
+    script's download volume now that it builds up to four filings per
+    company.
+    """
+    if company_facts is None:
+        company_facts = client.fetch_company_facts(cik)
+    financials = build_financial_period(
+        company_facts, accession_number=filing_ref.accession_number
+    )
+
+    sections = None
+    if with_text:
+        html = client.fetch_filing_document(
+            cik, filing_ref.accession_number, filing_ref.primary_document
+        )
+        sections = extract_sections(html)
+
+    # A 10-Q's Item 1A is SUPPOSED to be a one-liner pointing back at the
+    # 10-K (the "no material changes" clause), so shortness there is the
+    # normal case, not an extraction failure -- dumping debug for it would
+    # bury the real failures under one false alarm per quarter. The MD&A
+    # has no such shortcut in either form and is always checked.
+    if sections is not None:
+        is_quarterly = filing_ref.form_type == "10-Q"
+        rf = sections.item_1a_risk_factors
+        rf_suspicious = rf is None or (
+            not sections.is_risk_factors_boilerplate
+            and len(rf.split()) < MIN_EXPECTED_SECTION_WORDS
+        )
+        if rf_suspicious and not is_quarterly:
+            _dump_extraction_debug(ticker, "item1a", html)
+        mdna = sections.item_7_mdna
+        if mdna is None or len(mdna.split()) < MIN_EXPECTED_SECTION_WORDS:
+            _dump_extraction_debug(ticker, "item7", html)
 
     return Filing(
         ticker=ticker,
         cik=cik,
         company_name=ticker,
-        form_type=FormType.TEN_K,
-        fiscal_year=financials.fiscal_year,
-        fiscal_period="FY",
+        form_type=FormType(filing_ref.form_type),
+        fiscal_year=financials.fiscal_year or (filing_ref.period_of_report or filing_ref.filed_date).year,
+        fiscal_period=financials.fiscal_period or "FY",
         filed_date=filing_ref.filed_date,
         accession_number=filing_ref.accession_number,
         period_end=financials.period_end,
@@ -192,15 +258,29 @@ def run_for_ticker(client, dictionary, ticker: str) -> dict:
         row["error"] = f"CIK: {exc}"
         return row
 
+    # The quarterly pair: the newest 10-Q and whatever filing it
+    # immediately follows. This is what the report is about -- what the
+    # company said this quarter that it didn't say last quarter. The
+    # script used to fetch two 10-Ks here, which meant a company that had
+    # just published its Q3 got analysed on annual text up to a year old
+    # and its actual Q3 was never read.
     try:
-        filings = list_filings(client, cik, form_type="10-K", limit=2)
+        pair = latest_quarterly_pair(client, cik)
     except (EdgarClientError, FilingNotFoundError) as exc:
         _fail(f"Listing des filings: {exc}")
         row["error"] = f"filings: {exc}"
         return row
 
     try:
-        current_filing = _build_filing(client, cik, filings[0], ticker)
+        company_facts = client.fetch_company_facts(cik)
+    except EdgarClientError as exc:
+        _fail(f"Récupération des companyfacts: {exc}")
+        row["error"] = f"companyfacts: {exc}"
+        return row
+
+    try:
+        current_filing = _build_filing(client, cik, pair.current, ticker, company_facts)
+        row["period"] = f"{current_filing.fiscal_period} {current_filing.fiscal_year}"
         row["revenue"] = current_filing.financials.revenue.value if current_filing.financials.revenue else ""
         row["net_income"] = current_filing.financials.net_income.value if current_filing.financials.net_income else ""
         risk_factors_text = current_filing.text_sections.item_1a_risk_factors
@@ -209,7 +289,10 @@ def run_for_ticker(client, dictionary, ticker: str) -> dict:
         row["risk_factors_words"] = len(risk_factors_text.split()) if risk_factors_text else 0
         row["mdna_found"] = mdna_text is not None
         row["mdna_words"] = len(mdna_text.split()) if mdna_text else 0
-        _ok(f"Filing courant construit (revenue={row['revenue']}, net_income={row['net_income']})")
+        _ok(
+            f"Trimestre courant construit : {row['period']} "
+            f"(clos le {current_filing.period_end}, MD&A {row['mdna_words']} mots)"
+        )
     except Exception as exc:  # noqa: BLE001 -- diagnostic script, report every failure
         _fail(f"Construction du filing courant: {exc}")
         row["error"] = f"current filing: {exc}"
@@ -217,14 +300,53 @@ def run_for_ticker(client, dictionary, ticker: str) -> dict:
         return row
 
     prior_filing = None
-    if len(filings) > 1:
+    if pair.prior is not None:
         try:
-            prior_filing = _build_filing(client, cik, filings[1], ticker)
-            _ok("Filing précédent construit")
+            prior_filing = _build_filing(client, cik, pair.prior, ticker, company_facts)
+            row["compared_to"] = (
+                f"{prior_filing.form_type.value} {prior_filing.fiscal_period} "
+                f"{prior_filing.fiscal_year}"
+            )
+            boundary = " (frontière d'exercice : comparé au 10-K)" if pair.prior_is_annual else ""
+            _ok(f"Dépôt précédent construit : {row['compared_to']}{boundary}")
         except Exception as exc:  # noqa: BLE001
-            _warn(f"Filing précédent non disponible: {exc}")
+            _warn(f"Dépôt précédent non disponible: {exc}")
+    else:
+        _warn("Aucun dépôt antérieur : pas de comparaison trimestrielle possible.")
 
-    report = build_report_data(current_filing, prior_filing, dictionary)
+    # The red flags are annual models (see report_data.build_report_data),
+    # so they get the company's two most recent 10-Ks -- never the
+    # quarter above, whose text this report is really about.
+    annual_filing = prior_annual_filing = None
+    try:
+        annual_refs = list_filings(client, cik, form_type="10-K", limit=2)
+        annual_filing = _build_filing(
+            client, cik, annual_refs[0], ticker, company_facts, with_text=False
+        )
+        if len(annual_refs) > 1:
+            prior_annual_filing = _build_filing(
+                client, cik, annual_refs[1], ticker, company_facts, with_text=False
+            )
+        row["annual_basis"] = f"FY{annual_filing.fiscal_year}"
+        _ok(f"Base annuelle des red flags : 10-K {row['annual_basis']}")
+    except (EdgarClientError, FilingNotFoundError) as exc:
+        _warn(f"Pas de 10-K exploitable pour les red flags: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        _warn(f"Base annuelle indisponible: {exc}")
+
+    report = build_report_data(
+        current_filing,
+        prior_filing,
+        dictionary,
+        annual_filing=annual_filing,
+        prior_annual_filing=prior_annual_filing,
+    )
+
+    if report.risk_alert is not None:
+        row["risk_alert"] = "ALERTE" if report.risk_alert.triggered else "clause standard"
+        (_alert if report.risk_alert.triggered else _ok)(
+            f"Item 1A : {report.risk_alert.headline}"
+        )
 
     for key, section, name in [
         ("altman_z", report.altman_z, "Altman Z-Score"),
@@ -331,36 +453,43 @@ def main() -> int:
 
     print("=== Résumé ===")
     print(
-        f"{'Ticker':<8}{'Revenue':<18}{'RiskFactors':<13}{'(mots)':<8}"
-        f"{'MD&A':<7}{'(mots)':<8}{'Altman':<9}{'Beneish':<9}{'Piotroski':<10}"
+        f"{'Ticker':<8}{'Période':<10}{'vs':<14}{'MD&A':<7}{'(mots)':<8}"
+        f"{'Item1A':<16}{'Altman':<9}{'Beneish':<9}{'Piotroski':<10}"
     )
     for r in results:
         print(
             f"{r['ticker']:<8}"
-            f"{str(r['revenue'])[:16]:<18}"
-            f"{str(r['risk_factors_found']):<13}"
-            f"{str(r['risk_factors_words']):<8}"
+            f"{str(r['period']):<10}"
+            f"{str(r['compared_to'])[:12]:<14}"
             f"{str(r['mdna_found']):<7}"
             f"{str(r['mdna_words']):<8}"
+            f"{str(r['risk_alert'])[:14]:<16}"
             f"{('OK' if r['altman_z'] == 'OK' else 'X'):<9}"
             f"{('OK' if r['beneish_m'] == 'OK' else 'X'):<9}"
             f"{('OK' if r['piotroski_f'] == 'OK' else 'X'):<10}"
         )
 
     n_ok = sum(1 for r in results if not r["error"])
+    # Only the MD&A is checked for suspicious shortness now. A 10-Q's
+    # Item 1A is SUPPOSED to be a one-liner pointing back at the 10-K, so
+    # counting that as an extraction gap would flag almost every ticker
+    # every quarter and drown the real failures.
     n_thin = sum(
         1 for r in results
-        if not r["error"] and (
-            (r["risk_factors_found"] and 0 < r["risk_factors_words"] < MIN_EXPECTED_SECTION_WORDS)
-            or (r["mdna_found"] and 0 < r["mdna_words"] < MIN_EXPECTED_SECTION_WORDS)
-        )
+        if not r["error"] and r["mdna_found"] and 0 < r["mdna_words"] < MIN_EXPECTED_SECTION_WORDS
     )
+    n_alerts = [r["ticker"] for r in results if r["risk_alert"] == "ALERTE"]
     print()
     print(f"=== Terminé : {n_ok}/{len(results)} tickers traités sans erreur bloquante ===")
     if n_thin:
         print(
-            f"=== ATTENTION : {n_thin} ticker(s) avec une section \"trouvée\" mais "
-            f"suspicieusement courte (< {MIN_EXPECTED_SECTION_WORDS} mots) -- voir debug/ ==="
+            f"=== ATTENTION : {n_thin} ticker(s) avec un MD&A \"trouvé\" mais "
+            f"suspicieusement court (< {MIN_EXPECTED_SECTION_WORDS} mots) -- voir debug/ ==="
+        )
+    if n_alerts:
+        print(
+            f"=== SIGNAL RARE : {', '.join(n_alerts)} ont écrit des facteurs de risque "
+            f"dans leur 10-Q au lieu de la clause habituelle ==="
         )
     print(f"Détails complets dans {SUMMARY_CSV.name} (artifact 'resultats-pipeline')")
     return 0

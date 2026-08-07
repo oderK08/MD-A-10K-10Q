@@ -58,13 +58,20 @@ class CikLookup:
 def list_filings(
     client: EdgarClient,
     cik: str,
-    form_type: str,
+    form_type,
     limit: Optional[int] = None,
 ) -> list[FilingRef]:
     """
-    Returns filings of a given form_type (e.g. "10-K", "10-Q") for a CIK,
-    most recent first, sourced from `filings.recent`.
+    Returns filings of a given form type for a CIK, most recent first,
+    sourced from `filings.recent`.
+
+    `form_type` is either one form ("10-K") or several (["10-Q", "10-K"]),
+    the latter for building a chronological sequence that crosses the
+    annual boundary -- a company's Q1 is preceded by its 10-K, not by
+    another 10-Q. With several forms the result is one list ordered by
+    recency across all of them, not grouped by form.
     """
+    wanted = {form_type} if isinstance(form_type, str) else set(form_type)
     submissions = client.fetch_submissions(cik)
     recent = submissions.get("filings", {}).get("recent", {})
 
@@ -76,7 +83,7 @@ def list_filings(
 
     results: list[FilingRef] = []
     for i, form in enumerate(forms):
-        if form != form_type:
+        if form not in wanted:
             continue
         period_of_report = (
             date.fromisoformat(report_dates[i]) if report_dates[i] else None
@@ -100,7 +107,82 @@ def list_filings(
             "be among those." if older_files else ""
         )
         raise FilingNotFoundError(
-            f"No {form_type} filings found for CIK {cik} in recent "
-            f"submissions.{hint}"
+            f"No {'/'.join(sorted(wanted))} filings found for CIK {cik} in "
+            f"recent submissions.{hint}"
         )
     return results
+
+
+@dataclass(frozen=True)
+class ComparisonPair:
+    """
+    The two filings a quarterly report compares: the newest one and
+    whatever it immediately follows.
+
+    `prior_is_annual` is True at a fiscal-year boundary, where the
+    quarter before Q1 is the 10-K. That is a real comparison, not a
+    degraded one, but it is NOT like-for-like: a 10-K's MD&A discusses a
+    full year and is written at length, so a Q1-vs-10-K diff shows far
+    more movement than a Q3-vs-Q2 diff for reasons that have nothing to
+    do with the business. The flag exists so the report can say so
+    instead of letting the reader read a structural artefact as news.
+    """
+    current: FilingRef
+    prior: Optional[FilingRef]
+    prior_is_annual: bool
+
+
+def _chronological_key(ref: FilingRef) -> date:
+    """
+    The date a filing's CONTENT belongs to (period of report), falling
+    back to when it was filed. Ordering by filed_date alone would be
+    wrong whenever a filer submits late or files an amended period out of
+    order; the discussion in a filing is about its period, not about the
+    day the lawyers finished.
+    """
+    return ref.period_of_report or ref.filed_date
+
+
+def latest_quarterly_pair(client: EdgarClient, cik: str) -> ComparisonPair:
+    """
+    The most recent 10-Q, paired with the filing that immediately
+    precedes it in time -- the previous 10-Q, or the 10-K when the newest
+    quarter is a Q1.
+
+    This is what makes the report about NEWS FLOW: what management said
+    this quarter that it did not say last quarter, and what it stopped
+    saying. Comparing two consecutive 10-Ks instead (the pipeline's
+    original behaviour) means a company that just published its Q3 gets
+    analysed on text that can be nine to twelve months old, and the
+    quarter that just came out is never read at all.
+
+    Raises FilingNotFoundError when the CIK has no 10-Q in
+    `filings.recent`. Returns `prior=None` -- rather than raising --
+    when it has exactly one filing on record: a current-quarter report
+    with no comparison is degraded, but it is still a report, and the
+    caller decides.
+    """
+    refs = list_filings(client, cik, ["10-Q", "10-K"])
+    quarterlies = [r for r in refs if r.form_type == "10-Q"]
+    if not quarterlies:
+        raise FilingNotFoundError(
+            f"No 10-Q filings found for CIK {cik} in recent submissions. "
+            f"This report compares consecutive quarters, so a company with "
+            f"no quarterly filings on record cannot be analysed this way."
+        )
+
+    current = max(quarterlies, key=_chronological_key)
+    cutoff = _chronological_key(current)
+    earlier = [
+        r for r in refs
+        if _chronological_key(r) < cutoff and r.accession_number != current.accession_number
+    ]
+    if not earlier:
+        return ComparisonPair(current=current, prior=None, prior_is_annual=False)
+
+    prior = max(earlier, key=_chronological_key)
+    return ComparisonPair(
+        current=current,
+        prior=prior,
+        prior_is_annual=prior.form_type == "10-K",
+    )

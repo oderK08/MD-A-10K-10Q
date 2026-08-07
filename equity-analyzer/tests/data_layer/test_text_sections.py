@@ -185,25 +185,55 @@ def test_html_to_text_leaves_a_genuine_bare_number_sentence_fragment_alone():
 # extracted Item 1A as 22 words. Two independent causes, both visible in
 # that run's own debug dump, reproduced verbatim here. ---
 
-def test_item_header_must_have_its_title_on_the_same_line_as_its_number():
+def test_a_heading_whose_number_and_title_are_on_separate_lines_is_matched():
     """
-    A table-of-contents row puts the item number and its title in
-    separate cells, which html_to_text renders on separate lines. The
-    header patterns used `\\s*` between the two, which matches newlines,
-    so a TOC row was indistinguishable from a real heading -- and being
-    earlier in the document, it won. Verbatim from the MSFT run's debug
-    dump.
+    Filers genuinely differ here and BOTH shapes are real headings:
+
+        Microsoft   "ITEM 1A. RISK FACTORS"
+        AAOI        "Item 1A. \\n \\n Risk Factors"
+
+    An earlier fix banned line breaks between the number and the title,
+    to stop a table-of-contents row being mistaken for a heading. That
+    was the wrong lever. Verbatim from a real AAOI run's debug dump:
+    "...furnishing them to, the SEC. \\n\\n \\n \\n Item 1A. \\n \\n Risk
+    Factors \\n\\n Investing in our common s..." -- Item 1A and Item 7
+    both became unextractable, and the run produced a report with no
+    filing text in it whatsoever.
     """
     import re
 
     from equity_analyzer.data_layer.text_sections import ITEM_PATTERNS
 
     pattern = re.compile(ITEM_PATTERNS["item_1a_risk_factors"][0], re.IGNORECASE)
-    toc_row = "Executive Officers Item 1A. \n\n\n\n Risk Factors Item 1B. \n\n Unresolved"
-    real_heading = "ITEM 1A. RISK FACTORS \n Our operations are subject to various risks."
+    assert pattern.search("Item 1A. \n \n Risk Factors \n\n Investing in our common") is not None
+    assert pattern.search("ITEM 1A. RISK FACTORS \n Our operations are subject to risks.") is not None
 
-    assert pattern.search(toc_row) is None
-    assert pattern.search(real_heading) is not None
+
+def test_the_toc_row_loses_to_the_real_heading_on_content_not_on_layout():
+    """
+    The TOC is separated from the real heading by what follows each of
+    them, not by forbidding a layout real filings use. A TOC entry is
+    followed within a few characters by the next TOC entry; a real
+    section by pages of prose.
+
+    Both rows below match the header pattern -- that is the point. The
+    ranking has to pick the right one.
+    """
+    from equity_analyzer.data_layer.text_sections import (
+        ITEM_PATTERNS,
+        _find_best_header_match,
+    )
+
+    body = " ".join(f"Risk sentence number {i}." for i in range(60))
+    text = (
+        "Business Item 1A. \n \n Risk Factors Item 1B. \n \n Unresolved Staff Comments\n"
+        f"Item 1A. \n \n Risk Factors \n\n {body}\n"
+        "Item 1B. \n \n Unresolved Staff Comments\n"
+    )
+    match = _find_best_header_match(text, ITEM_PATTERNS["item_1a_risk_factors"])
+    assert match is not None
+    # the real one, i.e. not the occurrence inside the first (TOC) line
+    assert match.start() > text.index("\n")
 
 
 def test_item_header_matches_a_word_split_by_the_printer():
@@ -225,18 +255,29 @@ def test_item_header_matches_a_word_split_by_the_printer():
 
 def test_a_repeated_bare_running_page_header_is_not_a_section_boundary():
     """
-    The same filing repeats "PART I \\n Item 1A" as a running header at
-    every page break INSIDE the section. With `\\s` spanning the newline,
-    that bare marker absorbed the following prose as its "title" and read
-    as a real section boundary, cutting the section at the first page
-    break. A real boundary has a title on the number's own line.
-    """
-    from equity_analyzer.data_layer.text_sections import ANY_ITEM_HEADER
+    The same Microsoft filing repeats "PART I \\n Item 1A" as a running
+    header at every page break INSIDE Item 1A. That bare marker binds to
+    whatever prose follows it and reads as a section boundary, cutting
+    the section at the first page break.
 
-    running_header = "our objectives. PART I \n Item 1A \n\n For all of these reasons, we may"
-    assert ANY_ITEM_HEADER.search(running_header) is None
-    # a genuine next-section heading is still found
-    assert ANY_ITEM_HEADER.search("ITEM 1B. UNRESOLVED STAFF COMMENTS \n None.") is not None
+    An item is never the boundary of ITSELF -- the next section always
+    carries a different number -- so the fix is to exclude the section's
+    own number while scanning for its end. The previous fix (requiring
+    the title on the number's own line) also stopped this, but broke
+    every filer that splits the two across lines; see
+    test_a_heading_whose_number_and_title_are_on_separate_lines_is_matched.
+    """
+    from equity_analyzer.data_layer.text_sections import _find_next_real_header
+
+    text = "PART I \n Item 1A \n\n For all of these reasons, we may be harmed.\n"
+    # scanning for the end of Item 1A: its own running header is not an end
+    assert _find_next_real_header(text, 0, exclude_number="1a") is None
+    # ...but it IS a real boundary for any other section
+    assert _find_next_real_header(text, 0, exclude_number="7") is not None
+    # and a genuine next-section heading is still found
+    assert _find_next_real_header(
+        "ITEM 1B. UNRESOLVED STAFF COMMENTS \n None.", 0, exclude_number="1a"
+    ) is not None
 
 
 def test_microsoft_shaped_filing_extracts_the_real_section_not_the_toc():
@@ -264,3 +305,44 @@ def test_microsoft_shaped_filing_extracts_the_real_section_not_the_toc():
     assert word_count > 200, f"section truncated to {word_count} words"
     # it must stop at the real next section, not run past it
     assert "UNRESOLVED STAFF COMMENTS" not in sections.item_1a_risk_factors
+
+
+def test_aaoi_shaped_filing_extracts_both_sections():
+    """
+    End-to-end reproduction of a real AAOI 10-K, from the run that
+    produced a report with no filing text at all. Every item number sits
+    on its own line, separated from its title -- in the TOC and in the
+    body alike -- and the TOC rows run each title straight into the next
+    item number.
+
+    Both Item 1A and Item 7 came back None on the real run, which the
+    pipeline then handed to the summariser as an empty fact sheet.
+    """
+    from equity_analyzer.data_layer.text_sections import extract_sections
+
+    risk_body = " ".join(f"Risk sentence number {i} about our operations." for i in range(40))
+    mdna_body = " ".join(f"Revenue discussion sentence number {i}." for i in range(40))
+    html = (
+        "<div>Part I Item 1.</div><div>Business Item 1A.</div>"
+        "<div>Risk Factors Item 1B.</div><div>Unresolved Staff Comments Item 7.</div>"
+        "<div>Management's Discussion and Analysis of Financial Condition</div>"
+        "<p>These reports are available on filing them with, or furnishing them to, the SEC.</p>"
+        "<div>Item 1A.</div><div>Risk Factors</div>"
+        f"<p>Investing in our common stock involves risk. {risk_body}</p>"
+        "<div>Item 1B.</div><div>Unresolved Staff Comments</div><p>None.</p>"
+        "<div>Item 6.</div><div>[Reserved]</div>"
+        "<div>Item 7.</div><div>Management's Discussion and Analysis of Financial Condition</div>"
+        f"<p>{mdna_body}</p>"
+        "<div>Item 7A.</div><div>Quantitative and Qualitative Disclosures about Market Risk</div>"
+        "<p>Not applicable.</p>"
+    )
+    sections = extract_sections(html)
+
+    assert sections.item_1a_risk_factors is not None
+    assert len(sections.item_1a_risk_factors.split()) > 200
+    assert "Unresolved Staff Comments" not in sections.item_1a_risk_factors
+
+    assert sections.item_7_mdna is not None
+    assert len(sections.item_7_mdna.split()) > 200
+    # stops at Item 7A rather than running to the end of the document
+    assert "Not applicable" not in sections.item_7_mdna
