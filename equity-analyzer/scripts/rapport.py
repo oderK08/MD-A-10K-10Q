@@ -59,6 +59,7 @@ from equity_analyzer.data_layer import (
     latest_quarterly_pair,
     list_filings,
 )
+from equity_analyzer.data_layer.alpha_vantage import RETRY_AFTER_REFUSAL_SECONDS
 from equity_analyzer.data_layer.earnings_expectations import (
     ExpectationsUnavailable,
     fetch_earnings_expectations,
@@ -96,9 +97,6 @@ CACHE_DIR = ROOT / "transcripts"
 REPORTS_DIR = ROOT / "rapports"
 DICTIONARY_PATH = ROOT / "data" / "Loughran-McDonald_MasterDictionary_1993-2025.csv"
 
-# Five requests a minute on Alpha Vantage's free tier. Only reached when
-# walking back through quarters the provider has not published yet.
-PAUSE_SECONDS = 13.0
 
 
 def _ok(message: str) -> None:
@@ -151,37 +149,55 @@ def _build_filing(client, cik, ref, ticker, company_name, facts, with_text: bool
 def _fetch_transcript(ticker, cik, start_label, client):
     """
     The most recent published call, from Alpha Vantage, falling back to
-    EDGAR when the provider refuses.
+    EDGAR when the provider will not answer.
 
-    THE FALLBACK IS NOT DECORATION. Alpha Vantage's free tier is 25
-    requests a day and a refusal (quota, premium tier, bad key) applies
-    to every subsequent request in the run, so without a second route a
-    single exhausted quota means no report at all. A minority of issuers
-    attach their prepared remarks or the full call to their earnings
-    8-K, and for those the document is free, already reachable with the
-    client this script holds, and is the genuine article straight from
-    the company.
+    A REFUSAL IS RETRIED ONCE BEFORE GIVING UP ON THE PROVIDER. Alpha
+    Vantage answers a burst limit ("please consider spreading out your
+    free API requests more sparingly") and an exhausted daily budget
+    with the same HTTP 200 and overlapping prose, so they cannot be told
+    apart by reading the message. They demand opposite reactions: the
+    first clears in seconds, the second lasts until tomorrow. Waiting
+    once and asking again is the only honest response to that ambiguity.
+    A burst limit then succeeds; a spent budget fails identically and
+    costs one wait.
 
-    It is a fallback and not the primary route because coverage is the
-    catch: most issuers never file one, and it always returns the
-    newest earnings 8-K rather than a requested quarter.
+    THE EDGAR FALLBACK IS NOT DECORATION. Without a second route, one
+    exhausted quota means no report at all. A minority of issuers attach
+    their prepared remarks or the full call to their earnings 8-K, and
+    for those the document is free, already reachable with the client
+    this script holds, and is the genuine article straight from the
+    company. It is a fallback and not the primary route because most
+    issuers never file one, and because it always returns the newest
+    earnings 8-K rather than a requested quarter.
 
     Returns (transcript, label, quarters_back).
     """
     source = CachedTranscriptSource(alpha_vantage_source(), TranscriptCache(CACHE_DIR))
+
     if ALPHAVANTAGE_API_KEY:
-        try:
-            call, label, back = find_latest_available(
-                source, ticker, cik, start_label, pause=lambda: time.sleep(PAUSE_SECONDS)
-            )
-            print(f"         ({source.hits} depuis le cache, {source.fetches} appel(s) API)")
-            return call, label, back
-        except TranscriptRefused as exc:
-            _warn(f"Alpha Vantage a refusé : {exc}")
-            _warn("Repli sur le 8-K de résultats déposé chez SEC.")
-        except TranscriptUnavailable as exc:
-            _warn(f"Pas de transcript chez Alpha Vantage : {exc}")
-            _warn("Repli sur le 8-K de résultats déposé chez SEC.")
+        # No explicit pause between attempts: every request through this
+        # source already goes through the shared provider throttle (see
+        # data_layer/alpha_vantage.py), so spacing them here as well
+        # would be two mechanisms doing one job and drifting apart.
+        for attempt in (1, 2):
+            try:
+                call, label, back = find_latest_available(source, ticker, cik, start_label)
+                print(f"         ({source.hits} depuis le cache, {source.fetches} appel(s) API)")
+                return call, label, back
+            except TranscriptRefused as exc:
+                _warn(f"Alpha Vantage a refusé : {exc}")
+                if attempt == 1:
+                    _warn(
+                        f"Un débit trop rapide et un quota épuisé se ressemblent : "
+                        f"nouvelle tentative dans {RETRY_AFTER_REFUSAL_SECONDS:.0f} s."
+                    )
+                    time.sleep(RETRY_AFTER_REFUSAL_SECONDS)
+                    continue
+                _warn("Deuxième refus : le quota du jour est probablement épuisé.")
+            except TranscriptUnavailable as exc:
+                _warn(f"Pas de transcript chez Alpha Vantage : {exc}")
+            break
+        _warn("Repli sur le 8-K de résultats déposé chez SEC.")
     else:
         _warn("ALPHAVANTAGE_API_KEY absent : seul le repli SEC 8-K est disponible.")
 
@@ -247,29 +263,16 @@ def main() -> int:
     except (EdgarClientError, FilingNotFoundError, ValueError) as exc:
         _warn(f"Pas de 10-K exploitable, red flags non calculés : {exc}")
 
-    # -- What the market expected --
-    expectations = expectation = history = None
-    expectations_reason = None
-    try:
-        expectations = fetch_earnings_expectations(TICKER)
-        expectation = expectations.at(quarter_filing.period_end)
-        if expectation is None:
-            expectations_reason = (
-                f"aucune ligne de consensus pour le trimestre clos le "
-                f"{quarter_filing.period_end}"
-            )
-            _warn(expectations_reason)
-        else:
-            history = expectations.history_before(expectation)
-            _ok(
-                f"Consensus : attendu {expectation.estimated_eps}, "
-                f"publié {expectation.reported_eps} ({expectation.verdict})"
-            )
-    except ExpectationsUnavailable as exc:
-        expectations_reason = str(exc)
-        _warn(f"Consensus indisponible : {exc}")
-
     # -- The call itself --
+    #
+    # DELIBERATELY BEFORE THE CONSENSUS, and the order is load bearing in
+    # two ways. The daily budget is 25 requests shared between the two,
+    # and they are not equally important: without a transcript there is
+    # no page 1 and no report, while a missing consensus degrades to a
+    # printed sentence. The scarce resource goes to the critical request
+    # first. And the transcript is what tells us WHICH quarter the call
+    # is for, so asking for the consensus afterwards means asking for the
+    # right quarter once instead of asking for the newest and correcting.
     try:
         call, label, quarters_back = _fetch_transcript(TICKER, cik, start_label, client)
     except TranscriptUnavailable as exc:
@@ -291,21 +294,28 @@ def main() -> int:
     if period_warning:
         _warn(f"ATTENTION : {period_warning}")
 
-    # The consensus was matched on the newest FILED quarter. If the call
-    # is older than that, the consensus must move with it or the report
-    # would measure a reading of one quarter against the expectations for
-    # another, which is worse than having no consensus at all.
-    if quarters_back and expectations is not None and expectation is not None:
+    # -- What the market expected, for the quarter of the call above --
+    expectation = history = None
+    expectations_reason = None
+    try:
+        expectations = fetch_earnings_expectations(TICKER)
         expectation = expectations.at(quarter_filing.period_end, quarters_back)
         if expectation is None:
             expectations_reason = (
-                f"pas de consensus publié pour le trimestre du call "
-                f"({quarters_back} trimestre(s) avant le dernier déposé)"
+                f"aucune ligne de consensus pour le trimestre du call "
+                f"(clos le {quarter_filing.period_end}"
+                + (f", {quarters_back} trimestre(s) plus tôt)" if quarters_back else ")")
             )
-            history = None
             _warn(expectations_reason)
         else:
             history = expectations.history_before(expectation)
+            _ok(
+                f"Consensus : attendu {expectation.estimated_eps}, "
+                f"publié {expectation.reported_eps} ({expectation.verdict})"
+            )
+    except ExpectationsUnavailable as exc:
+        expectations_reason = str(exc)
+        _warn(f"Consensus indisponible : {exc}")
 
     # -- The reading --
     print(f"  ...   Lecture du call par Claude ({ANTHROPIC_MODEL or 'modèle par défaut'})")

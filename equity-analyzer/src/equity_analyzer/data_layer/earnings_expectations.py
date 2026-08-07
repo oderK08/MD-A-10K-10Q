@@ -46,14 +46,9 @@ from typing import Optional
 
 import requests
 
+from .alpha_vantage import ALPHA_VANTAGE_URL, soft_error, throttle
+
 DEFAULT_TIMEOUT_SECONDS = 30.0
-
-ALPHA_VANTAGE_URL = "https://www.alphavantage.co/query"
-
-# Same soft-failure keys as transcript_source: Alpha Vantage answers an
-# exhausted quota, a premium-only endpoint and an unknown symbol with
-# HTTP 200 and a prose message, so `response.ok` is true for all three.
-_SOFT_ERROR_KEYS = ("Information", "Note", "Error Message")
 
 # How many quarters of beat/miss history travel with the current one.
 # Four is one fiscal year: enough to tell a habitual small beat from a
@@ -196,12 +191,9 @@ def parse_earnings_payload(ticker: str, payload) -> EarningsExpectations:
     matched on, and an entry that cannot be matched can only ever be
     shown next to the wrong quarter.
     """
-    for key in _SOFT_ERROR_KEYS:
-        message = payload.get(key) if isinstance(payload, dict) else None
-        if message:
-            raise ExpectationsRefused(
-                f"Alpha Vantage a refusé ({key}) : {str(message)[:300]}"
-            )
+    refusal = soft_error(payload)
+    if refusal:
+        raise ExpectationsRefused(f"Alpha Vantage a refusé ({refusal})")
 
     if not isinstance(payload, dict):
         raise ExpectationsUnavailable("réponse Alpha Vantage de forme inattendue")
@@ -261,6 +253,9 @@ def fetch_earnings_expectations(
     if not api_key:
         raise ExpectationsUnavailable(f"pas de clé Alpha Vantage dans ${api_key_env}")
 
+    # Shared with the transcript request: the rate limit belongs to the
+    # provider, not to this module (see data_layer/alpha_vantage.py).
+    throttle()
     try:
         response = requests.get(
             ALPHA_VANTAGE_URL,

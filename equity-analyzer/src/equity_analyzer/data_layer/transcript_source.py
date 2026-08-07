@@ -54,13 +54,9 @@ from typing import Optional
 
 import requests
 
-DEFAULT_TIMEOUT_SECONDS = 30.0
+from .alpha_vantage import SOFT_ERROR_KEYS as _SOFT_ERROR_KEYS, throttle
 
-# Keys under which vendors return a refusal alongside HTTP 200: an
-# exhausted quota, a premium-only endpoint, an unrecognised symbol. None
-# of these is signalled by a status code, so `response.ok` is true for
-# all of them.
-_SOFT_ERROR_KEYS = ("Information", "Note", "Error Message")
+DEFAULT_TIMEOUT_SECONDS = 30.0
 
 # The operator's handover lines, which mark where prepared remarks stop
 # and Q&A starts. Both halves are worth reading and they are worth
@@ -290,6 +286,11 @@ class HttpTranscriptSource(TranscriptSource):
     name: str = "transcript API"
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
     extra_params: dict = field(default_factory=dict)
+    # Called with no arguments just before the request goes out. This is
+    # how a provider's rate limit gets enforced without this generic
+    # adapter having to know which provider it is pointed at: the
+    # factory that knows wires the hook in (see alpha_vantage_source).
+    before_request: Optional[object] = None
 
     def fetch(self, ticker: str, cik: str, client=None, quarter: Optional[str] = None) -> CallTranscript:
         api_key = os.environ.get(self.api_key_env, "").strip()
@@ -304,6 +305,8 @@ class HttpTranscriptSource(TranscriptSource):
             params[self.api_key_param] = api_key
         else:
             headers[self.api_key_header] = api_key
+        if self.before_request is not None:
+            self.before_request()
         try:
             response = requests.get(
                 url,
@@ -430,6 +433,11 @@ def alpha_vantage_source(api_key_env: str = "ALPHAVANTAGE_API_KEY") -> HttpTrans
         date_field="quarter",
         period_field="quarter",
         name="Alpha Vantage",
+        # The consensus request in earnings_expectations goes to the same
+        # provider under the same key. Sharing one throttle is what stops
+        # a report firing both in the same millisecond and being told to
+        # slow down, which is exactly how the first live run failed.
+        before_request=throttle,
     )
 
 
