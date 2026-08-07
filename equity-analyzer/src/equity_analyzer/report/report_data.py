@@ -88,10 +88,14 @@ class ReportData:
     risk_factors_diff: SectionResult = None
     mdna_sentiment: SectionResult = None
     risk_factors_sentiment: SectionResult = None
-    # Opt-in only -- see report/ai_summary.py. Never set by
-    # build_report_data() itself; a caller attaches it explicitly via
-    # attach_ai_summary(report, api_key=...) after the free,
-    # deterministic report below is already built.
+    # Both opt-in, both set by an explicit caller AFTER the free,
+    # deterministic report below is already built -- never by
+    # build_report_data() itself. See report/theme_selection.py and
+    # report/ai_summary.py.
+    #   theme_selection: which sub-themes an analyst would watch, and
+    #     how that call was made (AI or a documented fallback).
+    #   ai_summary: the bullish/bearish read written over that selection.
+    theme_selection: SectionResult = None
     ai_summary: SectionResult = None
 
 

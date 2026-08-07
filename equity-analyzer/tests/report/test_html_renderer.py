@@ -3,7 +3,13 @@ from datetime import date, datetime, timezone
 from equity_analyzer.data_layer.models import FilingTextSections, FormType, PeriodDuration
 from equity_analyzer.diff.grouped_diff import DiffGroup, GroupedTextDiffResult
 from equity_analyzer.diff.text_diff import DiffSegment, TextDiffResult
-from equity_analyzer.report.html_renderer import _humanize_xbrl_tag, _text_diff_detail_html, render_html, render_trend_html
+from equity_analyzer.report.html_renderer import (
+    _humanize_xbrl_tag,
+    _text_diff_detail_html,
+    render_detail_html,
+    render_html,
+    render_trend_html,
+)
 from equity_analyzer.report.report_data import build_report_data
 from equity_analyzer.report.trend import build_trend_analysis
 from equity_analyzer.sentiment.lm_dictionary import LMDictionary
@@ -82,11 +88,37 @@ def test_renders_unavailable_reason_when_section_missing():
 
 
 def test_renders_altman_zone_and_piotroski_score():
+    """
+    The Altman zone is now words, not a colour class: the whole report
+    is greyscale by request, so severity has to survive being read in
+    black and white.
+    """
     report = build_report_data(_filing(), None, DICTIONARY)
     html = render_html(report)
     assert "Altman Z-Score" in html
-    assert "zone-" in html
+    assert "zone grise" in html or "zone sûre" in html or "zone détresse" in html
     assert "Piotroski F-Score" in html
+
+
+def test_report_uses_no_colour_anywhere():
+    """
+    "Je veux pas de couleur" -- asserted on the rendered document, not
+    just reviewed by eye, so a future style tweak can't quietly
+    reintroduce a green/red diff or a tinted callout. Greys (equal R=G=B)
+    are allowed; anything else is a colour.
+    """
+    import re as _re
+
+    report = build_report_data(_filing(), None, DICTIONARY)
+    for html in (render_html(report), render_detail_html(report)):
+        for hex_colour in _re.findall(r"#([0-9a-fA-F]{3,6})\b", html):
+            if len(hex_colour) == 3:
+                r, g, b = (c * 2 for c in hex_colour)
+            elif len(hex_colour) == 6:
+                r, g, b = hex_colour[0:2], hex_colour[2:4], hex_colour[4:6]
+            else:
+                continue
+            assert r.lower() == g.lower() == b.lower(), f"non-grey colour #{hex_colour}"
 
 
 def test_renders_diff_segments_for_mdna():
@@ -123,9 +155,12 @@ def test_renders_diff_segments_for_mdna():
         fiscal_year=2023,
     )
     report = build_report_data(current, prior, DICTIONARY)
-    html = render_html(report)
+    # The changed text lives in the companion "détail" document now --
+    # the two-page main report carries only counts and percentages.
+    html = render_detail_html(report)
     assert '<span class="segment-added">' in html
     assert '<span class="segment-removed">' in html
+    assert '<span class="segment-added">' not in render_html(report)
 
 
 def test_renders_modified_segment_as_inline_word_diff():
@@ -163,7 +198,7 @@ def test_renders_modified_segment_as_inline_word_diff():
         fiscal_year=2023,
     )
     report = build_report_data(current, prior, DICTIONARY)
-    html = render_html(report)
+    html = render_detail_html(report)
     assert '<div class="segment-modified">' in html
     assert '<span class="word-removed">fell</span>' in html
     assert '<span class="word-added">(grew)</span>' in html
@@ -172,15 +207,12 @@ def test_renders_modified_segment_as_inline_word_diff():
     assert "due to strong growth this year" in html
 
 
-def test_report_section_order_moves_sentiment_up_and_diff_detail_to_the_end():
+def test_main_report_is_summary_then_numbers_with_detail_split_out():
     """
-    Real user feedback: the detailed diff text (by far the longest,
-    most detailed reading material in the report) used to sit in the
-    middle of the page, and Sentiment (Loughran-McDonald) was isolated
-    at the very end even though it's an analysis of the same two text
-    sections as the diff. Requested order: every quick-scan number
-    (financials, red flags, diff SUMMARY, sentiment) up front, the full
-    diff TEXT detail last, right before the closing footer.
+    The requested two-document split: page 1 is the executive summary,
+    page 2 (after an explicit page break) is every number -- red flags,
+    per-sub-theme change, financials, tone. The changed TEXT is not in
+    this document at all; it's in the companion "détail" report.
     """
     current = _filing(
         text_sections=FilingTextSections(
@@ -205,17 +237,26 @@ def test_report_section_order_moves_sentiment_up_and_diff_detail_to_the_end():
     report = build_report_data(current, prior, DICTIONARY)
     html = render_html(report)
 
-    red_flags_idx = html.index("Red Flags")
-    diff_summary_idx = html.index("Changements textuels vs période précédente")
-    sentiment_idx = html.index("Sentiment (Loughran-McDonald)")
-    diff_detail_idx = html.index("Détail des changements textuels")
-    footer_idx = html.index('<p class="footer">')
+    summary_idx = html.index("Résumé exécutif")
+    break_idx = html.index('<div class="page-break">')
+    red_flags_idx = html.index("Red flags")
+    themes_idx = html.index("Changements par sous-thématique")
+    tone_idx = html.index("Tonalité (Loughran-McDonald)")
 
-    assert red_flags_idx < diff_summary_idx < sentiment_idx < diff_detail_idx < footer_idx
-    # the actual diff text itself must physically be in the detail
-    # section, not the summary one.
-    assert '<span class="segment-added">' not in html[diff_summary_idx:sentiment_idx]
-    assert '<span class="segment-added">' in html[diff_detail_idx:footer_idx]
+    # page 1 = summary, page 2 = the numbers, in that order
+    assert summary_idx < break_idx < red_flags_idx < themes_idx < tone_idx
+
+    # no changed text anywhere in the main report -- that's the whole
+    # point of splitting the detail out
+    assert '<span class="segment-added">' not in html
+    assert '<span class="segment-removed">' not in html
+    assert '<div class="segment-modified">' not in html
+
+    # exactly one page break: two pages, not three
+    assert html.count('class="page-break"') == 1
+
+    # ...and it really is in the detail document instead
+    assert '<span class="segment-added">' in render_detail_html(report)
 
 
 def test_renders_boilerplate_skip_note():
@@ -419,8 +460,10 @@ def test_ai_summary_shows_unavailable_reason_when_it_failed():
         ai_summary=SectionResult(value=None, unavailable_reason="no ANTHROPIC_API_KEY provided"),
     )
     html = render_html(report)
-    assert "Synthèse générée par IA" in html
-    assert "Indisponible" in html
+    # A failed AI call falls back to the computed digest rather than
+    # leaving page 1 blank -- but says plainly that the interpretive
+    # read is missing, and why.
+    assert "Résumé exécutif" in html
     assert "no ANTHROPIC_API_KEY provided" in html
 
 
@@ -526,3 +569,118 @@ def test_only_the_most_changed_matched_subthemes_show_full_text():
         assert heading in html, f"{heading} must still be mentioned, not silently dropped"
 
     assert "2 sous-thème(s) résumé(s)" in html
+
+
+# --- The two-page guarantee (user: "compacter, jamais déborder") ---
+
+def _worst_case_report():
+    """
+    The realistic worst case for page 2: the full cap of 10 selected
+    sub-themes, all with long headings, plus an over-length summary and
+    several failed Piotroski criteria. Anything heavier than this can't
+    occur -- MAX_SELECTED_THEMES bounds the table.
+    """
+    import dataclasses
+
+    from equity_analyzer.report.report_data import SectionResult
+    from equity_analyzer.report.theme_selection import attach_theme_selection
+
+    names = [
+        f"Risks Related to {topic}"
+        for topic in [
+            "Demand, Supply, and Manufacturing Capacity Constraints",
+            "Our Global Operating Business and International Expansion",
+            "Regulatory, Legal, Our Stock and Other Matters",
+            "Intellectual Property Protection and Third-Party Claims",
+            "Cybersecurity Incidents and Data Protection",
+            "Customer Concentration and Contractual Commitments",
+            "Talent Retention and Key Personnel Dependence",
+            "Climate, Environmental and Sustainability Obligations",
+            "Tax Matters and Transfer Pricing Arrangements",
+            "Debt Covenants and Access to Capital Markets",
+            "Acquisitions, Divestitures and Integration",
+            "Competition and Pricing Pressure in Core Markets",
+        ]
+    ]
+
+    def body(extra=""):
+        return "\n\n".join(
+            f"Sentence {i} about this risk with enough length to count as real content.{extra}"
+            for i in range(6)
+        )
+
+    prior_rf = "\n\n".join(f"{n}\n\n{body()}" for n in names)
+    current_rf = "\n\n".join(f"{n}\n\n{body(' Prices rose 5% this year.')}" for n in names)
+
+    prior_metrics = dict(_METRICS)
+    prior_metrics.update(revenue=2_000_000, net_income=-50_000, operating_cash_flow=-10_000)
+
+    current = _filing(
+        company_name="Very Long Company Name Corporation Incorporated",
+        text_sections=FilingTextSections(
+            item_1a_risk_factors=current_rf,
+            item_7_mdna="Revenue grew. Margin fell.",
+            is_risk_factors_boilerplate=False,
+        ),
+    )
+    prior = _filing(
+        company_name="Very Long Company Name Corporation Incorporated",
+        accession_number="acc-prior",
+        financials=make_financial_period(
+            fiscal_year=2023, fiscal_period="FY", duration=PeriodDuration.TWELVE_MONTH,
+            accession_number="acc-prior", period_end=date(2023, 12, 31), **prior_metrics,
+        ),
+        text_sections=FilingTextSections(
+            item_1a_risk_factors=prior_rf,
+            item_7_mdna="Revenue grew. Margin fell.",
+            is_risk_factors_boilerplate=False,
+        ),
+        fiscal_year=2023,
+    )
+    report = build_report_data(current, prior, DICTIONARY)
+    report = attach_theme_selection(report, api_key=None)
+    long_summary = " ".join(
+        f"Phrase numéro {i} du résumé exécutif avec de la matière." for i in range(60)
+    )
+    return dataclasses.replace(
+        report,
+        ai_summary=SectionResult(
+            value={"text": long_summary, "model": "test-model"}, unavailable_reason=None
+        ),
+    )
+
+
+def test_theme_selection_is_capped_at_ten():
+    from equity_analyzer.report.theme_selection import MAX_SELECTED_THEMES
+
+    report = _worst_case_report()
+    assert len(report.theme_selection.value.headings) == MAX_SELECTED_THEMES
+
+
+def test_main_report_fits_two_pages_even_in_the_worst_case():
+    """
+    The user asked for exactly two pages, compacting rather than
+    overflowing. This renders the heaviest report the pipeline can
+    produce and asserts the real page count of the real PDF -- the
+    stylesheet alone doesn't guarantee it (this content needs 3 pages at
+    natural size), the fitter does.
+    """
+    from equity_analyzer.report.pdf_renderer import page_count, render_pdf, render_pdf_fitted
+
+    html = render_html(_worst_case_report())
+    assert page_count(render_pdf(html)) > 2, (
+        "fixture no longer overflows -- it must, or this test proves nothing"
+    )
+    assert page_count(render_pdf_fitted(html, max_pages=2)) == 2
+
+
+def test_detail_report_is_not_page_capped():
+    """
+    The detail document is deliberately unbounded: capping it would mean
+    dropping changed text, which is the one thing this project never
+    does silently.
+    """
+    from equity_analyzer.report.pdf_renderer import page_count, render_pdf
+
+    pdf = render_pdf(render_detail_html(_worst_case_report()))
+    assert page_count(pdf) >= 1

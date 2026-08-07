@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import difflib
 from dataclasses import dataclass
+from typing import Optional
 
 from .text_diff import TextDiffResult, diff_text
 
@@ -66,7 +67,7 @@ def _is_heading_candidate(line: str) -> bool:
     return True
 
 
-def _split_into_groups(text: str) -> list:
+def split_into_groups(text: str) -> list:
     """
     Splits `text` into (heading, content) pairs in document order.
     `heading` is "" for any content appearing before the first detected
@@ -97,12 +98,60 @@ class DiffGroup:
     heading: str  # "" for the unheaded preamble/whole-text group
     status: str  # "matched" | "added" | "removed" (the sub-theme itself, not its content)
     diff: TextDiffResult
+    # Whether this sub-theme is part of the analyst-relevant selection
+    # (see report/theme_selection.py). Defaults True so a diff computed
+    # without any selection behaves exactly as before: every group counts.
+    selected: bool = True
+    # Rank within the selection, 0-based, most important first -- the
+    # order the selecting model returned. None for unselected groups.
+    selection_rank: Optional[int] = None
 
 
 @dataclass(frozen=True)
 class GroupedTextDiffResult:
     overall: TextDiffResult  # the exact same flat diff diff_text() would produce -- unchanged aggregate stats
     groups: list  # list[DiffGroup], in document order (prior's order, with insertions placed where they occur)
+
+    @property
+    def selected_groups(self) -> list:
+        """
+        The selected sub-themes, most important first. Falls back to
+        document order for groups with no rank (i.e. when no selection
+        was ever applied and everything defaults to selected).
+        """
+        chosen = [g for g in self.groups if g.selected]
+        return sorted(
+            chosen,
+            key=lambda g: g.selection_rank if g.selection_rank is not None else len(self.groups),
+        )
+
+
+def apply_theme_selection(result: GroupedTextDiffResult, headings: list) -> GroupedTextDiffResult:
+    """
+    Marks which of `result`'s sub-themes are in `headings` (the
+    analyst-relevant selection, most important first) WITHOUT dropping
+    the others: `overall` still covers the whole section, and every
+    group stays in `groups`. Unselected sub-themes are still counted and
+    still reported -- they're just not the ones the two-page report
+    details or the summary is written over.
+
+    An empty `headings` selects nothing rather than everything: it means
+    "the selector ran and found no sub-theme worth detailing", which is
+    a real answer and must not be silently inverted into "keep it all".
+    Callers that never selected simply don't call this function.
+    """
+    rank_by_heading = {heading: rank for rank, heading in enumerate(headings)}
+    regrouped = [
+        DiffGroup(
+            heading=g.heading,
+            status=g.status,
+            diff=g.diff,
+            selected=g.heading in rank_by_heading,
+            selection_rank=rank_by_heading.get(g.heading),
+        )
+        for g in result.groups
+    ]
+    return GroupedTextDiffResult(overall=result.overall, groups=regrouped)
 
 
 def diff_text_grouped(prior_text: str, current_text: str) -> GroupedTextDiffResult:
@@ -117,8 +166,8 @@ def diff_text_grouped(prior_text: str, current_text: str) -> GroupedTextDiffResu
     """
     overall = diff_text(prior_text, current_text)
 
-    prior_groups = _split_into_groups(prior_text)
-    current_groups = _split_into_groups(current_text)
+    prior_groups = split_into_groups(prior_text)
+    current_groups = split_into_groups(current_text)
     prior_headings = [h for h, _ in prior_groups]
     current_headings = [h for h, _ in current_groups]
 
@@ -154,4 +203,10 @@ def diff_text_grouped(prior_text: str, current_text: str) -> GroupedTextDiffResu
     return GroupedTextDiffResult(overall=overall, groups=groups)
 
 
-__all__ = ["DiffGroup", "GroupedTextDiffResult", "diff_text_grouped"]
+__all__ = [
+    "DiffGroup",
+    "GroupedTextDiffResult",
+    "apply_theme_selection",
+    "diff_text_grouped",
+    "split_into_groups",
+]

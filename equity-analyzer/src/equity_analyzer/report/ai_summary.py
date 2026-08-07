@@ -88,7 +88,8 @@ Ta reponse, en francais, structuree ainsi :
 
 1. VERDICT (1 phrase) : commence directement par "Plutot bullish", "Plutot bearish", "Mitige" ou "Neutre", suivi de la raison principale en une proposition. Ne noie pas le verdict au milieu d'un paragraphe -- c'est la premiere chose que le lecteur doit voir.
 2. PHRASES CLES (2 a 3) : cite VERBATIM, entre guillemets, les 2 ou 3 phrases reellement ajoutees/supprimees/reformulees les plus lourdes de sens, et pour chacune dis en une ligne pourquoi elle penche bullish ou bearish. Ne cite que du texte reellement present dans les donnees fournies -- jamais une phrase que tu reconstruis ou resumes en la presentant comme une citation. Une phrase SUPPRIMEE compte autant qu'une ajoutee : une societe qui retire un risque qu'elle mentionnait l'an dernier envoie un signal, dis-le.
-3. NUANCE (1 a 2 phrases) : ce qui va dans le sens inverse de ton verdict, ou ce qui manque pour trancher. Un verdict sans contrepartie honnete n'a pas de valeur.
+3. POINTS ATTENDUS (2 a 4 phrases) : les sous-thematiques fournies ci-dessous ont ete selectionnees en amont comme celles qu'un analyste couvrant cette societe surveillerait ce trimestre. Reprends-les et dis, pour celles qui comptent : ce que le filing dit dessus cette annee, et si c'est en ligne, meilleur ou moins bon que ce que la formulation precedente laissait attendre. Si une sous-thematique attendue n'a en fait pas bouge, c'est une information en soi -- dis-le au lieu de la passer sous silence.
+4. NUANCE (1 a 2 phrases) : ce qui va dans le sens inverse de ton verdict, ou ce qui manque pour trancher. Un verdict sans contrepartie honnete n'a pas de valeur.
 
 Comment peser une phrase -- raisonne sur ce qu'elle IMPLIQUE economiquement, ne te contente pas de la tonalite des mots :
 - Un fait chiffre concret pese plus qu'une formule prudente generique. Exemple : "we expect DRAM prices to increase approximately 5%" est fortement bullish (hausse de prix sur un produit cle = revenu et marge en hausse), meme si la phrase ne contient aucun mot "positif" au sens d'un dictionnaire.
@@ -100,7 +101,9 @@ Regles strictes, non negociables :
 2. Ton verdict porte sur la BALANCE DES CHANGEMENTS de ce filing, pas sur la valorisation du titre. Ne donne JAMAIS de recommandation d'achat/vente, ni d'objectif de cours, ni de conseil d'allocation -- "les changements de ce filing penchent bearish" est ce qu'on attend ; "vendez NVDA" ne l'est pas.
 3. Si les changements fournis sont trop minces ou trop cosmetiques pour trancher, dis "Neutre" et explique pourquoi, plutot que de forcer un verdict sur du bruit.
 4. Ne repete pas mecaniquement les chiffres deja affiches ailleurs dans le rapport (revenue, resultat net) sauf s'ils appuient directement ton verdict.
-5. Reponds uniquement avec le texte de l'analyse, sans titre, sans introduction du type "Voici l'analyse". Pas de numerotation apparente des trois parties -- enchaine-les naturellement en 2 ou 3 courts paragraphes."""
+5. Reponds uniquement avec le texte de l'analyse, sans titre, sans introduction du type "Voici l'analyse". Pas de numerotation apparente des parties, pas de liste a puces, pas de titres en gras -- enchaine en 3 ou 4 courts paragraphes de prose continue, comme une note d'analyste ecrite a la main.
+6. Ecris sobrement, dans le registre d'une note interne : pas de formule d'accroche, pas de conclusion qui resume ce qui vient d'etre dit, pas d'adverbe d'insistance empile ("particulierement significatif", "notablement", "il est important de noter que"). Va au fait.
+7. Longueur totale : 200 mots maximum. Le rapport ne reserve qu'une page a cette analyse, citations comprises."""
 
 
 def _fmt(value, suffix: str = "") -> str:
@@ -277,10 +280,32 @@ def build_prompt_context(report: ReportData) -> str:
             f"{rf.overall.similarity_ratio * 100:.1f}% similaire, "
             f"{rf.overall.added_word_count} mots ajoutes, {rf.overall.removed_word_count} mots supprimes"
         )
-        group_lines = _diff_group_lines(rf.groups)
+        # Only the sub-themes selected upstream as analyst-relevant (see
+        # report/theme_selection.py). `selected_groups` returns them
+        # ranked most-important-first, and falls back to every group in
+        # document order when no selection was ever applied -- so this
+        # stays correct whether or not the selection pass ran.
+        selected = rf.selected_groups
+        unselected_changed = sum(
+            1
+            for g in rf.groups
+            if not g.selected
+            and any(s.kind in ("added", "removed", "modified") for s in g.diff.segments)
+        )
+        group_lines = _diff_group_lines(selected)
         if group_lines:
-            lines.append("Sous-themes avec changement (avec les phrases reellement modifiees) :")
+            lines.append(
+                "Sous-thematiques retenues comme les plus suivies par les analystes, "
+                "par ordre d'importance (avec les phrases reellement modifiees) :"
+            )
             lines.extend(group_lines)
+        if unselected_changed:
+            # Stated rather than hidden: the model must know its view is
+            # partial, so it can't imply it reviewed the whole section.
+            lines.append(
+                f"({unselected_changed} autre(s) sous-thematique(s) ont aussi change mais "
+                f"n'ont pas ete retenues comme prioritaires -- ne te prononce pas dessus.)"
+            )
 
     if report.mdna_diff.available:
         md = report.mdna_diff.value
