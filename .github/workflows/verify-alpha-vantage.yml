@@ -1,0 +1,49 @@
+name: Vérifier Alpha Vantage (transcript dans le gratuit ?)
+
+# Tranche la seule question dont dépend tout le reste : l'endpoint
+# EARNINGS_CALL_TRANSCRIPT est-il utilisable avec une clé gratuite ?
+#
+# Les noms de champs, la forme de l'URL et le palier tarifaire sont tous
+# des suppositions lues de seconde main — le site du fournisseur est
+# inatteignable depuis l'environnement où le code a été écrit. Un appel
+# réel règle les trois d'un coup.
+#
+# Coûte 1 à 2 requêtes sur les 25 du jour. N'imprime jamais la clé.
+"on":
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Symbole à tester (IBM est l'exemple de leur propre doc)"
+        required: false
+        default: "IBM"
+      quarter:
+        description: "Trimestre, format AAAATN (ex: 2024Q1)"
+        required: false
+        default: "2024Q1"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: equity-analyzer
+    steps:
+      - name: Checkout du repo
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer les dépendances
+        run: |
+          pip install -r requirements.txt || true
+          pip install -e .
+
+      - name: Appeler l'endpoint et rapporter la forme réelle de la réponse
+        env:
+          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
+          VERIFY_TICKER: ${{ inputs.ticker }}
+          VERIFY_QUARTER: ${{ inputs.quarter }}
+        run: python scripts/verify_alpha_vantage.py
