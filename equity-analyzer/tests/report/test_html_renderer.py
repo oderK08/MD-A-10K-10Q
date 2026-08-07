@@ -4,7 +4,6 @@ from equity_analyzer.data_layer.models import FilingTextSections, FormType, Peri
 from equity_analyzer.diff.grouped_diff import DiffGroup, GroupedTextDiffResult
 from equity_analyzer.diff.text_diff import DiffSegment, TextDiffResult
 from equity_analyzer.report.html_renderer import (
-    _humanize_xbrl_tag,
     _text_diff_detail_html,
     render_detail_html,
     render_html,
@@ -73,11 +72,19 @@ def test_escapes_html_special_characters_in_company_name():
     assert "&lt;script&gt;" in html
 
 
-def test_renders_financial_highlights_table():
+def test_headline_figures_survive_the_removal_of_the_key_figures_table():
+    """
+    The "Chiffres clés" table was dropped from the report at the user's
+    request. Revenue/net income still reach the reader through the
+    computed executive-summary digest (the page-1 fallback used when no
+    AI summary was requested), so the figures aren't lost -- they just
+    aren't a table anymore.
+    """
     report = build_report_data(_filing(), None, DICTIONARY)
     html = render_html(report)
-    assert "Revenue" in html
     assert "$1,200,000" in html
+    assert "Chiffres clés" not in html
+    assert "Tag XBRL" not in html
 
 
 def test_renders_unavailable_reason_when_section_missing():
@@ -296,13 +303,6 @@ def test_renders_source_filing_traceability_link():
     assert "0000320193-24-000010-index.htm" in html
 
 
-def test_renders_data_completeness_percentage():
-    report = build_report_data(_filing(), None, DICTIONARY)
-    html = render_html(report)
-    assert "Complétude des données" in html
-    assert "%" in html
-
-
 def _trend_filing(year, **overrides):
     financials = make_financial_period(
         fiscal_year=year, fiscal_period="FY", duration=PeriodDuration.TWELVE_MONTH,
@@ -374,29 +374,6 @@ def test_mdna_heading_is_not_double_escaped():
     html = render_html(report)
     assert "MD&amp;amp;A" not in html
     assert "MD&amp;A" in html  # the correctly-escaped, single-encoded form
-
-
-def test_long_xbrl_tag_names_are_humanized_for_wrapping():
-    """
-    A raw camelCase XBRL concept name (e.g.
-    "RevenueFromContractWithCustomerExcludingAssessedTax") runs off the
-    page edge in the rendered PDF: xhtml2pdf respects neither
-    `word-break: break-all` nor `<wbr>`, confirmed by rendering real test
-    PDFs, so a long unbroken identifier has nowhere to wrap. Inserting
-    real spaces at camelCase boundaries is the fix that was actually
-    confirmed to work the same way.
-    """
-    assert _humanize_xbrl_tag("RevenueFromContractWithCustomerExcludingAssessedTax") == (
-        "Revenue From Contract With Customer Excluding Assessed Tax"
-    )
-    # the report factories tag every fact with the placeholder concept
-    # "TestConcept" -- still camelCase, so it's enough to confirm the
-    # humanizer is actually wired into the rendered table, not just
-    # correct in isolation.
-    report = build_report_data(_filing(), None, DICTIONARY)
-    html = render_html(report)
-    assert ">TestConcept<" not in html
-    assert ">Test Concept<" in html
 
 
 def test_trend_report_has_cover_page_and_page_break():
@@ -657,20 +634,54 @@ def test_theme_selection_is_capped_at_ten():
     assert len(report.theme_selection.value.headings) == MAX_SELECTED_THEMES
 
 
-def test_main_report_fits_two_pages_even_in_the_worst_case():
+def test_main_report_fits_two_pages_in_the_worst_case():
     """
-    The user asked for exactly two pages, compacting rather than
-    overflowing. This renders the heaviest report the pipeline can
-    produce and asserts the real page count of the real PDF -- the
-    stylesheet alone doesn't guarantee it (this content needs 3 pages at
-    natural size), the fitter does.
+    The deliverable: the heaviest report the pipeline can produce (the
+    full cap of 10 sub-themes, long headings, an over-length summary)
+    comes out at exactly two pages.
+
+    Note it now fits at NATURAL size -- dropping the "Chiffres clés"
+    table freed roughly the page it used to need. The fitter below is
+    therefore a safety net rather than load-bearing here, and
+    test_the_page_fitter_actually_compacts_overflowing_content proves
+    separately that the net isn't a no-op.
     """
-    from equity_analyzer.report.pdf_renderer import page_count, render_pdf, render_pdf_fitted
+    from equity_analyzer.report.pdf_renderer import page_count, render_pdf_fitted
 
     html = render_html(_worst_case_report())
-    assert page_count(render_pdf(html)) > 2, (
-        "fixture no longer overflows -- it must, or this test proves nothing"
+    assert page_count(render_pdf_fitted(html, max_pages=2)) == 2
+
+
+def test_the_page_fitter_actually_compacts_overflowing_content():
+    """
+    Proves the two-page guarantee has real teeth: content that genuinely
+    needs three pages comes back compacted to two. Deliberately synthetic
+    and oversized -- no real filing produces this -- so the mechanism
+    stays covered even though the actual report is now comfortably short.
+
+    Sized to a THREE-page overflow on purpose, which is the fitter's real
+    working range: measured, the compaction steps recover a 3-page
+    document but not a 4-page one (60 rows + 220 sentences still comes
+    out at 3). That limit is deliberate and documented in
+    `render_pdf_fitted`, which returns its tightest attempt rather than
+    raising -- a slightly long report beats no report. Asserting a range
+    the mechanism doesn't actually have would make this test a lie.
+    """
+    from equity_analyzer.report.html_renderer import _css
+    from equity_analyzer.report.pdf_renderer import page_count, render_pdf, render_pdf_fitted
+
+    rows = "".join(
+        f"<tr><td>Sous-thématique numéro {i} au titre volontairement long</td>"
+        f"<td>{i}%</td></tr>"
+        for i in range(50)
     )
+    html = (
+        f"<!doctype html><html><head><style>{_css()}</style></head><body>"
+        f"<h1>Test</h1><p>{'Phrase de résumé exécutif. ' * 180}</p>"
+        f'<div class="page-break"><h2>Tableau</h2><table>{rows}</table></div>'
+        "</body></html>"
+    )
+    assert page_count(render_pdf(html)) > 2, "fixture must overflow or this proves nothing"
     assert page_count(render_pdf_fitted(html, max_pages=2)) == 2
 
 

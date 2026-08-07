@@ -121,27 +121,6 @@ def _unavailable_html(section: SectionResult) -> str:
     return f'<p class="unavailable">Indisponible — {_e(section.unavailable_reason)}</p>'
 
 
-_CAMEL_CASE_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
-
-
-def _humanize_xbrl_tag(concept: str) -> str:
-    """
-    Inserts spaces at camelCase boundaries in an XBRL concept name (e.g.
-    "RevenueFromContractWithCustomerExcludingAssessedTax" -> "Revenue
-    From Contract With Customer Excluding Assessed Tax") so it wraps
-    across multiple lines in a table cell instead of overflowing the
-    page edge.
-
-    Confirmed necessary, and confirmed to be the only technique that
-    actually works, by rendering real reports and inspecting the pages:
-    xhtml2pdf respects neither `word-break: break-all` nor `<wbr>` (both
-    left a long unbroken tag name running off the page), but DOES wrap
-    normally at real spaces -- so inserting them is what's used here,
-    not word-break or wbr.
-    """
-    return _CAMEL_CASE_BOUNDARY_RE.sub(" ", concept)
-
-
 def _executive_summary_lines(report: ReportData) -> list:
     """
     Plain-language synthesis lines shown at the very top of the report,
@@ -320,35 +299,6 @@ def _render_header(report: ReportData) -> str:
       — déposé le {filing.filed_date.isoformat()}
       — CIK {_e(filing.cik)} — accession {_e(filing.accession_number)}{source_link}
     </p>
-    """
-
-
-def _render_financial_highlights(report: ReportData) -> str:
-    if not report.financial_highlights:
-        return '<h2>Chiffres clés</h2><p class="unavailable">Aucune donnée financière extraite pour ce filing.</p>'
-    rows = "\n".join(
-        f'<tr><td class="wide">{_e(h.label)}</td><td class="num">{_fmt_currency(h.value)}</td>'
-        f"<td>{_e(_humanize_xbrl_tag(h.concept)) if h.concept else '—'}</td></tr>"
-        for h in report.financial_highlights
-    )
-    completeness_note = ""
-    if report.financial_data_completeness is not None:
-        # One short line, not the previous three-line caveat: page 2 is
-        # tight, and the nuance (a missing metric isn't necessarily a gap
-        # -- some don't apply to a given sector) is documented in the
-        # README rather than re-explained on every report.
-        completeness_note = (
-            f'<p class="note">Complétude des données XBRL : '
-            f"<strong>{_fmt_pct(report.financial_data_completeness)}</strong> "
-            f"des métriques attendues résolues.</p>"
-        )
-    return f"""
-    <h2>Chiffres clés</h2>
-    {completeness_note}
-    <table>
-      <tr><th class="wide">Poste</th><th class="num">Valeur</th><th>Tag XBRL</th></tr>
-      {rows}
-    </table>
     """
 
 
@@ -799,7 +749,6 @@ def render_html(report: ReportData) -> str:
   <div class="page-break">
     {_render_red_flags(report)}
     {_render_theme_change_table(report)}
-    {_render_financial_highlights(report)}
     {_render_sentiment_section(report)}
     <p class="footer">
       Généré le {report.generated_at.date().isoformat()} à partir des données SEC EDGAR.
