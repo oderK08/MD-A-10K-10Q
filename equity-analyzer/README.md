@@ -12,7 +12,7 @@ compilés dans un rapport PDF structuré.
 | 2. Red Flags | ✅ Terminé (23 tests) | Altman Z-Score, Beneish M-Score, Piotroski F-Score |
 | 3. Diff textuel | ✅ Terminé (30 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
-| 5. Report Builder | ✅ Terminé (61 tests) | Rapport principal 2 pages + rapport « détail » séparé, en niveaux de gris, police Lato intégrée |
+| 5. Report Builder | ✅ Terminé (65 tests) | Rapport principal 2 pages + rapport « détail » séparé, en niveaux de gris, police Lato intégrée |
 | 6. Sélection + lecture IA (opt-in) | ✅ Terminé (26 tests) | Deux passes : l'IA choisit les sous-thématiques suivies par les analystes, Python les diffe, l'IA rédige le résumé exécutif dessus |
 
 ## Module 1 — Data Layer
@@ -555,12 +555,22 @@ suite de tests qui restait verte, qui a trouvé deux vrais bugs de rendu
 Refonte demandée après lecture d'un vrai rapport NVDA. Le rapport ne
 sortait plus un seul PDF long mais **deux documents** :
 
-- **`<TICKER>.pdf` — le rapport principal, exactement 2 pages.**
-  Page 1 : le résumé exécutif seul (la lecture de l'IA sur les
-  sous-thématiques retenues, plus la liste de ces sous-thématiques et
-  la façon dont elles ont été choisies). Page 2 : tous les chiffres —
-  red flags, % de changement par sous-thématique, chiffres clés,
-  tonalité.
+- **`<TICKER>.pdf`, le rapport principal, exactement 2 pages.**
+  Page 1 : le résumé exécutif seul, qui doit **remplir la page** (la
+  lecture de l'IA sur les sous-thématiques retenues, plus la liste de
+  ces sous-thématiques et la façon dont elles ont été choisies).
+  Page 2 : tous les chiffres, red flags, % de changement par
+  sous-thématique, tonalité.
+  Capacité mesurée, pas estimée : à cette taille de corps, la page 1
+  tient jusqu'à quelque part entre 850 et 899 mots (850 rend deux
+  pages, 900 en rend trois). Le prompt vise donc 650 à 780 mots et le
+  plafond de troncature (`_MAX_SUMMARY_WORDS`) est posé à 820, au-dessus
+  de cette fourchette : c'est un filet pour un modèle qui déborde, pas
+  la cible de travail. Deux tests figent la relation
+  (`test_a_summary_at_the_cap_still_leaves_the_report_at_two_pages`,
+  `test_an_overlong_summary_is_truncated_at_a_sentence_boundary_and_says_so`),
+  pour qu'un futur changement de style qui réduirait la capacité réelle
+  échoue en test plutôt que sur un vrai rapport.
 - **`<TICKER>_detail.pdf` — le rapport « détail », non plafonné.** Tout
   le texte réellement ajouté/supprimé/reformulé, sous-thématique par
   sous-thématique, les retenues d'abord. Volontairement sans limite de
@@ -583,6 +593,20 @@ la version ajustée fait exactement 2 pages.
 Si même l'étape la plus compacte déborde, la fonction renvoie ce rendu-là
 plutôt que de lever : un rapport un peu long est plus utile au lecteur
 que pas de rapport, et `page_count()` reste disponible pour vérifier.
+
+**Aucun tiret.** Demande explicite : les tirets cadratins utilisés comme
+ponctuation sont un marqueur de texte généré. Ils sont bannis des deux
+côtés : du gabarit du rapport (remplacés par des virgules, deux-points
+ou points médians ; le marqueur de cellule vide `—` devient `n/a`, un
+tiret restant un tiret) **et** de la réponse du modèle, via une règle
+dédiée dans le prompt système. Les traits d'union à l'intérieur des
+noms propres et identifiants (`10-K`, `Loughran-McDonald`, `Z-Score`,
+une date ISO) ne sont pas touchés : ce n'est pas ce qui était visé et
+les supprimer casserait de vrais mots. Tests :
+`test_no_dashes_anywhere_in_the_rendered_documents` (sur les deux
+documents rendus, bloc `<style>` exclu puisque les commentaires CSS
+n'atteignent jamais la page) et
+`test_the_ai_prompt_forbids_dashes_in_the_answer`.
 
 **Aucune couleur.** Tout ce que la feuille de style distinguait par la
 couleur passe par la graisse, un filet, un retrait ou un marqueur
@@ -677,7 +701,7 @@ distincts removed/added, pas un "modified" forcé).
 
 ### Tests
 
-61 tests, dont deux tests d'intégration bout-en-bout qui font tourner
+65 tests, dont deux tests d'intégration bout-en-bout qui font tourner
 **Module 1 → Module 5** sur les vraies fixtures (XBRL + HTML) jusqu'à un
 vrai PDF généré (vérifie les octets magiques `%PDF-`) — un pour un rapport
 single-période, un pour une tendance sur 2 exercices. Avec cette fixture
@@ -957,7 +981,7 @@ python -m pytest tests/report/test_ai_summary.py -v
 ## Statut : projet complet, validé contre de vraies données
 
 Les 5 modules principaux (+ le module 6 optionnel) sont terminés et
-testés (207 tests). Le pipeline a été validé
+testés (211 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,

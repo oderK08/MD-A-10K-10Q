@@ -331,16 +331,18 @@ def test_render_trend_html_shows_one_row_per_year():
     assert "2021" in html
     assert "2022" in html
     assert "2023" in html
-    assert "2021–2023" in html
+    assert "2021 à 2023" in html
 
 
 def test_render_trend_html_shows_unavailable_for_first_year_yoy_sections():
     filings = [_trend_filing(y) for y in (2021, 2022)]
     trend = build_trend_analysis(filings, DICTIONARY)
     html = render_trend_html(trend)
-    # Beneish/Piotroski show "—" for the first (oldest) year specifically,
-    # not a crash or a fabricated score.
-    assert 'class="unavailable">—' in html
+    # Beneish/Piotroski show "n/a" for the first (oldest) year
+    # specifically, not a crash or a fabricated score. (The marker used
+    # to be an em dash; dashes were removed from the report at the
+    # user's request, and an empty-cell em dash is still a dash.)
+    assert 'class="unavailable">n/a' in html
 
 
 # --- Regression tests for two bugs only caught by rendering a real PDF
@@ -459,7 +461,12 @@ def test_ai_summary_renders_text_model_badge_and_disclaimer():
     html = render_html(report)
     assert "Le risque X a été retiré cette année." in html
     assert "claude-haiku-4-5-20251001" in html
+    # The "not investment advice" safeguard stays...
     assert "ne constitue pas un conseil en investissement" in html
+    # ...but the "aucune connaissance externe sur la société" claim was
+    # removed at the user's request. It had also stopped being strictly
+    # true: the sub-theme selection pass does use sector knowledge.
+    assert "aucune connaissance externe" not in html
 
 
 # --- Regression tests for real user feedback on a Micron 10-K report:
@@ -695,3 +702,114 @@ def test_detail_report_is_not_page_capped():
 
     pdf = render_pdf(render_detail_html(_worst_case_report()))
     assert page_count(pdf) >= 1
+
+
+def test_no_dashes_anywhere_in_the_rendered_documents():
+    """
+    "Dans le texte je veux que tu arrêtes d'utiliser les tirets."
+
+    Checks the em dash, the en dash and the double hyphen: the three
+    forms used as PUNCTUATION. Ordinary hyphens inside names and
+    identifiers ("10-K", "Loughran-McDonald", "Z-Score", an ISO date)
+    are untouched, since those aren't the thing being objected to and
+    removing them would corrupt real words.
+
+    Asserted on the rendered documents rather than reviewed by eye, so a
+    later edit can't quietly reintroduce one.
+
+    The <style> block is stripped first: CSS comments never reach the
+    page, and this codebase's comment style uses " -- " throughout, so
+    including them would fail the test on something the reader can't
+    see.
+    """
+    import dataclasses
+    import re as _re
+
+    from equity_analyzer.report.report_data import SectionResult
+
+    report = build_report_data(_filing(), None, DICTIONARY)
+    report = dataclasses.replace(
+        report,
+        ai_summary=SectionResult(
+            value={"text": "Plutôt bullish. Les prix montent.", "model": "test-model"},
+            unavailable_reason=None,
+        ),
+    )
+    for name, html in (
+        ("main", render_html(report)),
+        ("detail", render_detail_html(report)),
+    ):
+        visible = _re.sub(r"<style>.*?</style>", "", html, flags=_re.DOTALL)
+        for dash in ("—", "–", " -- "):
+            assert dash not in visible, f"{name} report still contains {dash!r}"
+
+
+def test_the_ai_prompt_forbids_dashes_in_the_answer():
+    """
+    The report's own chrome is dash-free by construction (test above),
+    but most of page 1 is text the MODEL writes, and an em dash used as
+    an incise is a classic AI tell. The rule has to be in the prompt too.
+    """
+    from equity_analyzer.report.ai_summary import _SYSTEM_PROMPT
+
+    assert "TIRET" in _SYSTEM_PROMPT.upper()
+
+
+def test_a_summary_at_the_cap_still_leaves_the_report_at_two_pages():
+    """
+    The summary is meant to FILL page 1, so the cap sits close to what
+    the page actually holds. Measured: 850 words render two pages, 900
+    render three, and `_MAX_SUMMARY_WORDS` is set below that with margin.
+
+    This pins the relationship. If a later style change (bigger body
+    text, more leading, an extra line of chrome on page 1) shrinks the
+    real capacity below the cap, a summary at the cap starts spilling
+    and this fails, instead of the spill being discovered on a real
+    report.
+    """
+    import dataclasses
+
+    from equity_analyzer.report.html_renderer import _MAX_SUMMARY_WORDS
+    from equity_analyzer.report.pdf_renderer import page_count, render_pdf
+    from equity_analyzer.report.report_data import SectionResult
+
+    sentence = "Cette phrase de test a une longueur representative d'une note reelle. "
+    at_cap = " ".join((sentence * 60).split()[:_MAX_SUMMARY_WORDS])
+    report = build_report_data(_filing(), None, DICTIONARY)
+    report = dataclasses.replace(
+        report,
+        ai_summary=SectionResult(
+            value={"text": at_cap, "model": "test-model"}, unavailable_reason=None
+        ),
+    )
+    assert page_count(render_pdf(render_html(report))) == 2
+
+
+def test_an_overlong_summary_is_truncated_at_a_sentence_boundary_and_says_so():
+    """
+    The cap is a backstop, and it must degrade visibly: cut on a
+    sentence end, with a note pointing at the detail report, never
+    mid-word and never a silent drop.
+    """
+    import dataclasses
+
+    from equity_analyzer.report.html_renderer import _MAX_SUMMARY_WORDS
+    from equity_analyzer.report.report_data import SectionResult
+
+    sentence = "Cette phrase de test a une longueur representative d'une note reelle. "
+    too_long = sentence * 200  # comfortably past the cap
+    assert len(too_long.split()) > _MAX_SUMMARY_WORDS
+
+    report = build_report_data(_filing(), None, DICTIONARY)
+    report = dataclasses.replace(
+        report,
+        ai_summary=SectionResult(
+            value={"text": too_long, "model": "test-model"}, unavailable_reason=None
+        ),
+    )
+    html = render_html(report)
+    assert "Synthèse tronquée" in html
+    # the visible summary ends on a full stop, not a severed word
+    body = html.split('<div class="exec-summary">')[1].split("</div>")[0]
+    last_paragraph = body.split("<p>")[1].split("</p>")[0].strip()
+    assert last_paragraph.endswith(".")

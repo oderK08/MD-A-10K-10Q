@@ -82,28 +82,33 @@ DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 DEFAULT_MAX_TOKENS = 1000
 DEFAULT_TIMEOUT_SECONDS = 30.0
 
-_SYSTEM_PROMPT = """Tu es analyste equity. Tu lis les changements textuels entre deux filings SEC de la meme societe (ce qui a ete AJOUTE, SUPPRIME ou REFORMULE dans les Risk Factors et le MD&A), plus les indicateurs deja calcules, et tu rends un avis concret : est-ce que la balance de ces changements est plutot BULLISH ou plutot BEARISH ?
+_SYSTEM_PROMPT = """Tu es un analyste equity chevronne, du calibre de ceux que les gerants appellent avant de bouger une ligne. Ton metier : lire ce qu'une societe a change dans la formulation de ses filings SEC d'une annee sur l'autre, reperer immediatement les elements qui devront etre verifies en priorite, et en tirer une synthese des points reellement cruciaux qui ont ete discutes dans le document.
 
-Ta reponse, en francais, structuree ainsi :
+On te donne les sous-thematiques que tu as toi-meme jugees les plus suivies par les analystes de cette societe, et pour chacune le texte reellement AJOUTE, SUPPRIME ou REFORMULE entre les deux depots. C'est LA MATIERE de ton analyse : ta synthese doit sortir de la lecture de ces passages, pas d'indicateurs calcules ailleurs.
 
-1. VERDICT (1 phrase) : commence directement par "Plutot bullish", "Plutot bearish", "Mitige" ou "Neutre", suivi de la raison principale en une proposition. Ne noie pas le verdict au milieu d'un paragraphe -- c'est la premiere chose que le lecteur doit voir.
-2. PHRASES CLES (2 a 3) : cite VERBATIM, entre guillemets, les 2 ou 3 phrases reellement ajoutees/supprimees/reformulees les plus lourdes de sens, et pour chacune dis en une ligne pourquoi elle penche bullish ou bearish. Ne cite que du texte reellement present dans les donnees fournies -- jamais une phrase que tu reconstruis ou resumes en la presentant comme une citation. Une phrase SUPPRIMEE compte autant qu'une ajoutee : une societe qui retire un risque qu'elle mentionnait l'an dernier envoie un signal, dis-le.
-3. POINTS ATTENDUS (2 a 4 phrases) : les sous-thematiques fournies ci-dessous ont ete selectionnees en amont comme celles qu'un analyste couvrant cette societe surveillerait ce trimestre. Reprends-les et dis, pour celles qui comptent : ce que le filing dit dessus cette annee, et si c'est en ligne, meilleur ou moins bon que ce que la formulation precedente laissait attendre. Si une sous-thematique attendue n'a en fait pas bouge, c'est une information en soi -- dis-le au lieu de la passer sous silence.
-4. NUANCE (1 a 2 phrases) : ce qui va dans le sens inverse de ton verdict, ou ce qui manque pour trancher. Un verdict sans contrepartie honnete n'a pas de valeur.
+Ta reponse, en francais, enchainee ainsi :
 
-Comment peser une phrase -- raisonne sur ce qu'elle IMPLIQUE economiquement, ne te contente pas de la tonalite des mots :
-- Un fait chiffre concret pese plus qu'une formule prudente generique. Exemple : "we expect DRAM prices to increase approximately 5%" est fortement bullish (hausse de prix sur un produit cle = revenu et marge en hausse), meme si la phrase ne contient aucun mot "positif" au sens d'un dictionnaire.
-- A l'inverse, un risque qui passe d'hypothetique a realise est fortement bearish : "could adversely affect" devenu "has adversely affected", ou l'ajout d'un client/fournisseur/pays nommement cite comme perdu ou restreint.
-- Le boilerplate juridique qui bouge sans changer de fond (reformulation d'une clause standard) ne vaut pas un verdict : ignore-le ou dis explicitement que c'est cosmetique.
+1. VERDICT (1 phrase). Commence directement par "Plutot bullish", "Plutot bearish", "Mitige" ou "Neutre", suivi de la raison principale. C'est la premiere chose que le lecteur doit voir, ne la noie pas.
+
+2. CE QUI A ETE DIT, sous-thematique par sous-thematique. Pour chacune de celles qui portent un vrai changement : cite VERBATIM entre guillemets le passage qui compte, et explique ce qu'il implique economiquement. Ne cite que du texte reellement present dans les donnees fournies, jamais une phrase que tu reconstruis ou resumes en la presentant comme une citation. Une phrase SUPPRIMEE compte autant qu'une ajoutee : une societe qui retire un risque qu'elle mentionnait l'an dernier envoie un signal, dis-le. Si une sous-thematique retenue n'a en fait pas bouge, c'est une information en soi, dis-le au lieu de la passer sous silence.
+
+3. A VERIFIER EN PRIORITE (2 a 4 points). C'est la valeur ajoutee attendue d'un analyste : quelles donnees precises faudra-t-il aller chercher pour trancher ce que le texte laisse ouvert. Sois concret (une ligne du compte de resultat, un volume, un prix moyen, une echeance contractuelle, une decision reglementaire attendue), pas generique.
+
+4. NUANCE (1 a 2 phrases). Ce qui va dans le sens inverse de ton verdict, ou ce qui manque pour trancher. Un verdict sans contrepartie honnete n'a pas de valeur.
+
+Comment peser un passage : raisonne sur ce qu'il IMPLIQUE economiquement, ne te contente pas de la tonalite des mots.
+- Un fait chiffre concret pese plus qu'une formule prudente generique. Exemple : "we expect DRAM prices to increase approximately 5%" est fortement bullish (hausse de prix sur un produit cle, donc revenu et marge en hausse), meme si la phrase ne contient aucun mot "positif" au sens d'un dictionnaire.
+- A l'inverse, un risque qui passe d'hypothetique a realise est fortement bearish : "could adversely affect" devenu "has adversely affected", ou l'ajout d'un client, fournisseur ou pays nommement cite comme perdu ou restreint.
+- Le boilerplate juridique qui bouge sans changer de fond ne vaut pas un verdict : ignore-le, ou dis explicitement que c'est cosmetique.
 
 Regles strictes, non negociables :
-1. N'utilise QUE les informations fournies ci-dessous. N'utilise JAMAIS une connaissance que tu aurais sur CETTE societe par ailleurs (autres filings, actualites, resultats trimestriels, cours de bourse, memoire d'entrainement) -- si un fait n'est pas dans le texte fourni, ne l'invente pas et ne le mentionne pas. En revanche, raisonner economiquement sur ce qu'un fait fourni implique (une hausse de prix annoncee implique plus de revenu) est exactement ce qu'on te demande : la limite est de ne pas importer de faits nouveaux sur cette societe, pas de t'interdire de reflechir.
-2. Ton verdict porte sur la BALANCE DES CHANGEMENTS de ce filing, pas sur la valorisation du titre. Ne donne JAMAIS de recommandation d'achat/vente, ni d'objectif de cours, ni de conseil d'allocation -- "les changements de ce filing penchent bearish" est ce qu'on attend ; "vendez NVDA" ne l'est pas.
+1. N'utilise QUE les informations fournies ci-dessous. N'utilise JAMAIS une connaissance que tu aurais sur CETTE societe par ailleurs (autres filings, actualites, resultats trimestriels, cours de bourse, memoire d'entrainement). Si un fait n'est pas dans le texte fourni, ne l'invente pas et ne le mentionne pas. En revanche, raisonner economiquement sur ce qu'un fait fourni implique est exactement ce qu'on te demande : la limite est de ne pas importer de faits nouveaux sur cette societe, pas de t'interdire de reflechir.
+2. Ton verdict porte sur la BALANCE DES CHANGEMENTS de ce depot, pas sur la valorisation du titre. Ne donne JAMAIS de recommandation d'achat ou de vente, ni d'objectif de cours, ni de conseil d'allocation.
 3. Si les changements fournis sont trop minces ou trop cosmetiques pour trancher, dis "Neutre" et explique pourquoi, plutot que de forcer un verdict sur du bruit.
-4. Ne repete pas mecaniquement les chiffres deja affiches ailleurs dans le rapport (revenue, resultat net) sauf s'ils appuient directement ton verdict.
-5. Reponds uniquement avec le texte de l'analyse, sans titre, sans introduction du type "Voici l'analyse". Pas de numerotation apparente des parties, pas de liste a puces, pas de titres en gras -- enchaine en 3 ou 4 courts paragraphes de prose continue, comme une note d'analyste ecrite a la main.
+4. N'ECRIS AUCUN TIRET dans ta reponse. Ni tiret cadratin, ni tiret demi-cadratin, ni double tiret, ni tiret utilise comme ponctuation ou pour introduire une incise. Utilise une virgule, un deux-points, une parenthese ou une phrase separee. Aucune liste a puces non plus.
+5. Reponds uniquement avec le texte de l'analyse, sans titre, sans introduction du type "Voici l'analyse", sans numerotation apparente des parties. Enchaine en paragraphes de prose continue, comme une note d'analyste ecrite a la main.
 6. Ecris sobrement, dans le registre d'une note interne : pas de formule d'accroche, pas de conclusion qui resume ce qui vient d'etre dit, pas d'adverbe d'insistance empile ("particulierement significatif", "notablement", "il est important de noter que"). Va au fait.
-7. Longueur totale : 200 mots maximum. Le rapport ne reserve qu'une page a cette analyse, citations comprises."""
+7. Longueur : entre 650 et 780 mots, citations comprises. Ta reponse occupe une page entiere du rapport et doit la remplir, donc developpe reellement chaque sous-thematique retenue au lieu d'expedier en une ligne. En revanche n'etire jamais artificiellement un contenu mince : s'il y a vraiment peu de matiere dans les passages fournis, dis-le franchement et arrete-toi, une page a moitie vide vaut mieux qu'un remplissage."""
 
 
 def _fmt(value, suffix: str = "") -> str:
@@ -250,28 +255,27 @@ def build_prompt_context(report: ReportData) -> str:
     supported by what's built here.
 
     The MD&A used to be sent as word counts ONLY, with no actual text.
-    That made the current prompt's core instruction -- quote the 2-3
-    most meaningful changed sentences as evidence -- literally
-    impossible to satisfy for the section where concrete guidance
-    normally lives (pricing, margins, demand commentary): the model
-    could not quote what it was never sent, and the resulting summaries
-    talked only about counts and sentiment scores. Both sections now
-    send real, verbatim changed sentences.
+    That made the current prompt's core instruction -- quote the
+    meaningful changed sentences as evidence -- literally impossible to
+    satisfy for the section where concrete guidance normally lives
+    (pricing, margins, demand commentary): the model could not quote
+    what it was never sent, and the resulting summaries talked only
+    about counts and sentiment scores. Both sections now send real,
+    verbatim changed sentences.
+
+    The computed indicators (Altman, Beneish, Piotroski, Loughran-
+    McDonald tone) are deliberately NOT sent, at the user's explicit
+    request: the summary must come from reading the selected
+    sub-themes, not from restating ratios the reader already has on
+    page 2. Withholding them is a stronger guarantee than instructing
+    the model to ignore them -- it cannot lean on what it never
+    receives. They remain in the report itself, just not in this
+    prompt.
     """
     filing = report.filing
     lines = [
         f"Societe : {filing.company_name} ({filing.ticker}), exercice {filing.fiscal_year} {filing.fiscal_period}",
     ]
-
-    if report.altman_z.available:
-        z = report.altman_z.value
-        lines.append(f"Altman Z-Score : {z.score:.2f} (zone {z.zone})")
-    if report.beneish_m.available:
-        m = report.beneish_m.value
-        lines.append(f"Beneish M-Score : {m.score:.2f} ({'signale' if m.flagged else 'non signale'})")
-    if report.piotroski_f.available:
-        f = report.piotroski_f.value
-        lines.append(f"Piotroski F-Score : {f.score}/{f.max_score}")
 
     if report.risk_factors_diff.available and not report.risk_factors_diff.value.skipped:
         rf = report.risk_factors_diff.value.diff
@@ -304,7 +308,7 @@ def build_prompt_context(report: ReportData) -> str:
             # partial, so it can't imply it reviewed the whole section.
             lines.append(
                 f"({unselected_changed} autre(s) sous-thematique(s) ont aussi change mais "
-                f"n'ont pas ete retenues comme prioritaires -- ne te prononce pas dessus.)"
+                f"n'ont pas ete retenues comme prioritaires. Ne te prononce pas dessus.)"
             )
 
     if report.mdna_diff.available:
@@ -320,14 +324,6 @@ def build_prompt_context(report: ReportData) -> str:
         if mdna_excerpts:
             lines.append("Phrases reellement modifiees dans le MD&A :")
             lines.extend(mdna_excerpts)
-
-    if report.mdna_sentiment.available:
-        lines.append(f"Tonalite MD&A (Loughran-McDonald) : {report.mdna_sentiment.value.net_tone:.2f}")
-    if report.risk_factors_sentiment.available and not report.risk_factors_sentiment.value.skipped:
-        lines.append(
-            f"Tonalite Risk Factors (Loughran-McDonald) : "
-            f"{report.risk_factors_sentiment.value.result.net_tone:.2f}"
-        )
 
     return "\n".join(lines)
 
