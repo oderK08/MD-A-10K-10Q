@@ -180,3 +180,47 @@ def test_a_company_with_a_plain_mp3_is_the_best_non_edgar_outcome():
     coverage = survey_ticker("TEST", CIK, edgar_client=client, page_fetcher=_Fetcher(html))
     assert coverage.verdict == "audio direct"
     assert coverage.direct_audio_links == ("https://cdn.example.com/q3.mp3",)
+
+
+# --- the distinction the first real run got wrong ------------------------
+
+
+def test_a_company_with_no_ir_address_is_not_reported_as_offering_nothing():
+    """
+    The first real run of this survey returned "rien trouvé" for a
+    company whose IR page was never even fetched, because SEC carried no
+    address for it. That reads as a measurement and is not one. The two
+    must have different verdicts.
+    """
+    client = _EdgarClient(_submissions(ir_url=None))
+    coverage = survey_ticker("MSFT", CIK, edgar_client=client, page_fetcher=_Fetcher("<html/>"))
+
+    assert coverage.verdict == "IR non lue"
+    assert coverage.ir_page_read is False
+    assert "pas d'URL IR" in coverage.ir_note
+
+
+def test_the_missing_address_note_names_the_fields_sec_did_return():
+    """
+    Same discipline as the Alpha Vantage check: when a guess about
+    someone else's payload is wrong, the output should say what the
+    right answer is rather than leaving a silent hole.
+    """
+    client = _EdgarClient(_submissions(ir_url=None))
+    client._submissions["name"] = "MICROSOFT CORP"
+    client._submissions["sicDescription"] = "Services-Prepackaged Software"
+
+    coverage = survey_ticker("MSFT", CIK, edgar_client=client, page_fetcher=_Fetcher("<html/>"))
+    assert "name" in coverage.ir_note
+    assert "sicDescription" in coverage.ir_note
+
+
+def test_a_page_actually_read_and_matching_nothing_is_a_real_finding():
+    client = _EdgarClient(_submissions(ir_url="https://ir.example.com"))
+    coverage = survey_ticker(
+        "TEST", CIK, edgar_client=client,
+        page_fetcher=_Fetcher("<p>Our next earnings call will be announced.</p>"),
+    )
+    assert coverage.ir_page_read is True
+    assert coverage.verdict == "rien trouvé"
+    assert coverage.ir_note is None

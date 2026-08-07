@@ -151,6 +151,14 @@ class TranscriptCoverage:
     fetch_routes: tuple = ()
     direct_audio_links: tuple = ()
     registration_gated: bool = False
+    # Whether the IR page was actually READ. Without this, a company
+    # whose address could not be found and one whose page was read and
+    # matched nothing both report as "rien trouvé" -- and the first
+    # means the survey has a hole in it while the second is a real
+    # measurement. The first run of this survey collapsed exactly that
+    # way and reported an empty result that looked like a finding.
+    ir_page_read: bool = False
+    ir_note: Optional[str] = None   # why the page was not read, when it was not
     error: Optional[str] = None
 
     @property
@@ -164,24 +172,44 @@ class TranscriptCoverage:
             return "gated" if self.registration_gated else "vendeur"
         if self.error:
             return "erreur"
+        if not self.ir_page_read:
+            # Checked BEFORE "rien trouvé": the survey never got to
+            # look, so there is no finding here to report either way.
+            return "IR non lue"
         return "rien trouvé"
 
 
 def investor_relations_url(submissions: dict) -> Optional[str]:
     """
-    The company's IR page, taken from SEC's own submissions record.
+    The company's IR page from SEC's own submissions record, when it is
+    there.
 
-    Worth doing rather than guessing at "ir.<company>.com": the issuer
-    told the SEC where it is, so the address is sourced rather than
-    constructed. Several key spellings are tried because this field is
-    not part of the documented core of the endpoint and should not be
-    relied on to keep one name.
+    Sourcing the address beats constructing one -- the issuer told the
+    SEC where it is. But this field is NOT part of the documented core
+    of the endpoint, and the first real run of this survey suggests SEC
+    frequently omits it: every company came back with no IR page and no
+    error, which is what an absent field looks like. So this returns
+    None rather than falling back to a guessed hostname, and the caller
+    records that the page was never read instead of reporting an empty
+    finding.
     """
     for key in _IR_URL_KEYS:
-        value = (submissions.get(key) or "").strip()
-        if value:
+        value = submissions.get(key)
+        if isinstance(value, str) and value.strip():
+            value = value.strip()
             return value if value.startswith("http") else f"https://{value}"
     return None
+
+
+def submissions_shape(submissions: dict) -> str:
+    """
+    The top-level keys SEC actually returned, for the survey to print.
+
+    The same discipline as the Alpha Vantage check: when a guess about
+    someone else's payload turns out wrong, the output should say what
+    the right answer is instead of leaving a silent hole.
+    """
+    return ", ".join(sorted(k for k in submissions if not isinstance(submissions[k], (dict, list))))
 
 
 def detect_vendors(html: str) -> tuple:
@@ -266,6 +294,7 @@ def survey_ticker(
 
     exhibit_name = None
     errors = []
+    ir_note = None
 
     try:
         refs = list_earnings_8ks(edgar_client, cik, limit=1)
@@ -280,15 +309,23 @@ def survey_ticker(
     routes = ()
     audio = ()
     gated = False
+    ir_page_read = False
     try:
         submissions = edgar_client.fetch_submissions(cik)
         ir_url = investor_relations_url(submissions)
+        if ir_url is None:
+            # Kept out of `error`, which is for things that went wrong.
+            # A missing address is a gap in the survey's inputs, and it
+            # gets its own verdict so it can never be read as a finding
+            # about the company.
+            ir_note = f"pas d'URL IR dans les données SEC (champs: {submissions_shape(submissions)})"
     except Exception as exc:  # noqa: BLE001
         errors.append(f"submissions: {exc}")
 
     if ir_url and page_fetcher is not None:
         try:
             html = page_fetcher.get(ir_url)
+            ir_page_read = True
             signatures = detect_vendors(html)
             vendors = tuple(s.vendor for s in signatures)
             routes = tuple(s.fetch_route for s in signatures)
@@ -306,6 +343,8 @@ def survey_ticker(
         fetch_routes=routes,
         direct_audio_links=audio,
         registration_gated=gated,
+        ir_page_read=ir_page_read,
+        ir_note=ir_note,
         error="; ".join(errors) or None,
     )
 
