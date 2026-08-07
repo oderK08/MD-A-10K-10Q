@@ -9,14 +9,15 @@ which showed only the built-in Helvetica). Only an `@font-face` rule
 pointing at an actual `.ttf` path gets the font embedded -- verified the
 same way, `pdffonts` then reports the subsetted family with `emb yes`.
 
-Why Lato rather than the requested Seravek: Seravek is a proprietary
-Apple font, shipped with macOS only. It is not present on the GitHub
-Actions runners that generate these reports, and its licence does not
-permit bundling it in this repository. Lato was chosen (explicitly, by
-the user, over keeping Seravek as a Mac-only CSS fallback) as the
-closest freely-redistributable humanist sans: same warm, slightly
-editorial feel, and available as a plain apt package (`fonts-lato`) so
-CI and a developer machine render identically.
+Why Lato: Seravek was requested first, but it is a proprietary Apple
+font shipped with macOS only -- absent from the GitHub Actions runners
+that generate these reports, and not licensed for bundling here. Lato
+was chosen instead as the closest freely-redistributable humanist sans:
+same warm, slightly editorial feel, and available as a plain apt package
+(`fonts-lato`) so CI and a developer machine render identically. Seravek
+is not referenced anywhere, not even as a CSS fallback -- the user's
+instruction was not to use it, and a Mac-only fallback would have meant
+the same report rendering in two different faces.
 
 Degrades honestly: when no font file is found, `font_face_css()` returns
 "" and the stylesheet's own generic `sans-serif` stack applies. The
@@ -90,5 +91,11 @@ def body_font_stack() -> str:
     """
     The `font-family` value for body text. Always ends in a generic
     fallback so text stays readable when the font file is missing.
+
+    Seravek is deliberately NOT in this stack. An earlier version listed
+    it so the HTML would pick it up on a Mac, but that meant the same
+    report rendered in two different faces depending on where it was
+    opened -- and the user's instruction was simply not to use Seravek.
+    One face everywhere is the point.
     """
-    return f"{BODY_FONT_FAMILY}, 'Lato', 'Seravek', sans-serif"
+    return f"{BODY_FONT_FAMILY}, 'Lato', sans-serif"

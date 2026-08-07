@@ -13,7 +13,7 @@ compilés dans un rapport PDF structuré.
 | 3. Diff textuel | ✅ Terminé (30 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
 | 5. Report Builder | ✅ Terminé (59 tests) | Rapport principal 2 pages + rapport « détail » séparé, en niveaux de gris, police Lato intégrée |
-| 6. Sélection + lecture IA (opt-in) | ✅ Terminé (23 tests) | Deux passes : l'IA choisit les sous-thématiques suivies par les analystes, Python les diffe, l'IA rédige le résumé exécutif dessus |
+| 6. Sélection + lecture IA (opt-in) | ✅ Terminé (24 tests) | Deux passes : l'IA choisit les sous-thématiques suivies par les analystes, Python les diffe, l'IA rédige le résumé exécutif dessus |
 
 ## Module 1 — Data Layer
 
@@ -587,6 +587,13 @@ Si le fichier est absent, `font_face_css()` renvoie `""` et la pile
 générique s'applique : le rapport se génère quand même, simplement dans
 la police par défaut.
 
+**Seravek n'est référencée nulle part**, pas même en repli CSS. Une
+première version la gardait en tête de pile pour qu'un Mac l'utilise à
+l'ouverture du HTML — mais ça faisait rendre le même rapport dans deux
+polices différentes selon la machine, et la consigne était simplement de
+ne pas l'utiliser. Une seule police partout. Test :
+`test_seravek_is_never_referenced`.
+
 ### Rendu du diff par sous-thème : condenser sans jamais cacher
 
 Retour utilisateur sur un vrai rapport Micron généré en conditions
@@ -891,7 +898,7 @@ log du run indique quel modèle a réellement produit les synthèses.
 
 ### Tests
 
-23 tests, tous hors-ligne : `build_prompt_context` et `select_key_subthemes` (purs, sans réseau) et
+24 tests, tous hors-ligne : `build_prompt_context` et `select_key_subthemes` (purs, sans réseau) et
 le traitement des réponses succès/échec via des réponses HTTP simulées.
 Le chemin d'erreur HTTP réel (401 avec une fausse clé) a été vérifié
 manuellement contre la vraie API pendant le développement — network
@@ -907,7 +914,7 @@ python -m pytest tests/report/test_ai_summary.py -v
 ## Statut : projet complet, validé contre de vraies données
 
 Les 5 modules principaux (+ le module 6 optionnel) sont terminés et
-testés (201 tests). Le pipeline a été validé
+testés (202 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,
