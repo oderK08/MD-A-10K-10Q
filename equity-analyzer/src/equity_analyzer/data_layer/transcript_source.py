@@ -56,6 +56,12 @@ import requests
 
 DEFAULT_TIMEOUT_SECONDS = 30.0
 
+# Keys under which vendors return a refusal alongside HTTP 200: an
+# exhausted quota, a premium-only endpoint, an unrecognised symbol. None
+# of these is signalled by a status code, so `response.ok` is true for
+# all of them.
+_SOFT_ERROR_KEYS = ("Information", "Note", "Error Message")
+
 # The operator's handover lines, which mark where prepared remarks stop
 # and Q&A starts. Both halves are worth reading and they are worth
 # reading DIFFERENTLY: prepared remarks are scripted and diff cleanly
@@ -251,6 +257,19 @@ class HttpTranscriptSource(TranscriptSource):
             payload = response.json()
         except ValueError as exc:
             raise TranscriptUnavailable(f"{self.name} returned non-JSON: {exc}") from exc
+
+        # A refusal dressed as a success. Alpha Vantage -- and it is not
+        # alone -- answers an exhausted quota, a premium-only endpoint
+        # and an unknown symbol with HTTP 200 and a prose message under
+        # "Information" or "Note", carrying no data. Checked BEFORE
+        # looking for the transcript field, because otherwise all three
+        # surface as "no usable 'transcript'", which points the reader
+        # at the field names when the real problem is the quota. That
+        # exact confusion cost a debugging round on the first live run.
+        for key in _SOFT_ERROR_KEYS:
+            message = payload.get(key) if isinstance(payload, dict) else None
+            if message:
+                raise TranscriptUnavailable(f"{self.name} a refusé ({key}) : {str(message)[:300]}")
 
         # Vendors return either the object or a one-element list of them.
         if isinstance(payload, list):
