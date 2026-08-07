@@ -118,3 +118,43 @@ def test_the_word_count_is_carried_for_provenance(monkeypatch):
     analysis = analyse_call("MSFT", "2026Q3", TRANSCRIPT, api_key="sk-test")
     assert analysis.transcript_words == len(TRANSCRIPT.split())
     assert analysis.quarter == "2026Q3"
+
+
+def test_temperature_is_omitted_for_models_that_reject_it(monkeypatch):
+    """
+    The Claude 5 family answers HTTP 400 "`temperature` is deprecated
+    for this model". Sending it unconditionally made those models
+    unusable -- and the failure landed after the transcript had already
+    been fetched and paid for.
+    """
+    captured = {}
+    monkeypatch.setattr(
+        ai_summary.requests, "post",
+        lambda url, headers=None, json=None, timeout=None: (
+            captured.update(json or {}) or _Response("ok")
+        ),
+    )
+
+    analyse_call("MSFT", "2026Q3", TRANSCRIPT, api_key="sk-test", model="claude-sonnet-5")
+    assert "temperature" not in captured
+
+    captured.clear()
+    analyse_call("MSFT", "2026Q3", TRANSCRIPT, api_key="sk-test",
+                 model="claude-haiku-4-5-20251001")
+    assert captured["temperature"] == 0
+
+
+def test_the_family_is_matched_not_an_exact_model_list():
+    """
+    New members of the family ship without this file changing, and a 400
+    on an unknown-but-current model is the worst outcome: by then the
+    transcript is already fetched.
+    """
+    from equity_analyzer.report.ai_summary import _accepts_temperature
+
+    assert not _accepts_temperature("claude-opus-5")
+    assert not _accepts_temperature("claude-fable-5")
+    assert not _accepts_temperature("claude-sonnet-7-some-future-suffix")
+    # ...while 4.5 and earlier still take it
+    assert _accepts_temperature("claude-haiku-4-5-20251001")
+    assert _accepts_temperature("")
