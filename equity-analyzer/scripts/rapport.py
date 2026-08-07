@@ -1,0 +1,362 @@
+"""
+One ticker in, one two-page PDF out.
+
+  PAGE 1  Claude's reading of the latest earnings call, written against
+          the consensus that quarter was measured on.
+  PAGE 2  The numbers that do not come from the call: the annual red
+          flags (Altman, Beneish, Piotroski) and the Loughran-McDonald
+          tone of the call and of the quarter's MD&A.
+
+WHICH QUARTER IS "THE LATEST" is answered by EDGAR, not guessed. The
+transcript provider labels calls by the ISSUER's fiscal calendar, and
+EDGAR already carries that calendar on every filing (`fy`/`fp`), so a
+June-year filer and a January-year filer both work with no special
+casing and no fiscal table to maintain. Deriving the quarter from the
+calendar instead would be right for December-year filers and silently
+wrong for Apple, NVIDIA, Micron and Microsoft, which is to say for most
+of the names this tool gets pointed at.
+
+And the newest quarter ON FILE is not always the newest quarter WITH a
+transcript: a company can file its 10-Q days after reporting, before the
+provider has published the call. The search walks back until it finds
+one and the report says how far back it had to go, rather than passing
+an older call off as the current one.
+
+WHAT IT COSTS PER RUN
+  SEC EDGAR      4 requests, free, no key. Rate limited client side.
+  Alpha Vantage  2 of the free tier's 25 daily requests (1 consensus,
+                 1 transcript; 2 to 4 more only if the newest quarters
+                 are not published yet). A transcript already fetched
+                 comes from the disk cache and costs nothing.
+  Anthropic      1 call, roughly 10,000 input tokens and 900 output.
+
+WHAT HAPPENS WHEN SOMETHING IS MISSING. Everything except the reading
+itself degrades to a printed reason: no consensus, no 10-K, no MD&A each
+show up on the page as a sentence explaining the gap. The reading is the
+exception, because page 1 IS the reading: if the transcript or the model
+cannot be had, this exits without writing a PDF rather than producing a
+two page document whose first page apologises.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import time
+from pathlib import Path
+
+from equity_analyzer.data_layer import (
+    CikLookup,
+    EdgarClient,
+    EdgarClientConfig,
+    EdgarClientError,
+    Filing,
+    FilingNotFoundError,
+    FormType,
+    build_financial_period,
+    extract_sections,
+    filing_index_url,
+    latest_quarterly_pair,
+    list_filings,
+)
+from equity_analyzer.data_layer.earnings_expectations import (
+    ExpectationsUnavailable,
+    fetch_earnings_expectations,
+)
+from equity_analyzer.data_layer.transcript_cache import CachedTranscriptSource, TranscriptCache
+from equity_analyzer.data_layer.transcript_period import (
+    PeriodLabelUnavailable,
+    alpha_vantage_label,
+    find_latest_available,
+    verify_against_declared,
+)
+from equity_analyzer.data_layer.transcript_source import (
+    EdgarExhibitSource,
+    TranscriptRefused,
+    TranscriptUnavailable,
+    alpha_vantage_source,
+)
+from equity_analyzer.report import (
+    ClaudeError,
+    analyse_call,
+    build_call_report,
+    render_html,
+    save_pdf,
+)
+from equity_analyzer.sentiment import load_lm_dictionary
+
+TICKER = os.environ.get("TICKER", "").strip().upper()
+USER_AGENT = os.environ.get("SEC_USER_AGENT", "EquityAnalyzer/1.0 contact@example.com").strip()
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "").strip()
+ALPHAVANTAGE_API_KEY = os.environ.get("ALPHAVANTAGE_API_KEY", "").strip()
+
+ROOT = Path(__file__).parent.parent
+CACHE_DIR = ROOT / "transcripts"
+REPORTS_DIR = ROOT / "rapports"
+DICTIONARY_PATH = ROOT / "data" / "Loughran-McDonald_MasterDictionary_1993-2025.csv"
+
+# Five requests a minute on Alpha Vantage's free tier. Only reached when
+# walking back through quarters the provider has not published yet.
+PAUSE_SECONDS = 13.0
+
+
+def _ok(message: str) -> None:
+    print(f"  [OK]   {message}")
+
+
+def _warn(message: str) -> None:
+    print(f"  [SKIP] {message}")
+
+
+def _fail(message: str) -> None:
+    print(f"  [FAIL] {message}")
+
+
+def _build_filing(client, cik, ref, ticker, company_name, facts, with_text: bool) -> Filing:
+    """
+    One filing, with its XBRL figures and optionally its text.
+
+    `with_text=False` is for the two 10-Ks fetched purely to feed the
+    annual red flag models: those scores come entirely from XBRL, so
+    downloading the filing document would pull tens of megabytes of HTML
+    per company for text nothing reads.
+
+    `fiscal_year` / `fiscal_period` are deliberately not passed to
+    `build_financial_period`: it reads them off the filing's own XBRL
+    labels, which is the only source that is right for a filer whose
+    fiscal year does not end in December.
+    """
+    financials = build_financial_period(facts, accession_number=ref.accession_number)
+    sections = None
+    if with_text:
+        html = client.fetch_filing_document(cik, ref.accession_number, ref.primary_document)
+        sections = extract_sections(html)
+
+    return Filing(
+        ticker=ticker,
+        cik=cik,
+        company_name=company_name,
+        form_type=FormType(ref.form_type),
+        fiscal_year=financials.fiscal_year or (ref.period_of_report or ref.filed_date).year,
+        fiscal_period=financials.fiscal_period or "FY",
+        filed_date=ref.filed_date,
+        accession_number=ref.accession_number,
+        period_end=financials.period_end,
+        financials=financials,
+        text_sections=sections,
+    )
+
+
+def _fetch_transcript(ticker, cik, start_label, client):
+    """
+    The most recent published call, from Alpha Vantage, falling back to
+    EDGAR when the provider refuses.
+
+    THE FALLBACK IS NOT DECORATION. Alpha Vantage's free tier is 25
+    requests a day and a refusal (quota, premium tier, bad key) applies
+    to every subsequent request in the run, so without a second route a
+    single exhausted quota means no report at all. A minority of issuers
+    attach their prepared remarks or the full call to their earnings
+    8-K, and for those the document is free, already reachable with the
+    client this script holds, and is the genuine article straight from
+    the company.
+
+    It is a fallback and not the primary route because coverage is the
+    catch: most issuers never file one, and it always returns the
+    newest earnings 8-K rather than a requested quarter.
+
+    Returns (transcript, label, quarters_back).
+    """
+    source = CachedTranscriptSource(alpha_vantage_source(), TranscriptCache(CACHE_DIR))
+    if ALPHAVANTAGE_API_KEY:
+        try:
+            call, label, back = find_latest_available(
+                source, ticker, cik, start_label, pause=lambda: time.sleep(PAUSE_SECONDS)
+            )
+            print(f"         ({source.hits} depuis le cache, {source.fetches} appel(s) API)")
+            return call, label, back
+        except TranscriptRefused as exc:
+            _warn(f"Alpha Vantage a refusé : {exc}")
+            _warn("Repli sur le 8-K de résultats déposé chez SEC.")
+        except TranscriptUnavailable as exc:
+            _warn(f"Pas de transcript chez Alpha Vantage : {exc}")
+            _warn("Repli sur le 8-K de résultats déposé chez SEC.")
+    else:
+        _warn("ALPHAVANTAGE_API_KEY absent : seul le repli SEC 8-K est disponible.")
+
+    call = EdgarExhibitSource().fetch(ticker, cik, client)
+    # The exhibit route has no quarter parameter: it returns whatever the
+    # newest earnings 8-K carries. Labelling that with the quarter we
+    # asked Alpha Vantage for would be an assumption, so the label comes
+    # back as the one EDGAR filed it under and `quarters_back` stays 0.
+    return call, start_label, 0
+
+
+def main() -> int:
+    if not TICKER:
+        print("TICKER est vide. Indique le ticker à analyser.")
+        return 1
+    if not ANTHROPIC_API_KEY:
+        print("ANTHROPIC_API_KEY absent. C'est cette clé qui écrit la page 1.")
+        return 1
+
+    print(f"=== {TICKER} : rapport sur le dernier earnings call ===")
+    client = EdgarClient(EdgarClientConfig(user_agent=USER_AGENT, timeout_seconds=30.0))
+
+    # -- Which company, and which quarter it last filed --
+    try:
+        cik = CikLookup(client).resolve(TICKER)
+        company_name = client.fetch_submissions(cik).get("name") or TICKER
+        _ok(f"{company_name} (CIK {cik})")
+    except (EdgarClientError, FilingNotFoundError) as exc:
+        _fail(f"Ticker introuvable chez SEC : {exc}")
+        return 1
+
+    try:
+        pair = latest_quarterly_pair(client, cik)
+        facts = client.fetch_company_facts(cik)
+        quarter_filing = _build_filing(
+            client, cik, pair.current, TICKER, company_name, facts, with_text=True
+        )
+        start_label = alpha_vantage_label(
+            quarter_filing.fiscal_year, quarter_filing.fiscal_period
+        )
+        _ok(
+            f"Dernier trimestre déposé : {quarter_filing.fiscal_period} "
+            f"{quarter_filing.fiscal_year} (clos le {quarter_filing.period_end}), "
+            f"repère fournisseur {start_label}"
+        )
+    except (EdgarClientError, FilingNotFoundError, PeriodLabelUnavailable, ValueError) as exc:
+        _fail(f"Impossible de déterminer le dernier trimestre : {exc}")
+        return 1
+
+    # -- The annual filings the red flags are computed on. Never the
+    #    quarter above: all three are annual models (see report_data). --
+    annual_filing = prior_annual_filing = None
+    try:
+        annual_refs = list_filings(client, cik, form_type="10-K", limit=2)
+        annual_filing = _build_filing(
+            client, cik, annual_refs[0], TICKER, company_name, facts, with_text=False
+        )
+        if len(annual_refs) > 1:
+            prior_annual_filing = _build_filing(
+                client, cik, annual_refs[1], TICKER, company_name, facts, with_text=False
+            )
+        _ok(f"Base annuelle des red flags : 10-K exercice {annual_filing.fiscal_year}")
+    except (EdgarClientError, FilingNotFoundError, ValueError) as exc:
+        _warn(f"Pas de 10-K exploitable, red flags non calculés : {exc}")
+
+    # -- What the market expected --
+    expectations = expectation = history = None
+    expectations_reason = None
+    try:
+        expectations = fetch_earnings_expectations(TICKER)
+        expectation = expectations.at(quarter_filing.period_end)
+        if expectation is None:
+            expectations_reason = (
+                f"aucune ligne de consensus pour le trimestre clos le "
+                f"{quarter_filing.period_end}"
+            )
+            _warn(expectations_reason)
+        else:
+            history = expectations.history_before(expectation)
+            _ok(
+                f"Consensus : attendu {expectation.estimated_eps}, "
+                f"publié {expectation.reported_eps} ({expectation.verdict})"
+            )
+    except ExpectationsUnavailable as exc:
+        expectations_reason = str(exc)
+        _warn(f"Consensus indisponible : {exc}")
+
+    # -- The call itself --
+    try:
+        call, label, quarters_back = _fetch_transcript(TICKER, cik, start_label, client)
+    except TranscriptUnavailable as exc:
+        _fail(f"Aucun transcript récupérable : {exc}")
+        return 2
+
+    if quarters_back:
+        _warn(
+            f"Le call du trimestre déposé n'est pas encore publié : ceci est le "
+            f"call disponible le plus récent, {quarters_back} trimestre(s) en arrière."
+        )
+    _ok(f"Transcript {label} : {call.word_count} mots, source {call.source}")
+
+    # The label came from EDGAR, but the provider may index a quarter
+    # differently, and a wrong pairing is invisible in the output. The
+    # company states the period out loud in the opening seconds of every
+    # call, so the check is free.
+    period_warning = verify_against_declared(label, call.full_text)
+    if period_warning:
+        _warn(f"ATTENTION : {period_warning}")
+
+    # The consensus was matched on the newest FILED quarter. If the call
+    # is older than that, the consensus must move with it or the report
+    # would measure a reading of one quarter against the expectations for
+    # another, which is worse than having no consensus at all.
+    if quarters_back and expectations is not None and expectation is not None:
+        expectation = expectations.at(quarter_filing.period_end, quarters_back)
+        if expectation is None:
+            expectations_reason = (
+                f"pas de consensus publié pour le trimestre du call "
+                f"({quarters_back} trimestre(s) avant le dernier déposé)"
+            )
+            history = None
+            _warn(expectations_reason)
+        else:
+            history = expectations.history_before(expectation)
+
+    # -- The reading --
+    print(f"  ...   Lecture du call par Claude ({ANTHROPIC_MODEL or 'modèle par défaut'})")
+    try:
+        analysis = analyse_call(
+            TICKER, label, call.full_text,
+            api_key=ANTHROPIC_API_KEY,
+            company_name=company_name,
+            expectation=expectation,
+            history=history or (),
+            **({"model": ANTHROPIC_MODEL} if ANTHROPIC_MODEL else {}),
+        )
+    except ClaudeError as exc:
+        _fail(f"La lecture a échoué : {exc}")
+        print("        Le transcript est en cache : relancer ne recoûtera pas de quota.")
+        return 2
+    _ok(f"Lecture écrite par {analysis.model} ({len(analysis.text.split())} mots)")
+
+    # -- The tone, and the document --
+    dictionary = None
+    try:
+        dictionary = load_lm_dictionary(DICTIONARY_PATH)
+    except Exception as exc:  # noqa: BLE001 -- absence of the file is the expected case
+        _warn(f"Dictionnaire Loughran-McDonald illisible, tonalité non calculée : {exc}")
+
+    report = build_call_report(
+        TICKER, company_name, cik, call, analysis,
+        call_quarter=label,
+        quarters_back=quarters_back,
+        period_warning=period_warning,
+        expectation=expectation,
+        expectations_reason=expectations_reason,
+        expectations_history=history or (),
+        quarter_filing=quarter_filing,
+        annual_filing=annual_filing,
+        prior_annual_filing=prior_annual_filing,
+        lm_dictionary=dictionary,
+        source_filing_url=filing_index_url(cik, quarter_filing.accession_number),
+    )
+
+    REPORTS_DIR.mkdir(exist_ok=True)
+    output = REPORTS_DIR / f"{TICKER}.pdf"
+    save_pdf(render_html(report), output, max_pages=2)
+    _ok(f"Rapport écrit : {output.relative_to(ROOT)}")
+
+    print()
+    print("=" * 70)
+    print(analysis.text)
+    print("=" * 70)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

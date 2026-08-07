@@ -1,180 +1,222 @@
+"""
+Assembling the report object.
+
+The thing under test is mostly a set of refusals: which numbers are NOT
+computed, and whether an absence arrives as a printable reason instead
+of a blank.
+"""
+
+from __future__ import annotations
+
 from datetime import date
 
-import pytest
-
 from equity_analyzer.data_layer.models import FilingTextSections, FormType, PeriodDuration
-from equity_analyzer.report.report_data import build_report_data
-from equity_analyzer.sentiment.lm_dictionary import LMDictionary
+from equity_analyzer.report.report_data import build_call_report
+from equity_analyzer.sentiment.lm_dictionary import load_lm_dictionary
 
-from .factories import make_filing, make_financial_period
+from .factories import make_analysis, make_expectation, make_filing, make_transcript
+from ..redflags.factories import make_period
 
-# A complete, mutually-comparable pair of annual FinancialPeriods --
-# enough fields for Altman, Beneish, AND Piotroski to all compute
-# successfully, so tests can isolate what happens when prior_filing /
-# lm_dictionary / financials are withheld, rather than fighting missing
-# metrics unrelated to what's being tested.
-_FULL_METRICS = dict(
-    revenue=1_200_000,
-    cogs=700_000,
-    gross_profit=500_000,
-    sga_expense=100_000,
-    depreciation_amortization=50_000,
+from pathlib import Path
+
+DICTIONARY = load_lm_dictionary(
+    Path(__file__).parent.parent / "fixtures" / "sample_lm_dictionary.csv"
+)
+
+_ANNUAL_PRIOR = dict(
+    net_income=50_000, total_assets=1_000_000, long_term_debt=300_000,
+    current_assets=400_000, current_liabilities=300_000, shares_outstanding=1_000_000,
+    revenue=800_000, gross_profit=300_000, total_equity=500_000,
+    total_liabilities=500_000, retained_earnings=200_000, operating_income=90_000,
+)
+_ANNUAL_CURRENT = dict(
+    net_income=80_000, total_assets=1_000_000, operating_cash_flow=100_000,
+    long_term_debt=200_000, current_assets=500_000, current_liabilities=250_000,
+    shares_outstanding=1_000_000, revenue=1_000_000, gross_profit=450_000,
+    total_equity=600_000, total_liabilities=400_000, retained_earnings=280_000,
     operating_income=150_000,
-    net_income=100_000,
-    total_assets=1_000_000,
-    current_assets=600_000,
-    receivables=150_000,
-    ppe_net=300_000,
-    total_liabilities=400_000,
-    current_liabilities=200_000,
-    long_term_debt=100_000,
-    retained_earnings=300_000,
-    total_equity=600_000,
-    shares_outstanding=1_000_000,
-    operating_cash_flow=120_000,
-)
-
-DICTIONARY = LMDictionary(
-    words_by_category={
-        "negative": frozenset({"decline"}),
-        "positive": frozenset({"growth"}),
-        "uncertainty": frozenset(),
-        "litigious": frozenset(),
-        "strong_modal": frozenset(),
-        "weak_modal": frozenset(),
-        "constraining": frozenset(),
-    }
 )
 
 
-def _current_filing(**overrides):
-    financials = make_financial_period(
-        fiscal_year=2024, fiscal_period="FY", duration=PeriodDuration.TWELVE_MONTH,
-        accession_number="acc-current", period_end=date(2024, 12, 31), **_FULL_METRICS,
+def _annual(year=2024, **metrics):
+    return make_filing(
+        form_type=FormType.TEN_K,
+        fiscal_year=year,
+        fiscal_period="FY",
+        period_end=date(year, 12, 31),
+        financials=make_period(
+            duration=PeriodDuration.TWELVE_MONTH,
+            fiscal_year=year,
+            fiscal_period="FY",
+            period_end=date(year, 12, 31),
+            accession_number=f"acc-{year}",
+            **metrics,
+        ),
     )
-    text_sections = FilingTextSections(
-        item_1a_risk_factors="our revenue could decline due to competition",
-        item_7_mdna="revenue grew due to strong growth this year",
-        is_risk_factors_boilerplate=False,
+
+
+def _quarter(sections=None):
+    return make_filing(
+        form_type=FormType.TEN_Q,
+        fiscal_year=2026,
+        fiscal_period="Q1",
+        period_end=date(2025, 12, 31),
+        text_sections=sections,
     )
+
+
+def _build(**overrides):
     kwargs = dict(
-        fiscal_year=2024, fiscal_period="FY", form_type=FormType.TEN_K,
-        accession_number="acc-current", period_end=date(2024, 12, 31),
-        financials=financials, text_sections=text_sections,
+        ticker="TEST",
+        company_name="Test Company Inc.",
+        cik="0000000001",
+        transcript=make_transcript(),
+        analysis=make_analysis(),
+        call_quarter="2026Q1",
+        lm_dictionary=DICTIONARY,
     )
     kwargs.update(overrides)
-    return make_filing(**kwargs)
-
-
-def _prior_filing(**overrides):
-    financials = make_financial_period(
-        fiscal_year=2023, fiscal_period="FY", duration=PeriodDuration.TWELVE_MONTH,
-        accession_number="acc-prior", period_end=date(2023, 12, 31), **_FULL_METRICS,
+    transcript = kwargs.pop("transcript")
+    analysis = kwargs.pop("analysis")
+    return build_call_report(
+        kwargs.pop("ticker"), kwargs.pop("company_name"), kwargs.pop("cik"),
+        transcript, analysis, **kwargs,
     )
-    text_sections = FilingTextSections(
-        item_1a_risk_factors="our revenue could decline due to weak demand",
-        item_7_mdna="revenue was flat this year",
+
+
+# -- Red flags ----------------------------------------------------------
+
+
+def test_red_flags_are_computed_from_the_two_annual_filings():
+    report = _build(
+        annual_filing=_annual(2024, **_ANNUAL_CURRENT),
+        prior_annual_filing=_annual(2023, **_ANNUAL_PRIOR),
+    )
+    assert report.altman_z.available
+    assert report.beneish_m.available or report.beneish_m.unavailable_reason
+    assert report.piotroski_f.available
+    assert report.piotroski_f.value.score == 9
+
+
+def test_no_annual_filing_means_no_scores_and_says_why():
+    """
+    NOT a fallback opportunity. Altman, Beneish and Piotroski were all
+    estimated on full-year statements; run on a quarter they do not
+    produce a noisier number, they produce a category error that looks
+    exactly like a good one.
+    """
+    report = _build(quarter_filing=_quarter())
+
+    for section in (report.altman_z, report.beneish_m, report.piotroski_f):
+        assert not section.available
+        assert "annuel" in section.unavailable_reason
+
+
+def test_one_annual_filing_still_gives_altman_but_not_the_year_over_year_pair():
+    """
+    Altman needs one year, Beneish and Piotroski need two. Losing all
+    three because the second 10-K is missing would throw away a score
+    that was computable.
+    """
+    report = _build(annual_filing=_annual(2024, **_ANNUAL_CURRENT))
+
+    assert report.altman_z.available
+    assert not report.beneish_m.available
+    assert "exercice précédent" in report.beneish_m.unavailable_reason
+
+
+def test_a_missing_metric_becomes_a_printable_reason_not_an_exception():
+    report = _build(
+        annual_filing=_annual(2024, net_income=1, total_assets=2),
+        prior_annual_filing=_annual(2023, net_income=1, total_assets=2),
+    )
+    assert not report.altman_z.available
+    assert report.altman_z.unavailable_reason
+
+
+# -- Tone ---------------------------------------------------------------
+
+
+def test_the_call_is_scored_in_two_halves_not_one():
+    """
+    Prepared remarks are written, lawyered and rehearsed, so their tone
+    is a decision management made. The Q&A is unscripted. Scoring the
+    call as one block averages those two into a number that describes
+    neither.
+    """
+    report = _build()
+    assert report.tone_prepared.available
+    assert report.tone_qa.available
+    assert report.tone_prepared.value.total_word_count < report.call.word_count
+
+
+def test_a_call_with_no_isolable_qa_says_so_rather_than_scoring_zero():
+    report = _build(transcript=make_transcript(qa=None))
+    assert not report.tone_qa.available
+    assert "questions" in report.tone_qa.unavailable_reason
+
+
+def test_no_dictionary_means_no_tone_and_says_why():
+    report = _build(lm_dictionary=None)
+    assert not report.tone_prepared.available
+    assert "Loughran-McDonald" in report.tone_prepared.unavailable_reason
+
+
+def test_the_mdna_is_scored_when_the_quarter_filing_was_read():
+    sections = FilingTextSections(
+        item_1a_risk_factors=None,
+        item_7_mdna="Revenue increased and margins improved on strong demand.",
+        item_9a_controls=None,
         is_risk_factors_boilerplate=False,
     )
-    kwargs = dict(
-        fiscal_year=2023, fiscal_period="FY", form_type=FormType.TEN_K,
-        accession_number="acc-prior", period_end=date(2023, 12, 31),
-        financials=financials, text_sections=text_sections,
-    )
-    kwargs.update(overrides)
-    return make_filing(**kwargs)
+    report = _build(quarter_filing=_quarter(sections))
+    assert report.tone_mdna.available
 
 
-def test_all_sections_available_with_full_data():
-    report = build_report_data(_current_filing(), _prior_filing(), DICTIONARY)
-
-    assert report.altman_z.available
-    assert report.beneish_m.available
-    assert report.piotroski_f.available
-    assert report.mdna_diff.available
-    assert report.risk_factors_diff.available
-    assert report.mdna_sentiment.available
-    assert report.risk_factors_sentiment.available
-    assert len(report.financial_highlights) == 7
+def test_no_quarter_filing_means_no_mdna_tone_and_says_why():
+    report = _build()
+    assert not report.tone_mdna.available
+    assert "10-Q" in report.tone_mdna.unavailable_reason
 
 
-def test_no_prior_filing_marks_yoy_sections_unavailable():
-    report = build_report_data(_current_filing(), prior_filing=None, lm_dictionary=DICTIONARY)
-
-    assert report.altman_z.available  # doesn't need a prior period
-    assert not report.beneish_m.available
-    assert "prior-period" in report.beneish_m.unavailable_reason
-    assert not report.piotroski_f.available
-    assert not report.mdna_diff.available
-    assert not report.risk_factors_diff.available
-    # sentiment doesn't need a prior period at all
-    assert report.mdna_sentiment.available
-    assert report.risk_factors_sentiment.available
+# -- Expectations -------------------------------------------------------
 
 
-def test_missing_financials_marks_red_flags_unavailable():
-    current = _current_filing(financials=None)
-    report = build_report_data(current, _prior_filing(), DICTIONARY)
+def test_an_expectation_is_carried_through_with_its_history():
+    history = [make_expectation(period_end=date(2025, 9, 30))]
+    report = _build(expectation=make_expectation(), expectations_history=history)
 
-    assert not report.altman_z.available
-    assert "no financial data" in report.altman_z.unavailable_reason
-    assert not report.beneish_m.available
-    assert not report.piotroski_f.available
-    assert report.financial_highlights == []
-    # text-based sections are untouched by missing financials
-    assert report.mdna_diff.available
+    assert report.expectations.available
+    assert report.expectations.value.verdict == "au-dessus"
+    assert len(report.expectations_history) == 1
 
 
-def test_quarterly_financials_altman_unavailable_but_beneish_available():
-    current = _current_filing(
-        financials=make_financial_period(
-            fiscal_year=2025, fiscal_period="Q2", duration=PeriodDuration.THREE_MONTH,
-            accession_number="acc-current-q2", period_end=date(2025, 6, 30), **_FULL_METRICS,
-        ),
-        fiscal_year=2025, fiscal_period="Q2",
-    )
-    prior = _prior_filing(
-        financials=make_financial_period(
-            fiscal_year=2024, fiscal_period="Q2", duration=PeriodDuration.THREE_MONTH,
-            accession_number="acc-prior-q2", period_end=date(2024, 6, 30), **_FULL_METRICS,
-        ),
-        fiscal_year=2024, fiscal_period="Q2",
-    )
-
-    report = build_report_data(current, prior, DICTIONARY)
-
-    assert not report.altman_z.available
-    assert "12-month" in report.altman_z.unavailable_reason
-    assert report.beneish_m.available  # same-quarter YoY comparison is fine for Beneish
-    assert report.piotroski_f.available
-
-
-def test_no_dictionary_marks_sentiment_unavailable():
-    report = build_report_data(_current_filing(), _prior_filing(), lm_dictionary=None)
-
-    assert not report.mdna_sentiment.available
-    assert "dictionary" in report.mdna_sentiment.unavailable_reason
-    assert not report.risk_factors_sentiment.available
-    # unrelated sections still compute
-    assert report.altman_z.available
-    assert report.mdna_diff.available
-
-
-def test_boilerplate_risk_factors_thread_through_skip_not_unavailable():
+def test_a_missing_expectation_carries_the_reason_it_is_missing():
     """
-    A boilerplate current-period Item 1A is a deliberate SKIP (data was
-    available, the module chose not to score/diff it), which is a
-    different state than `unavailable` (no data / an error) -- both must
-    be distinguishable downstream (e.g. by the renderer).
+    "We asked and could not get it" and "nobody asked" are different
+    statements, and the reader can only tell them apart if the report
+    prints which one happened.
     """
-    current = _current_filing()
-    current.text_sections.is_risk_factors_boilerplate = True
+    report = _build(expectations_reason="quota Alpha Vantage épuisé")
+    assert not report.expectations.available
+    assert "quota" in report.expectations.unavailable_reason
 
-    report = build_report_data(current, _prior_filing(), DICTIONARY)
 
-    assert report.risk_factors_diff.available  # the computation ran...
-    assert report.risk_factors_diff.value.skipped is True  # ...it just chose to skip
-    assert report.risk_factors_sentiment.available
-    assert report.risk_factors_sentiment.value.skipped is True
-    # MD&A is unaffected by Item 1A being boilerplate
-    assert report.mdna_diff.value.overall.segments  # still a real diff
+def test_no_expectation_and_no_reason_still_produces_a_printable_sentence():
+    report = _build()
+    assert not report.expectations.available
+    assert report.expectations.unavailable_reason
+
+
+# -- Provenance ---------------------------------------------------------
+
+
+def test_a_stale_call_is_recorded_as_stale():
+    """
+    A quarter old transcript is still useful. A quarter old transcript
+    believed to be current is not.
+    """
+    report = _build(quarters_back=2, period_warning="demandé 2026Q1 mais la société annonce 2025Q3")
+
+    assert report.call.quarters_back == 2
+    assert "2025Q3" in report.call.period_warning

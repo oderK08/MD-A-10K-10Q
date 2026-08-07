@@ -1,47 +1,39 @@
 """
-Module 5 -- Report Builder: assembles Modules 1-4's outputs into one
-report, rendered to HTML and/or PDF. Includes multi-year trend analysis
-(trend.py) built on top of the same single-period report builder, and
-an opt-in AI summary (ai_summary.py, Module 6) layered on top via
-`attach_ai_summary` -- never called by `build_report_data` itself.
+The report: one ticker in, one two-page PDF out.
+
+Page 1 is Claude's reading of the latest earnings call, written against
+the consensus the quarter was measured on. Page 2 is the numbers that do
+not come from the call: the annual red flags and the Loughran-McDonald
+tone of the call and of the quarter's MD&A.
 """
 
-from .ai_summary import AISummaryError, attach_ai_summary
-from .theme_selection import ThemeSelection, attach_theme_selection, select_key_subthemes
+from .call_analysis import CallAnalysis, analyse_call, build_prompt
+from .claude_client import ClaudeError, DEFAULT_MODEL, call_claude
 from .errors import PdfRenderError, ReportError
-from .html_renderer import render_detail_html, render_html, render_trend_html
+from .html_renderer import MAX_READING_WORDS, render_html
+from .markdown import markdown_to_html, truncate_words
 from .pdf_renderer import page_count, render_pdf, render_pdf_fitted, save_pdf
-from .report_data import (
-    FinancialHighlight,
-    ReportData,
-    SectionResult,
-    build_report_data,
-)
-from .risk_alert import RiskFactorsAlert, evaluate_risk_alert
-from .trend import TrendAnalysis, TrendPoint, build_trend_analysis
+from .report_data import CallInfo, CallReport, SectionResult, build_call_report
 
 __all__ = [
-    "ReportError",
+    "CallAnalysis",
+    "CallInfo",
+    "CallReport",
+    "ClaudeError",
+    "DEFAULT_MODEL",
+    "MAX_READING_WORDS",
     "PdfRenderError",
-    "ReportData",
+    "ReportError",
     "SectionResult",
-    "FinancialHighlight",
-    "build_report_data",
+    "analyse_call",
+    "build_call_report",
+    "build_prompt",
+    "call_claude",
+    "markdown_to_html",
+    "page_count",
     "render_html",
-    "render_detail_html",
     "render_pdf",
     "render_pdf_fitted",
-    "page_count",
     "save_pdf",
-    "TrendAnalysis",
-    "TrendPoint",
-    "build_trend_analysis",
-    "render_trend_html",
-    "AISummaryError",
-    "attach_ai_summary",
-    "ThemeSelection",
-    "attach_theme_selection",
-    "select_key_subthemes",
-    "RiskFactorsAlert",
-    "evaluate_risk_alert",
+    "truncate_words",
 ]

@@ -1,64 +1,52 @@
 """
-Assembles the outputs of Modules 1-4 into one ReportData object, ready to
-render.
+Assembles everything the two-page report shows into one object, ready to
+render. Pure: no network, no API key, no clock beyond the timestamp it
+is handed. Everything it needs has already been fetched by the caller.
 
-The rest of the pipeline is deliberately strict: a red-flag calculator
-raises rather than guess at a missing metric, a diff refuses to score
-10-Q boilerplate, a sentiment scorer refuses empty text. That's correct
-for each module in isolation. This orchestration layer is different on
-purpose: an advisory report covering four analyses shouldn't fail
-entirely because ONE of them (say, Beneish M, needing a prior period
-nobody supplied) isn't computable. Every optional section is wrapped in
-`SectionResult`, which is either the computed value or a plain-English
-reason it isn't available -- so the report can say "Beneish M-Score:
-unavailable -- no prior-period filing provided" right next to the
-sections that DID compute, instead of one gap taking down the whole
-report or, worse, silently showing nothing.
+That purity is what makes the report testable offline, which matters
+more here than in most projects: the environment this was written in
+cannot reach SEC EDGAR or the transcript provider, so the entire test
+suite runs on fixtures and the first real run happens in CI.
+
+WHY EVERY OPTIONAL SECTION IS A `SectionResult` AND NOT `None`. The
+modules underneath are deliberately strict: a red-flag calculator raises
+rather than guess a missing metric, a sentiment scorer refuses empty
+text. That is right for a calculation in isolation and wrong for a
+report, which should not lose its red flags because tone could not be
+scored. So each one is wrapped in either a computed value or a
+plain-language reason it is missing, and the reason is PRINTED. A blank
+cell and an uncomputable one look identical on paper, and a reader will
+read the blank as "nothing to report".
+
+The one thing that is NOT optional is the reading of the call. Page 1 is
+the reading; a report whose page 1 degrades to an apology, set in the
+same type as a real analysis, is worse than no report. The caller is
+expected to fail before it gets here.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Callable, Optional, TypeVar
 
-from ..data_layer.edgar_client import filing_index_url
-from ..data_layer.models import Filing, FinancialPeriod
-from ..data_layer.xbrl_normalizer import CANDIDATE_TAGS
-from ..diff.errors import DiffError
-from ..diff.mdna import diff_mdna
-from ..diff.risk_factors import RiskFactorsDiffResult, diff_risk_factors
-from ..diff.text_diff import TextDiffResult
-from ..redflags.altman_z import AltmanZResult, altman_z_score
-from ..redflags.beneish_m import BeneishMResult, beneish_m_score
+from ..data_layer.models import Filing
+from ..redflags.altman_z import altman_z_score
+from ..redflags.beneish_m import beneish_m_score
 from ..redflags.errors import RedFlagError
-from ..redflags.piotroski_f import PiotroskiFResult, piotroski_f_score
+from ..redflags.piotroski_f import piotroski_f_score
 from ..sentiment.errors import SentimentError
 from ..sentiment.lm_dictionary import LMDictionary
-from ..sentiment.scorer import SentimentResult
-from ..sentiment.sections import (
-    RiskFactorsSentimentResult,
-    score_mdna_sentiment,
-    score_risk_factors_sentiment,
-)
-from .risk_alert import evaluate_risk_alert
+from ..sentiment.scorer import score_sentiment
+from ..sentiment.sections import score_mdna_sentiment
 
 T = TypeVar("T")
-
-FINANCIAL_HIGHLIGHT_FIELDS = [
-    ("revenue", "Revenue"),
-    ("net_income", "Net Income"),
-    ("operating_income", "Operating Income"),
-    ("total_assets", "Total Assets"),
-    ("total_liabilities", "Total Liabilities"),
-    ("total_equity", "Total Equity"),
-    ("operating_cash_flow", "Operating Cash Flow"),
-]
 
 
 @dataclass(frozen=True)
 class SectionResult:
-    """Either a computed value, or a plain-English reason it isn't available."""
+    """Either a computed value, or a plain-language reason it is not available."""
+
     value: object
     unavailable_reason: Optional[str]
 
@@ -68,48 +56,55 @@ class SectionResult:
 
 
 @dataclass(frozen=True)
-class FinancialHighlight:
-    label: str
-    value: Optional[float]
-    concept: Optional[str]  # which XBRL tag resolved this value, for auditability
+class CallInfo:
+    """Provenance of the transcript the reading was written over."""
+
+    quarter: str
+    word_count: int
+    source: str
+    # How far back the search had to walk to find a published call. 0 is
+    # the newest quarter on file. Shown rather than hidden: a
+    # quarter-old transcript is still useful, a quarter-old transcript
+    # believed to be current is not.
+    quarters_back: int = 0
+    call_date: Optional[date] = None
+    # Set when the period the company NAMES in the opening of the call
+    # is not the one that was requested. Printed on the report, because
+    # a wrong pairing is otherwise invisible in the output.
+    period_warning: Optional[str] = None
 
 
 @dataclass(frozen=True)
-class ReportData:
-    filing: Filing
-    prior_filing: Optional[Filing]
+class CallReport:
+    """Everything the two-page report renders, and nothing it does not."""
+
+    ticker: str
+    company_name: str
+    cik: str
     generated_at: datetime
-    financial_highlights: list = field(default_factory=list)  # list[FinancialHighlight]
-    financial_data_completeness: Optional[float] = None  # resolved / expected metrics, 0..1
-    source_filing_url: Optional[str] = None  # traceability link to the real SEC filing
-    # The annual filings the red flags were computed from, when those are
-    # NOT `filing`/`prior_filing` -- i.e. whenever the report is about a
-    # quarter. Altman, Beneish and Piotroski are annual models (see
-    # build_report_data), so a quarterly report reads its text from the
-    # 10-Q pair and its scores from the 10-K pair, and has to be able to
-    # tell the reader which year those scores are for.
+    call: CallInfo
+    analysis: object  # CallAnalysis -- page 1 in full
+
+    # What the quarter was measured against (Alpha Vantage EARNINGS).
+    expectations: SectionResult = None
+    expectations_history: list = field(default_factory=list)
+
+    # The filings the numbers come from. `quarter_filing` is the 10-Q
+    # matching the call, kept for its MD&A and for the EDGAR link;
+    # `annual_filing` / `prior_annual_filing` are the two 10-Ks the red
+    # flags are computed on and are NEVER the quarter (see below).
+    quarter_filing: Optional[Filing] = None
     annual_filing: Optional[Filing] = None
     prior_annual_filing: Optional[Filing] = None
+    source_filing_url: Optional[str] = None
+
     altman_z: SectionResult = None
     beneish_m: SectionResult = None
     piotroski_f: SectionResult = None
-    mdna_diff: SectionResult = None
-    risk_factors_diff: SectionResult = None
-    mdna_sentiment: SectionResult = None
-    risk_factors_sentiment: SectionResult = None
-    # Quarterly only: did this 10-Q write real risk-factor text instead
-    # of the "no material changes" clause (see report/risk_alert.py).
-    # None on an annual report, where the question doesn't apply.
-    risk_alert: Optional[object] = None  # Optional[RiskFactorsAlert]
-    # Both opt-in, both set by an explicit caller AFTER the free,
-    # deterministic report below is already built -- never by
-    # build_report_data() itself. See report/theme_selection.py and
-    # report/ai_summary.py.
-    #   theme_selection: which sub-themes an analyst would watch, and
-    #     how that call was made (AI or a documented fallback).
-    #   ai_summary: the bullish/bearish read written over that selection.
-    theme_selection: SectionResult = None
-    ai_summary: SectionResult = None
+
+    tone_prepared: SectionResult = None
+    tone_qa: SectionResult = None
+    tone_mdna: SectionResult = None
 
 
 def _ok(value: T) -> SectionResult:
@@ -122,181 +117,161 @@ def _unavailable(reason: str) -> SectionResult:
 
 def _attempt(compute: Callable[[], T]) -> SectionResult:
     """
-    Runs `compute`, catching exactly the domain errors each module raises
-    on purpose (missing metric, incomparable periods, empty text, missing
-    section) and turning them into an `unavailable` section. Anything
-    else (a real bug -- AttributeError, TypeError, ...) is NOT caught
-    here and propagates, so a programming mistake doesn't masquerade as
-    "data unavailable".
+    Runs `compute`, catching exactly the domain errors the modules raise
+    on purpose (missing metric, incomparable periods, empty text) and
+    turning them into an unavailable section. Anything else -- an
+    AttributeError, a TypeError, a real programming mistake -- is NOT
+    caught, so a bug never gets to masquerade as missing data.
     """
     try:
         return _ok(compute())
-    except (RedFlagError, DiffError, SentimentError) as exc:
+    except (RedFlagError, SentimentError) as exc:
         return _unavailable(str(exc))
 
 
-def _data_completeness(financials: Optional[FinancialPeriod]) -> Optional[float]:
+def _red_flags(annual: Optional[Filing], prior_annual: Optional[Filing]) -> tuple:
     """
-    Fraction of the metrics we look for (CANDIDATE_TAGS) that actually
-    resolved to a value for this period -- a plain, honest signal of how
-    complete the underlying data is, shown directly in the report rather
-    than making a reader infer it by counting "unavailable" red-flag
-    sections themselves.
+    Altman, Beneish and Piotroski, computed on annual filings only.
+
+    NOT AN OPTIMISATION, A CORRECTNESS RULE. All three are annual
+    models: every one was estimated on full-year statements, and several
+    of their inputs are meaningless on a quarter. Beneish's accruals and
+    sales-growth indices compare a year to the year before, Piotroski's
+    nine criteria are year-over-year tests, Altman's coefficients were
+    fitted to annual balance sheets. Feeding them a 10-Q does not
+    produce a noisier estimate, it produces a category error that looks
+    exactly like a good number.
+
+    So they are computed from the company's two most recent 10-Ks, and
+    when those are not available the scores are marked unavailable with
+    that reason rather than silently computed on the quarter.
     """
-    if financials is None:
-        return None
-    return len(financials.resolved_tags) / len(CANDIDATE_TAGS)
-
-
-def _financial_highlights(financials: Optional[FinancialPeriod]) -> list:
-    if financials is None:
-        return []
-    highlights = []
-    for field_name, label in FINANCIAL_HIGHLIGHT_FIELDS:
-        fact = getattr(financials, field_name)
-        highlights.append(
-            FinancialHighlight(
-                label=label,
-                value=fact.value if fact is not None else None,
-                concept=fact.concept if fact is not None else None,
-            )
+    if annual is None:
+        reason = (
+            "aucun 10-K disponible : Altman, Beneish et Piotroski sont des modèles "
+            "annuels et ne sont jamais calculés sur un trimestre"
         )
-    return highlights
+        return _unavailable(reason), _unavailable(reason), _unavailable(reason)
+
+    if annual.financials is None:
+        reason = "aucune donnée financière extraite du 10-K"
+        return _unavailable(reason), _unavailable(reason), _unavailable(reason)
+
+    altman = _attempt(lambda: altman_z_score(annual.financials))
+
+    if prior_annual is None or prior_annual.financials is None:
+        no_prior = "pas d'exercice précédent exploitable pour la comparaison annuelle"
+        return altman, _unavailable(no_prior), _unavailable(no_prior)
+
+    beneish = _attempt(lambda: beneish_m_score(annual.financials, prior_annual.financials))
+    piotroski = _attempt(lambda: piotroski_f_score(annual.financials, prior_annual.financials))
+    return altman, beneish, piotroski
 
 
-def _is_annual(filing: Optional[Filing]) -> bool:
-    if filing is None:
-        return False
-    form = getattr(filing.form_type, "value", filing.form_type)
-    return form == "10-K"
+def _tone(text: Optional[str], dictionary: Optional[LMDictionary], absent: str) -> SectionResult:
+    if dictionary is None:
+        return _unavailable("dictionnaire Loughran-McDonald non fourni")
+    if not (text or "").strip():
+        return _unavailable(absent)
+    return _attempt(lambda: score_sentiment(text, dictionary))
 
 
-def build_report_data(
-    filing: Filing,
-    prior_filing: Optional[Filing] = None,
-    lm_dictionary: Optional[LMDictionary] = None,
-    market_value_of_equity: Optional[float] = None,
-    beneish_threshold: Optional[float] = None,
-    generated_at: Optional[datetime] = None,
+def build_call_report(
+    ticker: str,
+    company_name: str,
+    cik: str,
+    transcript,
+    analysis,
+    *,
+    call_quarter: str,
+    quarters_back: int = 0,
+    period_warning: Optional[str] = None,
+    expectation=None,
+    expectations_reason: Optional[str] = None,
+    expectations_history=(),
+    quarter_filing: Optional[Filing] = None,
     annual_filing: Optional[Filing] = None,
     prior_annual_filing: Optional[Filing] = None,
-) -> ReportData:
+    lm_dictionary: Optional[LMDictionary] = None,
+    source_filing_url: Optional[str] = None,
+    generated_at: Optional[datetime] = None,
+) -> CallReport:
     """
-    Builds a full ReportData for `filing`, optionally comparing it against
-    `prior_filing` (required for both text diffs) and scoring sentiment
-    with `lm_dictionary` (required for both sentiment sections). Any of
-    these being None, or a downstream module refusing to compute for a
-    specific reason (see module docstring), shows up as an `unavailable`
-    section rather than failing report generation outright.
+    Builds the report object. Every argument is already-fetched data.
 
-    THE RED FLAGS DO NOT COME FROM `filing` WHEN `filing` IS A QUARTER.
-    Altman Z, Beneish M and Piotroski F are annual models: every one of
-    them was estimated on full-year statements, and several of their
-    inputs are meaningless on a quarter. Beneish's accruals and sales-
-    growth indices compare a year to the year before; Piotroski's nine
-    criteria are year-over-year tests; Altman's coefficients were fitted
-    to annual balance sheets. Feeding them a 10-Q produces a number that
-    is not a bad estimate but a category error, and it would look exactly
-    like a good one.
+    THE TONE IS SCORED ON THREE TEXTS, NOT ONE, because they are three
+    different acts. Prepared remarks are written, lawyered and rehearsed,
+    so their tone is a decision management made. The Q&A is unscripted,
+    so its tone is closer to something observed than something chosen,
+    and the GAP between the two is the part worth looking at: a
+    confident script followed by a hedging Q&A is a specific and common
+    pattern. The 10-Q's MD&A is the same management writing for the
+    record weeks later, which is the slowest and most cautious register
+    of the three.
 
-    So a quarterly report passes its company's two most recent 10-Ks as
-    `annual_filing` / `prior_annual_filing`, and the scores are computed
-    from those -- correctly labelled with the year they belong to. A
-    quarterly report with no annual filings supplied gets the scores
-    marked unavailable, with that reason spelled out, rather than a
-    quietly wrong number.
+    `expectations_reason` carries WHY consensus figures are missing when
+    they are, so the report can print it. Passing neither an expectation
+    nor a reason is treated as "nobody asked for them", which is a
+    different statement from "we asked and could not get them".
     """
-    beneish_kwargs = {} if beneish_threshold is None else {"threshold": beneish_threshold}
+    altman, beneish, piotroski = _red_flags(annual_filing, prior_annual_filing)
 
-    # -- Red flags (Module 2), always on annual data -- see the docstring --
-    if annual_filing is not None:
-        score_filing, score_prior = annual_filing, prior_annual_filing
-    elif _is_annual(filing):
-        score_filing, score_prior = filing, prior_filing
+    if expectation is not None:
+        expectations = _ok(expectation)
     else:
-        score_filing, score_prior = None, None
+        expectations = _unavailable(
+            expectations_reason or "consensus non demandé pour ce rapport"
+        )
 
-    if score_filing is None:
-        not_annual = (
-            "no annual (10-K) filing supplied -- Altman Z, Beneish M and "
-            "Piotroski F are annual models and are not computed on quarterly data"
-        )
-        altman_z = _unavailable(not_annual)
-        beneish_m = _unavailable(not_annual)
-        piotroski_f = _unavailable(not_annual)
-    elif score_filing.financials is None:
-        no_financials = "no financial data extracted for this filing"
-        altman_z = _unavailable(no_financials)
-        beneish_m = _unavailable(no_financials)
-        piotroski_f = _unavailable(no_financials)
-    else:
-        altman_z = _attempt(
-            lambda: altman_z_score(
-                score_filing.financials, market_value_of_equity=market_value_of_equity
-            )
-        )
-        if score_prior is None or score_prior.financials is None:
-            no_prior = "no prior-period financial data available for year-over-year comparison"
-            beneish_m = _unavailable(no_prior)
-            piotroski_f = _unavailable(no_prior)
+    tone_mdna = _unavailable("aucun 10-Q lu pour ce trimestre")
+    if quarter_filing is not None and quarter_filing.text_sections is not None:
+        if lm_dictionary is None:
+            tone_mdna = _unavailable("dictionnaire Loughran-McDonald non fourni")
         else:
-            beneish_m = _attempt(
-                lambda: beneish_m_score(
-                    score_filing.financials, score_prior.financials, **beneish_kwargs
-                )
-            )
-            piotroski_f = _attempt(
-                lambda: piotroski_f_score(score_filing.financials, score_prior.financials)
+            tone_mdna = _attempt(
+                lambda: score_mdna_sentiment(quarter_filing.text_sections, lm_dictionary)
             )
 
-    # -- Text diff (Module 3) --
-    if filing.text_sections is None:
-        no_sections = "no text sections extracted for this filing"
-        mdna_diff = _unavailable(no_sections)
-        risk_factors_diff = _unavailable(no_sections)
-    elif prior_filing is None or prior_filing.text_sections is None:
-        no_prior_sections = "no prior-period filing provided for comparison"
-        mdna_diff = _unavailable(no_prior_sections)
-        risk_factors_diff = _unavailable(no_prior_sections)
-    else:
-        mdna_diff = _attempt(
-            lambda: diff_mdna(filing.text_sections, prior_filing.text_sections)
-        )
-        risk_factors_diff = _attempt(
-            lambda: diff_risk_factors(filing.text_sections, prior_filing.text_sections)
-        )
-
-    # -- Sentiment (Module 4) --
-    if filing.text_sections is None:
-        mdna_sentiment = _unavailable("no text sections extracted for this filing")
-        risk_factors_sentiment = _unavailable("no text sections extracted for this filing")
-    elif lm_dictionary is None:
-        no_dict = "no Loughran-McDonald dictionary provided"
-        mdna_sentiment = _unavailable(no_dict)
-        risk_factors_sentiment = _unavailable(no_dict)
-    else:
-        mdna_sentiment = _attempt(
-            lambda: score_mdna_sentiment(filing.text_sections, lm_dictionary)
-        )
-        risk_factors_sentiment = _attempt(
-            lambda: score_risk_factors_sentiment(filing.text_sections, lm_dictionary)
-        )
-
-    return ReportData(
-        filing=filing,
-        prior_filing=prior_filing,
+    return CallReport(
+        ticker=ticker,
+        company_name=company_name,
+        cik=cik,
         generated_at=generated_at or datetime.now(timezone.utc),
-        financial_highlights=_financial_highlights(filing.financials),
-        financial_data_completeness=_data_completeness(filing.financials),
-        source_filing_url=filing_index_url(filing.cik, filing.accession_number),
+        call=CallInfo(
+            quarter=call_quarter,
+            word_count=transcript.word_count,
+            source=transcript.source,
+            quarters_back=quarters_back,
+            call_date=transcript.call_date,
+            period_warning=period_warning,
+        ),
+        analysis=analysis,
+        expectations=expectations,
+        expectations_history=list(expectations_history),
+        quarter_filing=quarter_filing,
         annual_filing=annual_filing,
         prior_annual_filing=prior_annual_filing,
-        risk_alert=evaluate_risk_alert(filing, risk_factors_diff, prior_filing),
-        altman_z=altman_z,
-        beneish_m=beneish_m,
-        piotroski_f=piotroski_f,
-        mdna_diff=mdna_diff,
-        risk_factors_diff=risk_factors_diff,
-        mdna_sentiment=mdna_sentiment,
-        risk_factors_sentiment=risk_factors_sentiment,
+        source_filing_url=source_filing_url,
+        altman_z=altman,
+        beneish_m=beneish,
+        piotroski_f=piotroski,
+        tone_prepared=_tone(
+            transcript.prepared_remarks,
+            lm_dictionary,
+            "remarques préparées non isolées dans ce transcript",
+        ),
+        tone_qa=_tone(
+            transcript.qa,
+            lm_dictionary,
+            "session de questions non isolée dans ce transcript",
+        ),
+        tone_mdna=tone_mdna,
     )
+
+
+__all__ = [
+    "CallInfo",
+    "CallReport",
+    "SectionResult",
+    "build_call_report",
+]

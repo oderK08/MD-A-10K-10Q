@@ -23,7 +23,7 @@ fixtures:
    change vs last quarter" would be correct, but treating it the same
    as a genuinely re-written risk factors section (which DOES carry
    signal) is wrong. We flag it explicitly via
-   `is_risk_factors_boilerplate` so the diff module can skip it rather
+   `is_risk_factors_boilerplate` so a caller can skip it rather
    than reporting a misleading "0% change" data point.
 
 3. WORDS SPLIT ACROSS TAGS: real filings from financial printers wrap

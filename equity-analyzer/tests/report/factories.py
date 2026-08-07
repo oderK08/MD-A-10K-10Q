@@ -91,3 +91,68 @@ def make_filing(
         financials=financials,
         text_sections=text_sections,
     )
+
+
+def make_transcript(
+    *,
+    ticker: str = "TEST",
+    prepared: str = "Revenue grew strongly this quarter and margins improved.",
+    qa: str = "Analyst question about pricing. Management gave a vague answer.",
+    source: str = "Alpha Vantage",
+    call_date: date = date(2026, 2, 3),
+    fiscal_period: str = "2026Q1",
+):
+    from equity_analyzer.data_layer.transcript_source import CallTranscript
+
+    full = prepared if qa is None else f"{prepared}\n{qa}"
+    return CallTranscript(
+        ticker=ticker,
+        call_date=call_date,
+        fiscal_period=fiscal_period,
+        full_text=full,
+        prepared_remarks=prepared,
+        qa=qa,
+        source=source,
+    )
+
+
+def make_analysis(
+    *,
+    ticker: str = "TEST",
+    quarter: str = "2026Q1",
+    text: str = "## Verdict\nPlutot bullish, la guidance monte.\n\n## Face aux attentes\nBeat de 8%.",
+    model: str = "claude-sonnet-5",
+    transcript_words: int = 8000,
+    had_expectations: bool = True,
+):
+    from equity_analyzer.report.call_analysis import CallAnalysis
+
+    return CallAnalysis(
+        ticker=ticker,
+        quarter=quarter,
+        text=text,
+        model=model,
+        transcript_words=transcript_words,
+        had_expectations=had_expectations,
+    )
+
+
+def make_expectation(
+    *,
+    period_end: date = date(2025, 12, 31),
+    estimated_eps: float = 1.10,
+    reported_eps: float = 1.19,
+    surprise: float = 0.09,
+    surprise_pct: float = 8.2,
+    reported_date: date = date(2026, 2, 3),
+):
+    from equity_analyzer.data_layer.earnings_expectations import QuarterExpectation
+
+    return QuarterExpectation(
+        fiscal_date_ending=period_end,
+        reported_date=reported_date,
+        estimated_eps=estimated_eps,
+        reported_eps=reported_eps,
+        surprise=surprise,
+        surprise_pct=surprise_pct,
+    )

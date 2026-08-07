@@ -1,0 +1,95 @@
+name: Rapport (un ticker, 2 pages)
+
+# Tu mets un ticker, tu obtiens un PDF de deux pages :
+#   page 1  la lecture du dernier earnings call par Claude, écrite contre
+#           le consensus sur lequel le trimestre était attendu
+#   page 2  les red flags annuels et la tonalité
+#
+# Le trimestre n'est pas à saisir. EDGAR sait quel trimestre la société
+# vient de déposer et sous quel repère fiscal elle le désigne, et c'est
+# le même repère que celui du fournisseur de transcripts, donc un
+# déposant à clôture juin ou janvier marche sans rien de particulier.
+#
+# Secrets nécessaires (Settings > Secrets and variables > Actions) :
+#   ANTHROPIC_API_KEY    obligatoire, c'est elle qui écrit la page 1
+#   ALPHAVANTAGE_API_KEY transcript et consensus ; sans elle le run se
+#                        rabat sur le 8-K de résultats déposé chez SEC,
+#                        que seule une minorité d'émetteurs fournit
+"on":
+  workflow_dispatch:
+    inputs:
+      ticker:
+        description: "Le ticker (ex: AAOI, MSFT, NVDA, COHR)"
+        required: true
+        default: "AAOI"
+      user_agent:
+        description: "User-Agent SEC EDGAR (nom d'app + email, exigé par la SEC)"
+        required: false
+        default: "EquityAnalyzer/1.0 contact@example.com"
+      ai_model:
+        description: "Modèle Claude qui lit le call"
+        required: false
+        default: "claude-sonnet-5"
+        type: choice
+        options:
+          - claude-sonnet-5
+          - claude-opus-5
+          - claude-haiku-4-5-20251001
+
+jobs:
+  rapport:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: equity-analyzer
+    steps:
+      - name: Checkout du repo
+        uses: actions/checkout@v4
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer la police du rapport (Lato)
+        # Le rapport intègre Lato dans le PDF via @font-face pointant sur
+        # un vrai fichier .ttf : xhtml2pdf ne consulte pas la base de
+        # polices système. Sans ce paquet, report/fonts.py se rabat
+        # proprement sur la sans-serif générique et le rapport se génère
+        # quand même, simplement dans une autre police.
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-lato
+
+      - name: Installer les dépendances
+        run: |
+          # xhtml2pdf peut entrer en conflit avec un paquet cryptography
+          # préinstallé sans métadonnées pip sur certaines images.
+          pip install --ignore-installed cryptography
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Lancer la suite de tests
+        # Entièrement hors-ligne (fixtures locales), donc c'est un vrai
+        # garde-fou avant de dépenser du quota et un appel payant.
+        run: python -m pytest tests/ -q
+
+      - name: Générer le rapport
+        env:
+          TICKER: ${{ inputs.ticker }}
+          SEC_USER_AGENT: ${{ inputs.user_agent }}
+          ANTHROPIC_MODEL: ${{ inputs.ai_model }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
+        run: python scripts/rapport.py
+
+      - name: Publier le rapport
+        # `if: always()` parce qu'un run qui échoue APRÈS avoir récupéré
+        # le transcript a quand même produit quelque chose qui vaut le
+        # quota dépensé : le cache. Le relancer ne recoûtera rien.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-${{ inputs.ticker }}
+          path: |
+            equity-analyzer/rapports/
+            equity-analyzer/transcripts/
+          if-no-files-found: warn
