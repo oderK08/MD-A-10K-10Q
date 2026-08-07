@@ -16,6 +16,7 @@ from datetime import date
 import pytest
 
 from equity_analyzer.data_layer.models import FilingTextSections, FormType, PeriodDuration
+from equity_analyzer.report import ai_summary
 from equity_analyzer.report.ai_summary import _SYSTEM_PROMPT, attach_ai_summary, build_prompt_context
 from equity_analyzer.report.report_data import build_report_data
 from equity_analyzer.sentiment.lm_dictionary import LMDictionary
@@ -300,3 +301,124 @@ def test_system_prompt_still_forbids_buy_sell_advice_and_external_company_knowle
     assert "objectif de cours" in prompt
     assert "memoire d'entrainement" in prompt
     assert "invente pas" in prompt
+
+
+# --- the API must never be called without material -----------------------
+
+
+def _no_text_report():
+    """A report whose section extraction returned nothing -- the real AAOI case."""
+    from datetime import date
+
+    from equity_analyzer.data_layer.models import FilingTextSections, FormType, PeriodDuration
+    from equity_analyzer.report.report_data import build_report_data
+
+    from .factories import make_filing, make_financial_period
+
+    def filing(accession, year):
+        return make_filing(
+            ticker="AAOI", company_name="Applied Optoelectronics", form_type=FormType.TEN_K,
+            fiscal_year=year, fiscal_period="FY", accession_number=accession,
+            period_end=date(year, 12, 31),
+            financials=make_financial_period(
+                fiscal_year=year, fiscal_period="FY",
+                duration=PeriodDuration.TWELVE_MONTH, accession_number=accession,
+                period_end=date(year, 12, 31), revenue=217_646_000.0, net_income=-56_048_000.0,
+            ),
+            # both sections came back None: the extractor found neither
+            text_sections=FilingTextSections(),
+        )
+
+    return build_report_data(filing("acc-cur", 2025), filing("acc-prior", 2024), None)
+
+
+def test_no_api_call_is_made_when_no_filing_text_could_be_extracted():
+    """
+    The worst failure this project can produce, seen on a real AAOI run.
+    Both sections extracted as None, so the fact sheet was the company
+    name and nothing else. The call was made anyway, the model answered
+    anyway, and it answered from training memory -- discussing fiscal
+    years that appear nowhere in the filing -- and the report presented
+    that as a sourced reading.
+
+    No prompt wording can fix this: "use only the information provided"
+    is unfollowable when none is provided and an answer is still
+    required. The guard has to sit before the call.
+    """
+    calls = []
+
+    def _fail_if_called(*args, **kwargs):
+        calls.append(args)
+        raise AssertionError("the API must not be called without material")
+
+    report = _no_text_report()
+    original_post = ai_summary.requests.post
+    ai_summary.requests.post = _fail_if_called
+    try:
+        result = ai_summary.attach_ai_summary(report, api_key="sk-test")
+    finally:
+        ai_summary.requests.post = original_post
+
+    assert calls == []
+    assert not result.ai_summary.available
+    assert "aucun texte" in result.ai_summary.unavailable_reason
+
+
+def test_the_report_states_the_absence_of_a_reading_prominently():
+    """
+    A reader who skims past a muted footnote would take the numbers on
+    page 2 for a full analysis of the quarter. The absence is the
+    headline.
+    """
+    from equity_analyzer.report.html_renderer import render_html
+
+    report = ai_summary.attach_ai_summary(_no_text_report(), api_key=None)
+    html = render_html(report)
+    assert "Pas de lecture interprétative" in html
+    assert html.index("Pas de lecture interprétative") < html.index("Red flags")
+
+
+def test_no_api_call_is_made_when_nothing_changed_between_the_two_filings():
+    """
+    A quarter where nothing moved is a real finding, but it is one the
+    report states from the counts it already has. Asking for a quoted
+    verdict on zero changed sentences reopens the same hole.
+    """
+    from datetime import date
+
+    from equity_analyzer.data_layer.models import FilingTextSections, FormType, PeriodDuration
+    from equity_analyzer.report.report_data import build_report_data
+
+    from .factories import make_filing, make_financial_period
+
+    same_text = "Revenue grew during the period. Margins were stable."
+
+    def filing(accession, year):
+        return make_filing(
+            form_type=FormType.TEN_K, fiscal_year=year, fiscal_period="FY",
+            accession_number=accession, period_end=date(year, 12, 31),
+            financials=make_financial_period(
+                fiscal_year=year, fiscal_period="FY",
+                duration=PeriodDuration.TWELVE_MONTH, accession_number=accession,
+                period_end=date(year, 12, 31), revenue=1.0,
+            ),
+            text_sections=FilingTextSections(
+                item_1a_risk_factors=same_text, item_7_mdna=same_text,
+                is_risk_factors_boilerplate=False,
+            ),
+        )
+
+    report = build_report_data(filing("acc-cur", 2025), filing("acc-prior", 2024), None)
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("the API must not be called without material")
+
+    original_post = ai_summary.requests.post
+    ai_summary.requests.post = _fail_if_called
+    try:
+        result = ai_summary.attach_ai_summary(report, api_key="sk-test")
+    finally:
+        ai_summary.requests.post = original_post
+
+    assert not result.ai_summary.available
+    assert "aucun changement textuel" in result.ai_summary.unavailable_reason

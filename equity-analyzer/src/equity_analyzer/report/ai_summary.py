@@ -451,6 +451,72 @@ class AISummaryError(Exception):
     pass
 
 
+def missing_material_reason(report: ReportData) -> Optional[str]:
+    """
+    Why this report has nothing for the model to read, or None when it
+    does. THE API MUST NOT BE CALLED WHEN THIS RETURNS A REASON.
+
+    Found on a real AAOI run, and it is the worst failure this project
+    can produce. Section extraction returned None for both Item 1A and
+    Item 7, so `build_prompt_context` emitted a fact sheet consisting of
+    the company name and nothing else. The call was made anyway, the
+    model answered anyway, and it answered the only way it could: from
+    what it remembered about the company, discussing fiscal years that
+    appeared nowhere in the filing. The report then presented that as a
+    sourced reading of the quarter.
+
+    No prompt instruction can prevent this. "Use only the information
+    provided" is unfollowable when no information is provided and an
+    answer is still demanded; the model has no way to refuse. The fix has
+    to be structural, on this side of the call.
+
+    An unchanged section counts as no material too. A quarter where
+    nothing moved is a real and useful finding, but it is one the report
+    states deterministically from the counts it already has, and asking
+    for a quoted verdict on zero changed sentences reopens exactly the
+    same hole.
+    """
+    from .theme_selection import default_section_for
+
+    selection = report.theme_selection
+    if selection is not None and selection.available and selection.value is not None:
+        section_key = selection.value.section_key
+    else:
+        section_key = default_section_for(report.filing)
+
+    # A fired risk alert is material on its own, whatever the MD&A did.
+    if report.risk_alert is not None and report.risk_alert.triggered:
+        return None
+
+    primary = report.mdna_diff if section_key == "mdna" else report.risk_factors_diff
+    if primary is None or not primary.available:
+        return (
+            "aucun texte de filing n'a pu être extrait pour cette période, "
+            "la lecture n'a donc aucune matière et n'a pas été demandée au modèle"
+        )
+
+    value = primary.value
+    if getattr(value, "skipped", False):
+        return (
+            "la section analysée est la clause standard du 10-Q, sans texte "
+            "à comparer, la lecture n'a pas été demandée au modèle"
+        )
+    # RiskFactorsDiffResult wraps the grouped diff; the MD&A diff is one.
+    grouped = getattr(value, "diff", value)
+
+    changed = any(
+        segment.kind in ("added", "removed", "modified")
+        for group in grouped.groups
+        for segment in group.diff.segments
+    )
+    if changed:
+        return None
+    return (
+        "aucun changement textuel entre les deux dépôts, il n'y a rien à "
+        "interpréter et le modèle n'a pas été appelé"
+    )
+
+
 def _call_claude_api(
     prompt_context: str,
     *,
@@ -521,6 +587,16 @@ def attach_ai_summary(
                     "and was not requested for this report"
                 ),
             ),
+        )
+
+    # Checked BEFORE the call, never after: a model handed an empty fact
+    # sheet still answers, and answers from memory. See
+    # `missing_material_reason`.
+    no_material = missing_material_reason(report)
+    if no_material is not None:
+        return dataclasses.replace(
+            report,
+            ai_summary=SectionResult(value=None, unavailable_reason=no_material),
         )
 
     resolved_model = model or os.environ.get("ANTHROPIC_MODEL") or DEFAULT_MODEL

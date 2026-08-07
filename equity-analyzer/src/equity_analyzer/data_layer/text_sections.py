@@ -114,6 +114,23 @@ _H = r"[ \t\xa0]"
 # this fix, and is why the two forms are now named separately.
 _HC = r" \t\xa0"
 
+# The gap between an item NUMBER and its TITLE. Allows a bounded number
+# of line breaks, because filers genuinely differ here and both shapes
+# are real headings:
+#   Microsoft:  "ITEM 1A. RISK FACTORS"        (same line)
+#   AAOI:       "Item 1A. \n \n Risk Factors"  (number and title split)
+# An earlier fix banned line breaks outright to stop a table-of-contents
+# row from being mistaken for a heading. That was the wrong lever: it
+# made AAOI's Item 1A and Item 7 unextractable altogether, and the run
+# produced a report with no filing text in it at all. The TOC is now
+# separated from real headings by the two signals that actually
+# distinguish them (see `_find_best_header_match`), not by forbidding a
+# layout that real filings use.
+#
+# Bounded rather than open-ended: an unlimited run of blank lines would
+# let "Item 6." on one page bind to a title pages away.
+_GAP = rf"{_H}*(?:\n{_H}*){{0,4}}"
+
 
 def _split_tolerant(word: str) -> str:
     """
@@ -135,11 +152,16 @@ def _split_tolerant(word: str) -> str:
 
 def _heading(number: str, *title_words: str) -> str:
     """
-    Builds an item-heading pattern: the item number and its title, on the
-    same line, tolerant of printer-injected splits inside each word.
+    Builds an item-heading pattern: the item number, then its title,
+    tolerant of printer-injected splits inside each word and of the two
+    being on separate lines (see `_GAP`).
+
+    The TITLE's own words must stay on one line. Only the number-to-title
+    gap may break, which is the layout real filings produce; letting the
+    title itself span lines would let it wander into unrelated prose.
     """
     title = (_H + r"+").join(_split_tolerant(w) for w in title_words)
-    return rf"item{_H}+{number}\.?{_H}*[-–—:]?{_H}*{title}"
+    return rf"item{_H}+{number}\.?{_GAP}[-–—:]?{_GAP}{title}"
 
 
 # Item headers we look for. Order matters: we search 10-K style first,
@@ -163,48 +185,72 @@ ITEM_PATTERNS = {
 }
 
 # Any item header at all, used as the "next section" boundary when
-# extracting the content that follows a chosen header.
-#
-# The title must sit on the SAME line as the item number, for the same
-# reason as above plus a second one found on the same Microsoft run: the
-# printer repeats a bare "PART I \n Item 1A" running header at every page
-# break inside the section. With `\s` allowing the newline, that bare
-# marker swallowed the following prose as its "title" and read as a real
-# section boundary, truncating the section at the first page break.
+# extracting the content that follows a chosen header. Same shape rules
+# as `_heading`: the number-to-title gap may break across lines, the
+# title itself may not.
 ANY_ITEM_HEADER = re.compile(
-    rf"item{_H}+\d+[a-c]?\.?{_H}*[-–—:]?{_H}*[a-z][a-z{_HC},'&]{{2,80}}",
+    rf"item{_H}+\d+[a-c]?\.?{_GAP}[-–—:]?{_GAP}[a-z][a-z{_HC},'&]{{2,80}}",
     re.IGNORECASE,
 )
 
-def _find_next_real_header(text: str, start: int) -> re.Match | None:
+# The item number inside a matched header, so a header can be compared
+# against the section currently being extracted.
+_HEADER_NUMBER_RE = re.compile(rf"item{_H}+(\d+[a-c]?)", re.IGNORECASE)
+
+
+def _header_number(match: re.Match) -> str:
+    found = _HEADER_NUMBER_RE.match(match.group(0))
+    return found.group(1).lower() if found else ""
+
+
+def _is_block_level(text: str, position: int) -> bool:
     """
-    Finds the next occurrence of ANY_ITEM_HEADER after `start` that looks
-    like an actual section heading, not a sentence-internal cross-
-    reference to another item.
+    Whether the header-shaped string at `position` starts its own line.
 
-    Confirmed against a real NVIDIA 10-K: its MD&A opens with the almost
-    universal boilerplate "...should be read in conjunction with 'Item
-    1A. Risk Factors,' our Consolidated Financial Statements..." -- a
-    reference to Item 1A sitting mid-sentence, which ANY_ITEM_HEADER
-    (which only checks the shape "item <n>[letter]. <words>") cannot
-    tell apart from a real heading. Left unfiltered, this cut the
-    extracted MD&A off after 27 words instead of the real ~40,000+.
-    Because this exact phrasing opens the MD&A of nearly every 10-K, this
-    almost certainly isn't NVIDIA-specific.
+    `html_to_text` turns block-level tag closings (</p>, </div>, </tr>,
+    </li>, <br>) into newlines, so a real heading -- a block element on
+    its own -- is preceded by a newline (ignoring spaces and tabs), while
+    a cross-reference sits inside a paragraph's running prose.
+    """
+    before = text[:position].rstrip(" \t\xa0")
+    return not before or before.endswith("\n")
 
-    The distinguishing signal: `html_to_text` turns block-level tag
-    closings (</p>, </div>, </tr>, </li>, <br>) into newlines, so a real
-    heading -- a block element on its own -- is preceded by a newline
-    (ignoring spaces/tabs); a cross-reference sits inside a paragraph's
-    running prose, preceded by ordinary sentence text.
+
+def _find_next_real_header(
+    text: str, start: int, exclude_number: str | None = None
+) -> re.Match | None:
+    """
+    Finds the next occurrence of ANY_ITEM_HEADER after `start` that is a
+    real section boundary.
+
+    Two things are skipped, each for a failure seen on a real filing:
+
+    SENTENCE-INTERNAL CROSS-REFERENCES. A real NVIDIA 10-K's MD&A opens
+    with the almost universal boilerplate "...should be read in
+    conjunction with 'Item 1A. Risk Factors,' our Consolidated Financial
+    Statements..." -- a reference sitting mid-sentence that
+    ANY_ITEM_HEADER cannot tell apart from a heading by shape alone.
+    Left unfiltered it cut the extracted MD&A off after 27 words instead
+    of the real ~40,000. Filtered by `_is_block_level`.
+
+    THE SECTION'S OWN NUMBER, when `exclude_number` is given. A Microsoft
+    10-K repeats a bare "PART I \\n Item 1A" running header at every page
+    break INSIDE Item 1A, and that marker binds to whatever prose follows
+    it, reading as a boundary and truncating the section at the first
+    page break. An item cannot be the boundary of itself: the next
+    section always carries a different number. This replaces the earlier
+    fix (banning line breaks between number and title), which stopped the
+    running header but also made every filer who splits the two
+    unextractable -- see `_GAP`.
     """
     pos = start
     while True:
         match = ANY_ITEM_HEADER.search(text, pos=pos)
         if match is None:
             return None
-        before = text[:match.start()].rstrip(" \t")
-        if not before or before.endswith("\n"):
+        if _is_block_level(text, match.start()) and (
+            exclude_number is None or _header_number(match) != exclude_number
+        ):
             return match
         pos = match.end()
 
@@ -298,10 +344,32 @@ def html_to_text(html: str) -> str:
 
 def _find_best_header_match(text: str, patterns: list[str]) -> re.Match | None:
     """
-    Finds all occurrences of any pattern in `patterns`, and returns the
-    one followed by the most content before the next item-header-like
-    string -- this is what distinguishes a real section start from a
-    table-of-contents entry.
+    Finds every occurrence of any pattern in `patterns` and returns the
+    one that is the real section heading rather than a table-of-contents
+    entry. Every 10-K/10-Q has a TOC near the top containing the literal
+    text "Item 1A. Risk Factors" as a link, and it is earlier in the
+    document than the real thing, so "first match" is always wrong.
+
+    Two signals, applied in order:
+
+    1. A REAL HEADING STARTS ITS OWN LINE. A TOC row that renders as
+       "...Executive Officers Item 1A." has the number mid-line, since
+       the previous row's title ran into it. Non-block-level candidates
+       are dropped, but only if at least one block-level candidate
+       exists -- otherwise a filing whose TOC and heading are both
+       mid-line would extract nothing at all, which is worse.
+
+    2. A REAL HEADING IS FOLLOWED BY CONTENT. A TOC entry is followed
+       almost immediately by the next TOC entry ("Risk Factors Item
+       1B."), a real section by pages of prose.
+
+    Note signal 2 deliberately measures the distance to the next
+    header-SHAPED string, without the block-level filter that
+    `_find_next_real_header` applies. That filter exists so a
+    mid-sentence cross-reference cannot truncate an extracted section --
+    correct there, wrong here: it also skips the next TOC entry, which
+    is precisely the thing that makes a TOC entry score near zero.
+    Reusing it for scoring quietly disarmed this tie-break.
     """
     candidates: list[re.Match] = []
     for pattern in patterns:
@@ -309,13 +377,13 @@ def _find_best_header_match(text: str, patterns: list[str]) -> re.Match | None:
     if not candidates:
         return None
 
+    block_level = [m for m in candidates if _is_block_level(text, m.start())]
+    if block_level:
+        candidates = block_level
+
     def content_length_after(match: re.Match) -> int:
         start = match.end()
-        # Search from immediately after this header's own text. A TOC
-        # entry is followed almost immediately by the next TOC entry
-        # (a short gap); a real section is followed by substantial prose
-        # before the next header, or by the end of the document.
-        next_header = _find_next_real_header(text, start)
+        next_header = ANY_ITEM_HEADER.search(text, pos=start)
         end = next_header.start() if next_header else len(text)
         return end - start
 
@@ -324,7 +392,9 @@ def _find_best_header_match(text: str, patterns: list[str]) -> re.Match | None:
 
 def _extract_section_text(text: str, match: re.Match) -> str:
     start = match.end()
-    next_header = _find_next_real_header(text, start)
+    next_header = _find_next_real_header(
+        text, start, exclude_number=_header_number(match)
+    )
     end = next_header.start() if next_header else len(text)
     return text[start:end].strip()
 

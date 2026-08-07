@@ -261,22 +261,26 @@ def _render_executive_summary(report: ReportData) -> str:
         """
 
     lines = _executive_summary_lines(report)
-    if not lines:
-        return ""
     items = "\n".join(f"<p>{line}</p>" for line in lines)
     unavailable = ""
     if report.ai_summary is not None and not report.ai_summary.available:
+        # Not a muted footnote. When the reason is that no filing text
+        # could be read, the ABSENCE of a reading is the single most
+        # important thing on the page: a reader who skims past it would
+        # take the numbers below for a full analysis of the quarter. It
+        # is stated in bold, at the top, above everything else.
         unavailable = (
-            f'<p class="muted">Lecture bullish/bearish indisponible : '
-            f"{_e(report.ai_summary.unavailable_reason)}</p>"
+            f'<p class="lede"><span class="flag-on">Pas de lecture interprétative '
+            f"pour ce dépôt : {_e(report.ai_summary.unavailable_reason)}.</span></p>"
         )
+    if not lines and not unavailable:
+        return ""
     return f"""
     <div class="exec-summary">
       <h2>Résumé exécutif</h2>
-      <p class="muted">Synthèse calculée à partir des indicateurs du rapport
-      (lecture interprétative non demandée pour ce tirage).</p>
-      {items}
       {unavailable}
+      <p class="muted">Synthèse calculée à partir des indicateurs du rapport.</p>
+      {items}
       {_render_selection_note(report)}
     </div>
     """
