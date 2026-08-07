@@ -64,7 +64,7 @@ OUTPUT_CSV = ROOT / "transcript_coverage.csv"
 FIELDS = [
     "ticker", "cik", "verdict", "edgar_transcript_exhibit",
     "vendors", "registration_gated", "direct_audio_links",
-    "ir_url", "fetch_routes", "error",
+    "ir_url", "ir_page_read", "ir_note", "fetch_routes", "error",
 ]
 
 
@@ -105,17 +105,37 @@ def main() -> int:
             "registration_gated": "oui" if coverage.registration_gated else "",
             "direct_audio_links": " | ".join(coverage.direct_audio_links),
             "ir_url": coverage.ir_url or "",
+            "ir_page_read": "oui" if coverage.ir_page_read else "",
+            "ir_note": coverage.ir_note or "",
             "fetch_routes": " | ".join(coverage.fetch_routes),
             "error": coverage.error or "",
         })
 
-        detail = coverage.edgar_transcript_exhibit or " | ".join(coverage.vendors) or "-"
+        detail = (
+            coverage.edgar_transcript_exhibit
+            or " | ".join(coverage.vendors)
+            or coverage.ir_note
+            or "-"
+        )
         print(f"  {ticker:<8} {coverage.verdict:<14} {detail}")
 
     with open(OUTPUT_CSV, "w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=FIELDS)
         writer.writeheader()
         writer.writerows(rows)
+
+    unread = [r for r in rows if r["verdict"] == "IR non lue"]
+    if unread:
+        # Called out before the totals, because these rows are holes in
+        # the survey and not measurements. Reading them as "these
+        # companies offer nothing" is exactly the mistake this section
+        # exists to prevent.
+        print()
+        print(f"=== {len(unread)} société(s) dont la page IR n'a PAS été lue ===")
+        print("  Ce ne sont pas des résultats : la sonde n'a pas pu regarder.")
+        print(f"  Motif du premier cas : {unread[0]['ir_note']}")
+        print("  → Si le champ d'URL IR manque chez SEC, la liste de champs")
+        print("    ci-dessus dit ce qui EST disponible pour retrouver l'adresse.")
 
     print()
     print("=== Distribution (c'est ça, la décision) ===")
