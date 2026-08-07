@@ -16,8 +16,11 @@ import re
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from equity_analyzer.data_layer.models import FilingTextSections, FormType, PeriodDuration
 from equity_analyzer.report import html_renderer
+from equity_analyzer.report.fonts import font_face_css
 from equity_analyzer.report.html_renderer import MAX_READING_WORDS, render_html
 from equity_analyzer.report.pdf_renderer import page_count, render_pdf, render_pdf_fitted
 from equity_analyzer.report.report_data import build_call_report
@@ -28,6 +31,28 @@ from ..redflags.factories import make_period
 
 DICTIONARY = load_lm_dictionary(
     Path(__file__).parent.parent / "fixtures" / "sample_lm_dictionary.csv"
+)
+
+# HOW MUCH FITS ON A PAGE IS A PROPERTY OF THE TYPEFACE, so the tests
+# that assert something MUST overflow are pinned to the font the report
+# actually ships with. Without Lato installed, xhtml2pdf falls back to
+# Helvetica, which is narrower: those tests would then measure a face no
+# reader ever sees, pass, and let a real overflow through. That is not a
+# hypothetical. The page 1 cap was first calibrated on a machine with no
+# Lato, every test was green, and CI went red on the first real run
+# because the runner installs `fonts-lato`.
+#
+# The tests that assert something must FIT are left running everywhere:
+# the fallback face is narrower, so a budget that holds in Lato holds in
+# Helvetica too.
+REPORT_FONT_INSTALLED = bool(font_face_css())
+needs_report_font = pytest.mark.skipif(
+    not REPORT_FONT_INSTALLED,
+    reason=(
+        "police du rapport (Lato) absente : xhtml2pdf se rabattrait sur "
+        "Helvetica, plus etroite, et cette mesure porterait sur une fonte "
+        "que personne ne lit. `apt-get install fonts-lato` pour l'activer."
+    ),
 )
 
 _ANNUAL_PRIOR = dict(
@@ -245,6 +270,7 @@ def test_a_reading_at_the_cap_still_leaves_the_report_at_two_pages():
     assert page_count(pdf) == 2
 
 
+@needs_report_font
 def test_the_cap_sits_at_the_real_limit_and_not_far_below_it(monkeypatch):
     """
     The other half of the measurement, and the one that keeps the test
@@ -257,6 +283,7 @@ def test_the_cap_sits_at_the_real_limit_and_not_far_below_it(monkeypatch):
     assert page_count(pdf) == 3
 
 
+@needs_report_font
 def test_the_cap_plus_every_caveat_is_compacted_back_to_two_pages():
     """
     The tight case, handled downstream rather than by lowering the cap
@@ -291,6 +318,7 @@ def test_an_overlong_reading_is_truncated_and_the_report_says_so():
     assert page_count(render_pdf(html)) == 2
 
 
+@needs_report_font
 def test_the_worst_realistic_case_is_compacted_back_to_two_pages():
     """
     Built to overflow from both ends at once: a reading at the cap with
