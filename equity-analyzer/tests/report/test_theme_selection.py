@@ -52,17 +52,56 @@ def test_list_subthemes_skips_the_preamble_and_tiny_sections():
     assert headings == ["A Real Sub Theme"]
 
 
-def test_selection_keeps_everything_when_under_the_cap_without_calling_the_api():
-    """Nothing to choose from means nothing to pay for -- no call at all."""
-    def _explode(*args, **kwargs):  # pragma: no cover - must never run
-        raise AssertionError("the API must not be called when under the cap")
-
-    with patch.object(ts.requests, "post", _explode):
+def test_the_model_judges_relevance_even_when_everything_would_fit():
+    """
+    Selecting is not capping. With a key, the model is asked which
+    sub-themes matter for THIS company every time -- including when
+    there are already fewer of them than the cap. A filing with three
+    sub-sections may well have only one worth reading, and keeping all
+    three just because they fit is the volume-driven behaviour this
+    pass exists to replace.
+    """
+    answer = '["Theme B Heading Here"]'
+    with patch.object(ts.requests, "post", _stub(answer)):
         selection = ts.select_key_subthemes(
             _themes_text(3), company="Test Co", api_key="sk-fake"
         )
-    assert len(selection.headings) == 3
+    assert selection.ai_selected
+    assert selection.headings == ["Theme B Heading Here"]
+
+
+def test_no_api_call_when_there_is_only_one_subtheme():
+    """One option is not a choice -- don't pay for it."""
+    def _explode(*args, **kwargs):  # pragma: no cover - must never run
+        raise AssertionError("nothing to select between")
+
+    with patch.object(ts.requests, "post", _explode):
+        selection = ts.select_key_subthemes(
+            _themes_text(1), company="Test Co", api_key="sk-fake"
+        )
+    assert len(selection.headings) == 1
     assert not selection.ai_selected
+
+
+def test_the_model_is_given_headings_only_not_sizes():
+    """
+    Sending "(N mots)" next to each heading quietly reintroduces the
+    volume bias this pass removes: shown a size, the model drifts toward
+    the big sections. Relevance to the company is the only criterion, so
+    size must not reach it.
+    """
+    captured = {}
+
+    def _capture(*args, **kwargs):
+        captured["content"] = kwargs["json"]["messages"][0]["content"]
+        return _FakeResponse('["Theme A Heading Here"]')
+
+    with patch.object(ts.requests, "post", _capture):
+        ts.select_key_subthemes(_themes_text(12), company="Test Co", api_key="sk-fake")
+
+    assert "Theme A Heading Here" in captured["content"]
+    assert "mots" not in captured["content"]
+    assert "40" not in captured["content"]
 
 
 def test_selection_uses_the_model_and_preserves_its_ranking():
