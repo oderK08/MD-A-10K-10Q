@@ -380,3 +380,79 @@ def test_the_real_ibm_payload_shape_parses(monkeypatch):
     assert "Olympia McNerney -- Global Head of Investor Relations" in call.full_text
     # the extra `sentiment` field is ignored, not a parse failure
     assert "0.7" not in call.full_text
+
+
+# --- the split, against wording seen on real calls -----------------------
+
+
+def test_the_operators_opening_announcement_does_not_split_the_call():
+    """
+    Microsoft's operator opens with "A question and answer session will
+    follow the formal presentation." That matches the boundary pattern
+    exactly, and on the first live run it split the transcript at line
+    two: three words of prepared remarks, the entire call filed as Q&A.
+    An announcement points forward; a handover happens now.
+    """
+    turns = [
+        "Operator",
+        "Greetings, and welcome to the Microsoft Corporation Fiscal Year 2026 Second "
+        "Quarter Earnings Conference Call. At this time, all participants are in a "
+        "listen-only mode. A question and answer session will follow the formal presentation.",
+        "Satya Nadella -- Chief Executive Officer",
+        "Microsoft Cloud revenue grew 22% this quarter driven by Azure.",
+        "Amy Hood -- Chief Financial Officer",
+        "We expect operating margins to remain roughly flat next quarter.",
+        "Operator",
+        "We will now begin the question-and-answer session.",
+        "Analyst -- Morgan Stanley",
+        "Can you unpack the Azure growth drivers?",
+    ]
+    prepared, qa = split_prepared_from_qa("\n".join(turns))
+
+    assert "Microsoft Cloud revenue grew 22%" in prepared
+    assert "operating margins to remain roughly flat" in prepared
+    assert "Can you unpack the Azure growth drivers?" in qa
+    assert "Azure growth drivers" not in prepared
+
+
+def test_other_ways_operators_announce_a_later_qa_are_also_ignored():
+    for announcement in (
+        "A question-and-answer session will be held at the end of the presentation.",
+        "We will take questions and answers following the prepared remarks.",
+        "There will be a question and answer session at the conclusion of today's call.",
+        "Questions and answers will follow later in this call.",
+    ):
+        turns = ["Operator", announcement] + ["CEO", "Revenue grew."] * 8 + [
+            "Operator", "We will now begin the question-and-answer session.",
+            "Analyst", "My question.",
+        ]
+        prepared, qa = split_prepared_from_qa("\n".join(turns))
+        assert "Revenue grew." in prepared, announcement
+        assert "My question." in qa, announcement
+
+
+def test_a_boundary_in_the_opening_lines_is_rejected_on_position_alone():
+    """
+    Second guard, independent of wording: prepared remarks are the bulk
+    of an earnings call, never its first line. This catches an
+    announcement phrased in a way the wording test misses.
+    """
+    turns = ["Operator", "Welcome. Q&A to be arranged."] + ["CEO", "Prepared content."] * 20
+    prepared, qa = split_prepared_from_qa("\n".join(turns))
+    assert qa is None
+    assert "Prepared content." in prepared
+
+
+def test_the_ibm_style_handover_still_splits_correctly():
+    """
+    IBM's operator did not announce the Q&A in the opening, so the
+    original split worked there. The fix must not break it.
+    """
+    turns = ["Operator", "Welcome. And thank you for standing by. All participants "
+             "are in a listen-only mode."] + ["CEO", "Revenue was strong."] * 10 + [
+        "Operator", "We will now begin the question-and-answer session.",
+        "Analyst", "What about margins?",
+    ]
+    prepared, qa = split_prepared_from_qa("\n".join(turns))
+    assert "Revenue was strong." in prepared
+    assert "What about margins?" in qa
