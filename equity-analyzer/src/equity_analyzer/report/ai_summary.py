@@ -517,6 +517,17 @@ def missing_material_reason(report: ReportData) -> Optional[str]:
     )
 
 
+# Models that reject `temperature` outright. Matched as a family rather
+# than an exact list of ids, because new members ship without this file
+# changing and a 400 on an unknown-but-current model is the worst
+# outcome: the transcript is already fetched and paid for by then.
+_NO_TEMPERATURE_RE = re.compile(r"claude-(?:opus|sonnet|haiku|fable)-[5-9]\b", re.IGNORECASE)
+
+
+def _accepts_temperature(model: str) -> bool:
+    return not _NO_TEMPERATURE_RE.search(model or "")
+
+
 def _call_claude_api(
     prompt_context: str,
     *,
@@ -543,7 +554,14 @@ def _call_claude_api(
             json={
                 "model": model,
                 "max_tokens": max_tokens,
-                "temperature": 0,  # minimize run-to-run drift for a factual-synthesis task
+                # temperature=0 minimizes run-to-run drift on a
+                # factual-synthesis task, which is worth having -- but
+                # the Claude 5 family rejects the parameter outright
+                # (HTTP 400, "`temperature` is deprecated for this
+                # model"), so sending it unconditionally makes those
+                # models unusable. Omitted where unsupported rather than
+                # dropped everywhere.
+                **({"temperature": 0} if _accepts_temperature(model) else {}),
                 "system": system_prompt or _SYSTEM_PROMPT,
                 "messages": [{"role": "user", "content": prompt_context}],
             },
