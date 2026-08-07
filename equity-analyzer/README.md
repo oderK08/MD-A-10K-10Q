@@ -13,7 +13,7 @@ compilés dans un rapport PDF structuré.
 | 3. Diff textuel | ✅ Terminé (30 tests) | Comparaison Item 1A / Item 7 entre deux filings, regroupée par sous-thème |
 | 4. Sentiment | ✅ Terminé (24 tests) | Score de tonalité Loughran-McDonald |
 | 5. Report Builder | ✅ Terminé (59 tests) | Rapport principal 2 pages + rapport « détail » séparé, en niveaux de gris, police Lato intégrée |
-| 6. Sélection + lecture IA (opt-in) | ✅ Terminé (24 tests) | Deux passes : l'IA choisit les sous-thématiques suivies par les analystes, Python les diffe, l'IA rédige le résumé exécutif dessus |
+| 6. Sélection + lecture IA (opt-in) | ✅ Terminé (26 tests) | Deux passes : l'IA choisit les sous-thématiques suivies par les analystes, Python les diffe, l'IA rédige le résumé exécutif dessus |
 
 ## Module 1 — Data Layer
 
@@ -699,12 +699,33 @@ travailler**.
    filing (`list_subthemes`, pur, sans réseau — réutilise la détection
    de titres du diff lui-même, donc les deux ne peuvent pas diverger sur
    ce qu'est une sous-thématique).
-2. **L'IA choisit** jusqu'à `MAX_SELECTED_THEMES` (**10**) de ces
-   intitulés : ceux qu'un analyste couvrant cette société surveillerait
-   réellement — prix, volumes, marges, demande, concentration client,
-   contraintes de capacité, risques réglementaires bloquants — en
-   dépriorisant le boilerplate juridique générique
-   (`select_key_subthemes`).
+2. **L'IA lit ces intitulés — les noms seuls, volontairement sans les
+   tailles — et retient** jusqu'à `MAX_SELECTED_THEMES` (**10**) de ceux
+   qui ont réellement du sens **pour cette société-là**, compte tenu de
+   son activité et de ce que les analystes qui la suivent attendent
+   d'elle (`select_key_subthemes`).
+   Deux points sur lesquels une première version se trompait, corrigés :
+   - les intitulés étaient envoyés avec leur nombre de mots — ce qui
+     réintroduisait discrètement le biais de volume que cette passe
+     existe justement pour supprimer (montrez une taille au modèle, il
+     dérive vers les grosses sections). Le modèle ne reçoit plus que
+     les noms ;
+   - la passe IA était **sautée** dès qu'il y avait moins de 10
+     sous-sections, donc tout était gardé sans tri. Sélectionner n'est
+     pas plafonner : un filing à 8 sous-thématiques peut n'en avoir que
+     3 qui comptent. Avec une clé, le modèle juge maintenant **à chaque
+     fois** (sauf s'il n'y a qu'une seule sous-section — un choix entre
+     une option n'en est pas un).
+   Pour **cette passe uniquement**, le modèle est explicitement invité à
+   mobiliser ce qu'il sait du secteur et du modèle économique de la
+   société : c'est ce qui permet de dire qu'un intitulé sur les prix des
+   mémoires est central pour un fabricant de semi-conducteurs et
+   marginal pour un distributeur. C'est sans risque ici, contrairement
+   au résumé : la sortie n'est qu'un **réordonnancement d'intitulés qui
+   existent déjà** dans le document, donc ce jugement sectoriel ne peut
+   pas introduire de fait non vérifié dans le rapport. La passe de
+   résumé, elle, garde son interdiction stricte de connaissance
+   externe.
 3. **Python diffe**, puis **l'IA revient** écrire le résumé exécutif sur
    cette sélection (`ai_summary.py`), en reprenant explicitement les
    « points attendus » sous-thématique par sous-thématique.
@@ -898,7 +919,7 @@ log du run indique quel modèle a réellement produit les synthèses.
 
 ### Tests
 
-24 tests, tous hors-ligne : `build_prompt_context` et `select_key_subthemes` (purs, sans réseau) et
+26 tests, tous hors-ligne : `build_prompt_context` et `select_key_subthemes` (purs, sans réseau) et
 le traitement des réponses succès/échec via des réponses HTTP simulées.
 Le chemin d'erreur HTTP réel (401 avec une fausse clé) a été vérifié
 manuellement contre la vraie API pendant le développement — network
@@ -914,7 +935,7 @@ python -m pytest tests/report/test_ai_summary.py -v
 ## Statut : projet complet, validé contre de vraies données
 
 Les 5 modules principaux (+ le module 6 optionnel) sont terminés et
-testés (202 tests). Le pipeline a été validé
+testés (204 tests). Le pipeline a été validé
 contre la vraie API SEC EDGAR (voir `.github/workflows/test-real-sec-api.yml`
 et `scripts/test_real_sec_pipeline.py`) sur 15 grandes capitalisations de
 secteurs variés (tech, finance, énergie, santé, biens de consommation,

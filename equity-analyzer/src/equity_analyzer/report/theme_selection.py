@@ -13,22 +13,38 @@ This module moves that judgment to where it belongs, in three steps:
      (`list_subthemes` -- pure, no network, reuses the same heading
      detection the diff itself uses, so the two can never disagree about
      what a sub-theme is).
-  2. The model picks up to `MAX_SELECTED_THEMES` of them: the ones an
-     analyst covering this company would actually be watching
-     (`select_key_subthemes`).
+  2. The model reads those HEADINGS -- names only, deliberately without
+     sizes -- and picks up to `MAX_SELECTED_THEMES` that actually make
+     sense for THIS company, given its business and what analysts
+     covering it expect (`select_key_subthemes`). It is asked every
+     time a key is available, including when there are already fewer
+     sub-themes than the cap: selecting is a relevance judgment, not a
+     count limit.
   3. Python diffs only those, and a later pass writes the executive
      summary over that same selection.
+
+For THIS pass only, the model is explicitly told to use what it knows
+about the company's sector and business model -- that's what makes
+"memory pricing" central for a semiconductor maker and marginal for a
+grocer. That is safe here in a way it would not be in the summary: the
+output is a reordering of headings that already exist in the document,
+so sector judgment cannot introduce an unverified fact into the report.
+The summary pass keeps its ban on external facts.
 
 The model only ever CHOOSES FROM the list Python gives it -- it never
 invents a heading. Any returned heading that isn't in the input list is
 dropped (see `_parse_selection`), so a hallucinated sub-theme can't enter
 the pipeline: at worst the selection comes back short, never wrong.
 
-Degrades to "keep everything" whenever the selection can't be made (no
-API key, network failure, unparseable answer, or a filing with no
-detected sub-headings at all). That keeps the report generatable offline
-and free, exactly as before this module existed -- the AI makes the
-report sharper, it is not load-bearing for producing one.
+Degrades honestly whenever the selection can't be made (no API key,
+network failure, unparseable answer, or a filing with no detected
+sub-headings at all): it falls back to the largest sub-themes and says
+so in `ThemeSelection.reason`, which the report prints. Size is a poor
+proxy for relevance -- replacing it is this module's whole point -- but
+with no model reachable it's the only signal left, and labelling it is
+what keeps the report from implying an analyst-grade judgment happened.
+The report stays generatable offline and free; the AI makes it sharper,
+it is not load-bearing for producing one.
 """
 
 from __future__ import annotations
@@ -60,25 +76,21 @@ MAX_SELECTED_THEMES = 10
 # its limited picks aren't spent on noise.
 _MIN_THEME_WORDS = 30
 
-_SELECTION_SYSTEM_PROMPT = """Tu es analyste equity. On te donne la liste des sous-sections d'un filing SEC (10-K ou 10-Q) d'une societe, avec pour chacune sa taille.
+_SELECTION_SYSTEM_PROMPT = """Tu es analyste equity. On te donne le nom d'une societe et la liste des INTITULES des sous-sections de son filing SEC (10-K ou 10-Q).
 
-Ta tache : selectionner celles qu'un analyste couvrant cette societe surveillerait REELLEMENT ce trimestre -- celles ou un changement de formulation serait materiel pour la these d'investissement.
+Ta tache : juger, intitule par intitule, lesquels ont le plus de SENS POUR CETTE SOCIETE EN PARTICULIER, compte tenu de son activite, de son secteur, et de ce que les analystes qui la suivent attendent d'elle. Tu ne choisis pas les sous-sections les plus longues ni les plus generiques : tu choisis celles ou un changement de formulation cette annee changerait quelque chose a la these d'investissement de CETTE societe.
 
-Priorise :
-- ce qui touche au chiffre d'affaires, aux prix, aux volumes, aux marges, a la demande, aux carnets de commandes ;
-- la concentration client/fournisseur, les contraintes de capacite ou d'approvisionnement ;
-- les risques reglementaires, juridiques ou geopolitiques susceptibles de bloquer une activite precise ;
-- ce qui est specifique a cette societe et a son secteur.
+Pour cette tache de selection, et pour elle seulement, tu DOIS mobiliser ce que tu sais du secteur et du modele economique de la societe : c'est precisement ce qui permet de dire qu'un intitule sur les prix des memoires est central pour un fabricant de semi-conducteurs et secondaire pour un distributeur alimentaire. Tu ne produis aucune affirmation factuelle ici -- tu ne fais que reordonner une liste d'intitules qui existent deja dans le document -- donc ce jugement sectoriel ne peut pas introduire d'information non verifiee dans le rapport.
 
-Deprioriser :
-- le boilerplate juridique generique present dans tous les filings ;
-- les sections purement procedurales ou administratives ;
-- ce qui ne bougerait la these d'aucun analyste.
+Raisonne ainsi pour chaque intitule :
+- de quoi vit cette societe, et cet intitule touche-t-il a ce moteur (prix, volumes, demande, marges, capacite, clients, approvisionnement) ?
+- est-ce un point sur lequel le marche attend justement une mise a jour de cette societe cette annee ?
+- ou est-ce une clause presente a l'identique dans le filing de n'importe quelle societe cotee (gouvernance, litiges generiques, volatilite du titre, procedures) ?
 
 Contraintes :
-- Choisis AU MAXIMUM %(max_themes)d sous-sections, classees de la plus importante a la moins importante.
-- Choisis UNIQUEMENT dans la liste fournie. Ne reformule pas, ne raccourcis pas, ne fusionne pas les intitules : recopie-les a l'identique.
-- S'il y a moins de %(max_themes)d sous-sections pertinentes, en renvoyer moins est correct et preferable.
+- Choisis AU MAXIMUM %(max_themes)d intitules, classes du plus important au moins important pour cette societe.
+- Choisis UNIQUEMENT dans la liste fournie. Ne reformule pas, ne raccourcis pas, ne fusionne pas les intitules : recopie-les a l'identique, caractere pour caractere.
+- En retenir MOINS que le maximum est non seulement autorise mais attendu quand le reste est du boilerplate : mieux vaut 4 intitules qui comptent vraiment que 10 dont 6 de remplissage.
 - Reponds UNIQUEMENT par un tableau JSON d'intitules, sans commentaire ni texte autour. Exemple de forme attendue : ["Intitule A", "Intitule B"]"""
 
 
@@ -162,8 +174,15 @@ def _call_selection_api(
     model: str,
     timeout_seconds: float,
 ) -> str:
-    listing = "\n".join(f'- "{t.heading}" ({t.word_count} mots)' for t in themes)
-    user_content = f"Societe : {company}\n\nSous-sections disponibles :\n{listing}"
+    # Headings ONLY -- deliberately no word counts. An earlier version sent
+    # "(N mots)" alongside each one and that quietly reintroduced the very
+    # bias this pass exists to remove: given a size next to each option, the
+    # model drifts toward picking the big sections. The judgment asked for
+    # is "does this heading matter for THIS company", which size can't
+    # inform. Sections too short to be real are already filtered out
+    # upstream by `list_subthemes`, so no size signal is needed here.
+    listing = "\n".join(f'- "{t.heading}"' for t in themes)
+    user_content = f"Societe : {company}\n\nIntitules des sous-sections du filing :\n{listing}"
     try:
         response = requests.post(
             ANTHROPIC_API_URL,
@@ -233,22 +252,34 @@ def select_key_subthemes(
             reason="aucune sous-section détectée dans cette section du filing",
             ai_selected=False,
         )
-    if len(themes) <= MAX_SELECTED_THEMES:
-        return ThemeSelection(
-            headings=[t.heading for t in themes],
-            reason=(
-                f"{len(themes)} sous-section(s) détectée(s), toutes retenues "
-                f"(pas plus que le maximum de {MAX_SELECTED_THEMES})"
-            ),
-            ai_selected=False,
-        )
 
     resolved_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
     if not resolved_key:
+        if len(themes) <= MAX_SELECTED_THEMES:
+            return ThemeSelection(
+                headings=[t.heading for t in themes],
+                reason=(
+                    f"{len(themes)} sous-section(s) détectée(s), toutes retenues — "
+                    f"sélection IA non demandée, donc aucun tri par pertinence"
+                ),
+                ai_selected=False,
+            )
         return _fallback(
             themes,
             f"sélection IA non demandée — {MAX_SELECTED_THEMES} sous-sections les "
             f"plus volumineuses retenues à défaut (sur {len(themes)})",
+        )
+
+    # With a key, the model judges relevance EVERY time -- including when
+    # there are already fewer sub-sections than the cap. Selecting is not
+    # capping: a filing with eight sub-themes may well have only three
+    # that matter for this company, and keeping all eight just because
+    # they fit would be the volume-driven behaviour this pass replaces.
+    if len(themes) == 1:
+        return ThemeSelection(
+            headings=[themes[0].heading],
+            reason="une seule sous-section détectée — rien à sélectionner",
+            ai_selected=False,
         )
 
     resolved_model = model or os.environ.get("ANTHROPIC_MODEL") or DEFAULT_MODEL
