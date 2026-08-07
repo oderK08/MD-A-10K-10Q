@@ -169,11 +169,25 @@ def test_apply_empty_selection_selects_nothing_rather_than_everything():
     assert marked.selected_groups == []
 
 
+def test_seravek_is_never_referenced():
+    """
+    Seravek was requested, then explicitly dropped: it's a proprietary
+    macOS-only font that can't be embedded in a CI-generated PDF. It
+    must not linger as a CSS fallback either -- that would render the
+    same report in one face on a Mac and another everywhere else.
+    """
+    from equity_analyzer.report import fonts
+    from equity_analyzer.report.html_renderer import _css
+
+    assert "seravek" not in fonts.body_font_stack().lower()
+    assert "seravek" not in _css().lower()
+
+
 def test_font_falls_back_cleanly_when_the_font_file_is_missing(tmp_path, monkeypatch):
     """
-    Seravek can't be embedded (proprietary, macOS-only), so the report
-    uses Lato -- but a machine without it must still render, in the
-    generic sans, rather than declaring a family with no faces behind it.
+    The report uses Lato -- but a machine without it must still render,
+    in the generic sans, rather than declaring a family with no faces
+    behind it.
     """
     from equity_analyzer.report import fonts
 
