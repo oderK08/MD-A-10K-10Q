@@ -169,3 +169,27 @@ def test_no_api_key_is_an_absence_not_a_crash(monkeypatch):
     with pytest.raises(ExpectationsUnavailable) as exc:
         fetch_earnings_expectations("TEST")
     assert "ALPHAVANTAGE_API_KEY" in str(exc.value)
+
+
+def test_a_negative_offset_reaches_a_quarter_newer_than_the_anchor():
+    """
+    The call read is not always older than the newest filing. A company
+    can announce a quarter it has not filed yet, so the call is NEWER
+    than anything on EDGAR. The list is newest first, so one quarter
+    newer is one index lower.
+    """
+    expectations = parse_earnings_payload(
+        "TEST", _payload(_quarter("2026-09-30"), _quarter("2026-06-30"))
+    )
+    newer = expectations.at(date(2026, 6, 30), quarters_back=-1)
+    assert newer.fiscal_date_ending == date(2026, 9, 30)
+
+
+def test_a_negative_offset_past_the_newest_line_returns_none():
+    """
+    Right answer, not a failure: if the provider has not published that
+    quarter either, there is no consensus to show, and wrapping around
+    to the oldest entry would put a two year old figure on page 1.
+    """
+    expectations = parse_earnings_payload("TEST", _payload(_quarter("2026-06-30")))
+    assert expectations.at(date(2026, 6, 30), quarters_back=-1) is None

@@ -7,6 +7,8 @@ the company reports, so the morning after an earnings release the newest
 10-Q still describes the previous quarter.
 """
 
+from datetime import date
+
 import pytest
 
 from equity_analyzer.data_layer.cik_lookup import FilingNotFoundError
@@ -275,3 +277,78 @@ def test_a_terse_statement_row_with_a_long_label_is_still_dropped():
     assert not _is_table_row(
         "Revenue for the third quarter was $217.6 million, up 12% year over year."
     )
+
+
+# -- Does this 8-K announce a quarter that is not filed yet? ------------
+
+
+class _Ref:
+    """The two fields the predicate reads off an earnings 8-K."""
+
+    def __init__(self, filed_date, period_of_report=None):
+        self.filed_date = filed_date
+        self.period_of_report = period_of_report or filed_date
+
+
+def test_the_release_for_the_quarter_just_filed_is_not_a_newer_quarter():
+    """
+    THE regression, from a real MSFT run. An 8-K's period_of_report is
+    the date of the EVENT, not a fiscal period end: Microsoft's quarter
+    ended 30 June and the release went out 29 July. Comparing those two
+    dates said "a newer quarter has been reported" about the release for
+    that very quarter. The tool then searched a quarter that does not
+    exist, spent a request finding out, printed a false staleness
+    warning and lost the whole consensus section.
+    """
+    from equity_analyzer.data_layer.earnings_release import announces_a_newer_quarter
+
+    release = _Ref(date(2026, 7, 29))
+    assert announces_a_newer_quarter(
+        release, filed_date=date(2026, 7, 30), period_end=date(2026, 6, 30)
+    ) is False
+
+
+def test_a_release_filed_after_the_periodic_report_does_announce_a_newer_quarter():
+    """
+    The genuine case this exists for: the quarter ended 30 June was
+    filed in July, and the September quarter's results are announced in
+    late October, before its 10-Q exists.
+    """
+    from equity_analyzer.data_layer.earnings_release import announces_a_newer_quarter
+
+    release = _Ref(date(2026, 10, 28))
+    assert announces_a_newer_quarter(
+        release, filed_date=date(2026, 7, 30), period_end=date(2026, 6, 30)
+    ) is True
+
+
+def test_a_late_amended_release_for_an_already_filed_quarter_does_not_count():
+    """
+    Second, independent guard. Filing order alone would be fooled by a
+    corrected release issued a few days after the periodic report; the
+    elapsed-time floor catches it, because no same-quarter release comes
+    forty five days after the period ended AND after the filing.
+    """
+    from equity_analyzer.data_layer.earnings_release import announces_a_newer_quarter
+
+    release = _Ref(date(2026, 8, 3))
+    assert announces_a_newer_quarter(
+        release, filed_date=date(2026, 7, 30), period_end=date(2026, 6, 30)
+    ) is False
+
+
+def test_missing_dates_never_step_forward():
+    """
+    The two mistakes are not equally expensive. Not stepping forward
+    costs nothing, the ordinary backward search still finds the newest
+    published call. Stepping forward wrongly costs a request, a false
+    warning on page 1 and the consensus. Absent data means do not step.
+    """
+    from equity_analyzer.data_layer.earnings_release import announces_a_newer_quarter
+
+    assert announces_a_newer_quarter(None, filed_date=date(2026, 7, 30),
+                                     period_end=date(2026, 6, 30)) is False
+    assert announces_a_newer_quarter(_Ref(date(2026, 10, 28)), filed_date=None,
+                                     period_end=date(2026, 6, 30)) is False
+    assert announces_a_newer_quarter(_Ref(date(2026, 10, 28)),
+                                     filed_date=date(2026, 7, 30), period_end=None) is False

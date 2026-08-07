@@ -65,7 +65,10 @@ from equity_analyzer.data_layer.earnings_expectations import (
     fetch_earnings_expectations,
 )
 from equity_analyzer.data_layer.transcript_cache import CachedTranscriptSource, TranscriptCache
-from equity_analyzer.data_layer.earnings_release import list_earnings_8ks
+from equity_analyzer.data_layer.earnings_release import (
+    announces_a_newer_quarter,
+    list_earnings_8ks,
+)
 from equity_analyzer.data_layer.transcript_period import (
     PeriodLabelUnavailable,
     alpha_vantage_label,
@@ -256,24 +259,35 @@ def main() -> int:
     # -- Has the company REPORTED a quarter it has not yet FILED? --
     #
     # The earnings call happens on the day of the press release; the
-    # 10-Q or 10-K that EDGAR indexes follows two to six weeks later. In
+    # 10-Q or 10-K that EDGAR indexes follows within days to weeks. In
     # that window the newest call exists and the newest periodic filing
     # is for the quarter before it, so anchoring on filings alone reads
-    # a call one quarter old and says nothing about it. The earnings
-    # 8-K (Item 2.02) is filed the same day as the release, so it is the
-    # cheapest honest signal that a newer quarter has been reported.
+    # a call one quarter old and says nothing about it.
+    #
+    # The test is the ORDER OF FILING, not a date comparison: an 8-K's
+    # period_of_report is the date of the event, not a fiscal period end
+    # (see earnings_release.announces_a_newer_quarter, and the real run
+    # that got this wrong).
     start_label = filed_label
-    consensus_anchor = quarter_filing.period_end
+    stepped_forward = False
     try:
         recent_8k = list_earnings_8ks(client, cik, limit=1)[0]
-        reported_end = recent_8k.period_of_report
-        if reported_end is not None and reported_end > quarter_filing.period_end:
+        if announces_a_newer_quarter(
+            recent_8k,
+            filed_date=quarter_filing.filed_date,
+            period_end=quarter_filing.period_end,
+        ):
             start_label = next_label(filed_label)
-            consensus_anchor = reported_end
+            stepped_forward = True
             _ok(
-                f"Résultats publiés le {recent_8k.filed_date} pour le trimestre clos "
-                f"le {reported_end}, pas encore déposé : recherche du call sur "
-                f"{start_label}"
+                f"Résultats annoncés le {recent_8k.filed_date}, après le dépôt du "
+                f"{quarter_filing.filed_date} : un trimestre de plus a été publié "
+                f"mais pas encore déposé, recherche du call sur {start_label}"
+            )
+        else:
+            _ok(
+                f"Dernier communiqué de résultats du {recent_8k.filed_date} : celui "
+                f"du trimestre déposé, rien de plus récent à chercher"
             )
     except (EdgarClientError, FilingNotFoundError, IndexError, ValueError) as exc:
         _warn(f"Pas de 8-K de résultats exploitable, on s'en tient au dépôt : {exc}")
@@ -310,10 +324,18 @@ def main() -> int:
         _fail(f"Aucun transcript récupérable : {exc}")
         return 2
 
-    if quarters_back:
+    # STALENESS IS MEASURED AGAINST THE NEWEST FILED QUARTER, not against
+    # wherever the search happened to start. When the search stepped
+    # forward to a quarter that turned out not to be published yet,
+    # falling back one step lands on the newest filed quarter, which is
+    # the current call and not a stale one. Reporting that as "one
+    # quarter behind" would print a warning that is simply false, and a
+    # false warning on page 1 is worse than no warning at all.
+    stale_quarters = quarters_back - (1 if stepped_forward else 0)
+    if stale_quarters > 0:
         _warn(
             f"Le call du trimestre déposé n'est pas encore publié : ceci est le "
-            f"call disponible le plus récent, {quarters_back} trimestre(s) en arrière."
+            f"call disponible le plus récent, {stale_quarters} trimestre(s) en arrière."
         )
     _ok(f"Transcript {label} : {call.word_count} mots, source {call.source}")
 
@@ -326,16 +348,23 @@ def main() -> int:
         _warn(f"ATTENTION : {period_warning}")
 
     # -- What the market expected, for the quarter of the call above --
+    #
+    # One anchor, one offset. `stale_quarters` already says where the
+    # call sits relative to the newest FILED quarter, and it is negative
+    # when the call is for a quarter EDGAR does not have yet. The
+    # provider's list is newest first, so that offset addresses the
+    # right line in both directions without a second anchor to keep in
+    # step with this one.
     expectation = history = None
     expectations_reason = None
     try:
         expectations = fetch_earnings_expectations(TICKER)
-        expectation = expectations.at(consensus_anchor, quarters_back)
+        expectation = expectations.at(quarter_filing.period_end, stale_quarters)
         if expectation is None:
             expectations_reason = (
                 f"aucune ligne de consensus pour le trimestre du call "
-                f"(clos le {consensus_anchor}"
-                + (f", {quarters_back} trimestre(s) plus tôt)" if quarters_back else ")")
+                f"(repère : trimestre clos le {quarter_filing.period_end}, "
+                f"décalage {stale_quarters:+d})"
             )
             _warn(expectations_reason)
         else:
@@ -375,7 +404,7 @@ def main() -> int:
     report = build_call_report(
         TICKER, company_name, cik, call, analysis,
         call_quarter=label,
-        quarters_back=quarters_back,
+        quarters_back=max(stale_quarters, 0),
         period_warning=period_warning,
         expectation=expectation,
         expectations_reason=expectations_reason,

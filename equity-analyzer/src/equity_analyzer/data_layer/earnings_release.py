@@ -213,8 +213,59 @@ def latest_earnings_pair(client, cik: str) -> tuple:
     return tuple(fetch_earnings_release(client, cik, ref) for ref in refs)
 
 
+# A quarter's results are announced two to six weeks after it ends, and
+# the periodic report follows within days of that. So an earnings 8-K
+# belonging to the NEXT quarter cannot arrive until roughly a full
+# quarter later. Ninety days is the quarter itself; forty five is a
+# deliberately loose floor that no same-quarter release realistically
+# clears while every next-quarter one does.
+_MIN_DAYS_PAST_PERIOD_END = 45
+
+
+def announces_a_newer_quarter(earnings_8k, *, filed_date, period_end) -> bool:
+    """
+    True when this earnings 8-K reports a quarter NEWER than the newest
+    periodic report on file, given that report's filing date and period
+    end.
+
+    WHY THIS IS NOT A DATE COMPARISON, which is what a first version
+    did and got wrong on the first real run. An 8-K's `period_of_report`
+    is the date of the EVENT, not the end of a fiscal period: for an
+    earnings release it is the day results were announced. Microsoft's
+    quarter ended 30 June and its release went out on 29 July, so
+    comparing 29 July against 30 June said "a newer quarter has been
+    reported" about the release for that very quarter. The tool then
+    searched a quarter that does not exist yet, spent a request finding
+    out, printed a staleness warning that was false, and lost the
+    consensus because it was looking for the wrong period.
+
+    THE ORDER OF FILING IS THE REAL SIGNAL. A company announces results
+    and then files the periodic report; it never files the 10-Q or 10-K
+    for a quarter before announcing it. So an earnings 8-K filed AFTER
+    the newest periodic report is announcing something that report does
+    not cover. The elapsed-time floor below is a second, independent
+    guard against a late amended release for a quarter already filed.
+
+    BOTH CONDITIONS MUST HOLD, because the two mistakes are not equally
+    expensive. Failing to step forward costs nothing: the ordinary
+    backward search still finds the newest published call. Stepping
+    forward wrongly costs a request, a false warning on page 1 and the
+    whole consensus section. When in doubt, do not step.
+    """
+    if earnings_8k is None or filed_date is None or period_end is None:
+        return False
+    announced_on = earnings_8k.filed_date
+    if announced_on is None:
+        return False
+    return (
+        announced_on > filed_date
+        and (announced_on - period_end).days > _MIN_DAYS_PAST_PERIOD_END
+    )
+
+
 __all__ = [
     "EARNINGS_ITEM",
+    "announces_a_newer_quarter",
     "EarningsRelease",
     "Exhibit",
     "fetch_earnings_release",

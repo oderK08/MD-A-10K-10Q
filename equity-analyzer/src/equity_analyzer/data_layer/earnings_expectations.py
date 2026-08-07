@@ -128,12 +128,19 @@ class EarningsExpectations:
         quarters before it.
 
         The offset exists because the call being read is not always the
-        newest quarter on file: a company can file its 10-Q days after
-        reporting, before the transcript provider has published the call
-        (see transcript_period.find_latest_available). The expectations
-        shown then have to be the ones for the call actually read, not
-        for the newest quarter, or the report would compare a reading of
+        newest quarter on file, and it slips in BOTH directions. A
+        company can file days after reporting, before the provider has
+        published the call, so the call read is older (positive offset).
+        It can also have reported a quarter it has not yet filed, so the
+        call read is NEWER than anything on EDGAR (negative offset, and
+        the list is newest first, so one quarter newer is one index
+        lower). Either way the expectations shown have to be the ones
+        for the call actually read, or the report measures a reading of
         one quarter against the consensus for another.
+
+        A negative offset that runs off the top of the list returns
+        None, which is the right answer: the provider has no consensus
+        line for a quarter it has not published either.
 
         Returns None rather than the nearest entry when the anchor date
         is not in the list: guessing which quarter the caller meant is
