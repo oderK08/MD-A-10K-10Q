@@ -76,7 +76,17 @@ _SOFT_ERROR_KEYS = ("Information", "Note", "Error Message")
 _QA_BOUNDARY_RE = re.compile(
     r"questions?[\s-]and[\s-]answers?(?:\s+session)?"
     r"|\[\s*q\s*&\s*a\s*\]"
-    r"|(?:begin|open|start|take|move to).{0,20}\bq\s*&\s*a\b",
+    r"|(?:begin|open|start|take|move to).{0,20}\bq\s*&\s*a\b"
+    # The markers that actually appear at the handover on real calls.
+    # Microsoft's Q3 2026 transcript named the Q&A only in the operator's
+    # OPENING ("a question and answer session will follow"), which is
+    # correctly rejected as an announcement -- and the real handover used
+    # none of the phrases above, so the split found nothing and filed all
+    # 8815 words as prepared remarks. These three are how an operator
+    # actually opens the floor.
+    r"|\[\s*operator\s+instructions\s*\]"
+    r"|(?:first|next)\s+question\s+(?:comes\s+|is\s+)?from"
+    r"|press\s+star\s+(?:one|1)\b",
     re.IGNORECASE,
 )
 
@@ -115,6 +125,20 @@ class TranscriptUnavailable(Exception):
     could not get it" and "the call said nothing" must never be
     confusable downstream: the summariser refuses to run without
     material, and it can only do that if the absence is unambiguous.
+    """
+
+
+class TranscriptRefused(TranscriptUnavailable):
+    """
+    The provider declined to answer at all: quota exhausted,
+    premium-only endpoint, bad key.
+
+    Separate from a plain absence because the two demand opposite
+    reactions, and the first live run made that concrete. AAOI's newest
+    quarter simply was not published yet, which is worth retrying
+    against an older quarter. A refusal means every further request will
+    be refused too, so walking back through quarters would burn the rest
+    of the day's budget to learn nothing.
     """
 
 
@@ -307,7 +331,7 @@ class HttpTranscriptSource(TranscriptSource):
         for key in _SOFT_ERROR_KEYS:
             message = payload.get(key) if isinstance(payload, dict) else None
             if message:
-                raise TranscriptUnavailable(f"{self.name} a refusé ({key}) : {str(message)[:300]}")
+                raise TranscriptRefused(f"{self.name} a refusé ({key}) : {str(message)[:300]}")
 
         # Vendors return either the object or a one-element list of them.
         if isinstance(payload, list):

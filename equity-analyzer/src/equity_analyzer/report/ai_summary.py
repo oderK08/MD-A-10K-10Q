@@ -524,7 +524,14 @@ def _call_claude_api(
     model: str,
     max_tokens: int,
     timeout_seconds: float,
+    system_prompt: Optional[str] = None,
 ) -> str:
+    """
+    `system_prompt` overrides this module's own for callers doing a
+    different job with the same transport -- reading a call transcript
+    rather than diffing filings. The HTTP handling, the error taxonomy
+    and temperature=0 are worth sharing; the instructions are not.
+    """
     try:
         response = requests.post(
             ANTHROPIC_API_URL,
@@ -537,7 +544,7 @@ def _call_claude_api(
                 "model": model,
                 "max_tokens": max_tokens,
                 "temperature": 0,  # minimize run-to-run drift for a factual-synthesis task
-                "system": _SYSTEM_PROMPT,
+                "system": system_prompt or _SYSTEM_PROMPT,
                 "messages": [{"role": "user", "content": prompt_context}],
             },
             timeout=timeout_seconds,
