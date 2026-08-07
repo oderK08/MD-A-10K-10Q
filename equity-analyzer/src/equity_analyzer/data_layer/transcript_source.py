@@ -56,6 +56,12 @@ import requests
 
 DEFAULT_TIMEOUT_SECONDS = 30.0
 
+# Keys under which vendors return a refusal alongside HTTP 200: an
+# exhausted quota, a premium-only endpoint, an unrecognised symbol. None
+# of these is signalled by a status code, so `response.ok` is true for
+# all of them.
+_SOFT_ERROR_KEYS = ("Information", "Note", "Error Message")
+
 # The operator's handover lines, which mark where prepared remarks stop
 # and Q&A starts. Both halves are worth reading and they are worth
 # reading DIFFERENTLY: prepared remarks are scripted and diff cleanly
@@ -73,6 +79,32 @@ _QA_BOUNDARY_RE = re.compile(
     r"|(?:begin|open|start|take|move to).{0,20}\bq\s*&\s*a\b",
     re.IGNORECASE,
 )
+
+# The operator ANNOUNCES the Q&A in the opening boilerplate, long before
+# handing over to it: "A question and answer session will follow the
+# formal presentation." That sentence matches the boundary pattern
+# perfectly, and on the first live Microsoft call it moved the split to
+# the second line of the transcript -- three words of prepared remarks
+# and the entire call filed as Q&A. IBM's operator happened not to say
+# it, so the flaw survived the first check.
+#
+# The tell is tense: an announcement points forward ("will follow",
+# "at the end of"), a handover is happening now ("we will now begin").
+# Matching on the forward reference is more precise than trying to
+# enumerate every way an operator says "now".
+_QA_ANNOUNCEMENT_RE = re.compile(
+    r"will\s+(?:follow|be\s+held|be\s+conducted|begin\s+(?:after|following|at\s+the\s+end))"
+    r"|(?:at|after|following)\s+the\s+(?:end|conclusion|completion)\s+of"
+    r"|following\s+(?:the\s+)?(?:formal\s+)?(?:presentation|prepared\s+remarks)"
+    r"|after\s+(?:the\s+)?(?:formal\s+)?(?:presentation|prepared\s+remarks)"
+    r"|later\s+in\s+(?:the|this)\s+call",
+    re.IGNORECASE,
+)
+
+# Second guard, independent of wording: prepared remarks are the bulk of
+# an earnings call, never its first line. A boundary found in the
+# opening turns is the operator's preamble, whatever it says.
+_MIN_PREPARED_SHARE = 0.10
 
 
 class TranscriptUnavailable(Exception):
@@ -119,13 +151,25 @@ def split_prepared_from_qa(text: str) -> tuple:
     most of the Q&A back into the prepared remarks.
     """
     lines = text.split("\n")
+    earliest = int(len(lines) * _MIN_PREPARED_SHARE)
+
     for index, line in enumerate(lines):
-        if _QA_BOUNDARY_RE.search(line):
-            prepared = "\n".join(lines[:index]).strip()
-            qa = "\n".join(lines[index:]).strip()
-            if prepared and qa:
-                return prepared, qa
-            break
+        if not _QA_BOUNDARY_RE.search(line):
+            continue
+        # The operator's opening boilerplate announces the Q&A rather
+        # than starting it. Two independent guards, because either alone
+        # has a failure mode: the wording test misses an announcement
+        # phrased unusually, and the position test would misfire on a
+        # call with genuinely short prepared remarks.
+        if _QA_ANNOUNCEMENT_RE.search(line):
+            continue
+        if index < earliest:
+            continue
+        prepared = "\n".join(lines[:index]).strip()
+        qa = "\n".join(lines[index:]).strip()
+        if prepared and qa:
+            return prepared, qa
+        break
     return text.strip(), None
 
 
@@ -251,6 +295,19 @@ class HttpTranscriptSource(TranscriptSource):
             payload = response.json()
         except ValueError as exc:
             raise TranscriptUnavailable(f"{self.name} returned non-JSON: {exc}") from exc
+
+        # A refusal dressed as a success. Alpha Vantage -- and it is not
+        # alone -- answers an exhausted quota, a premium-only endpoint
+        # and an unknown symbol with HTTP 200 and a prose message under
+        # "Information" or "Note", carrying no data. Checked BEFORE
+        # looking for the transcript field, because otherwise all three
+        # surface as "no usable 'transcript'", which points the reader
+        # at the field names when the real problem is the quota. That
+        # exact confusion cost a debugging round on the first live run.
+        for key in _SOFT_ERROR_KEYS:
+            message = payload.get(key) if isinstance(payload, dict) else None
+            if message:
+                raise TranscriptUnavailable(f"{self.name} a refusé ({key}) : {str(message)[:300]}")
 
         # Vendors return either the object or a one-element list of them.
         if isinstance(payload, list):

@@ -302,3 +302,157 @@ def test_an_empty_turn_list_is_unavailable_not_an_empty_transcript(monkeypatch):
     )
     with pytest.raises(TranscriptUnavailable, match="no usable 'transcript'"):
         alpha_vantage_source().fetch("AAOI", "0001158114", quarter="2026Q3")
+
+
+def test_a_quota_refusal_is_named_as_such_not_as_a_missing_field(monkeypatch):
+    """
+    Alpha Vantage answers an exhausted quota with HTTP 200 and a prose
+    message under "Information", carrying no data. Reported as "no
+    usable 'transcript'", it points the reader at the field names when
+    the real problem is the quota -- a confusion that cost a debugging
+    round on the first live run.
+    """
+    from equity_analyzer.data_layer import transcript_source
+    from equity_analyzer.data_layer.transcript_source import alpha_vantage_source
+
+    monkeypatch.setenv("ALPHAVANTAGE_API_KEY", "av-test")
+    monkeypatch.setattr(
+        transcript_source.requests, "get",
+        lambda *a, **k: _Response({"Information": "Thank you for using Alpha Vantage! "
+                                                  "Our standard API rate limit is 25 requests per day."}),
+    )
+    with pytest.raises(TranscriptUnavailable, match="a refusé"):
+        alpha_vantage_source().fetch("IBM", "", quarter="2025Q1")
+
+    # and the vendor's own wording survives, so the cause is readable
+    try:
+        alpha_vantage_source().fetch("IBM", "", quarter="2025Q1")
+    except TranscriptUnavailable as exc:
+        assert "25 requests per day" in str(exc)
+
+
+def test_a_premium_refusal_is_distinguishable_from_an_empty_quarter(monkeypatch):
+    """
+    Premium-only and "we have no transcript for that quarter" demand
+    opposite responses -- abandon the vendor, or try another quarter.
+    """
+    from equity_analyzer.data_layer import transcript_source
+    from equity_analyzer.data_layer.transcript_source import alpha_vantage_source
+
+    monkeypatch.setenv("ALPHAVANTAGE_API_KEY", "av-test")
+
+    monkeypatch.setattr(
+        transcript_source.requests, "get",
+        lambda *a, **k: _Response({"Information": "This is a premium endpoint."}),
+    )
+    with pytest.raises(TranscriptUnavailable, match="premium"):
+        alpha_vantage_source().fetch("IBM", "", quarter="2025Q1")
+
+    monkeypatch.setattr(
+        transcript_source.requests, "get",
+        lambda *a, **k: _Response({"symbol": "IBM", "quarter": "1990Q1", "transcript": []}),
+    )
+    with pytest.raises(TranscriptUnavailable, match="no usable 'transcript'"):
+        alpha_vantage_source().fetch("IBM", "", quarter="1990Q1")
+
+
+def test_the_real_ibm_payload_shape_parses(monkeypatch):
+    """
+    Pinned to the shape the live API actually returned on 2025Q1 --
+    keys quarter/symbol/transcript, turns of content/sentiment/speaker/
+    title -- so a future refactor cannot silently stop handling it.
+    """
+    from equity_analyzer.data_layer import transcript_source
+    from equity_analyzer.data_layer.transcript_source import alpha_vantage_source
+
+    monkeypatch.setenv("ALPHAVANTAGE_API_KEY", "av-test")
+    monkeypatch.setattr(
+        transcript_source.requests, "get",
+        lambda *a, **k: _Response({"symbol": "IBM", "quarter": "2025Q1", "transcript": [
+            {"speaker": "Operator", "title": "",
+             "content": "Welcome. And thank you for standing by.", "sentiment": "0.6"},
+            {"speaker": "Olympia McNerney", "title": "Global Head of Investor Relations",
+             "content": "I'd like to welcome you to IBM's first quarter earnings.", "sentiment": "0.7"},
+        ]}),
+    )
+    call = alpha_vantage_source().fetch("IBM", "", quarter="2025Q1")
+    assert call.fiscal_period == "2025Q1"
+    assert "Olympia McNerney -- Global Head of Investor Relations" in call.full_text
+    # the extra `sentiment` field is ignored, not a parse failure
+    assert "0.7" not in call.full_text
+
+
+# --- the split, against wording seen on real calls -----------------------
+
+
+def test_the_operators_opening_announcement_does_not_split_the_call():
+    """
+    Microsoft's operator opens with "A question and answer session will
+    follow the formal presentation." That matches the boundary pattern
+    exactly, and on the first live run it split the transcript at line
+    two: three words of prepared remarks, the entire call filed as Q&A.
+    An announcement points forward; a handover happens now.
+    """
+    turns = [
+        "Operator",
+        "Greetings, and welcome to the Microsoft Corporation Fiscal Year 2026 Second "
+        "Quarter Earnings Conference Call. At this time, all participants are in a "
+        "listen-only mode. A question and answer session will follow the formal presentation.",
+        "Satya Nadella -- Chief Executive Officer",
+        "Microsoft Cloud revenue grew 22% this quarter driven by Azure.",
+        "Amy Hood -- Chief Financial Officer",
+        "We expect operating margins to remain roughly flat next quarter.",
+        "Operator",
+        "We will now begin the question-and-answer session.",
+        "Analyst -- Morgan Stanley",
+        "Can you unpack the Azure growth drivers?",
+    ]
+    prepared, qa = split_prepared_from_qa("\n".join(turns))
+
+    assert "Microsoft Cloud revenue grew 22%" in prepared
+    assert "operating margins to remain roughly flat" in prepared
+    assert "Can you unpack the Azure growth drivers?" in qa
+    assert "Azure growth drivers" not in prepared
+
+
+def test_other_ways_operators_announce_a_later_qa_are_also_ignored():
+    for announcement in (
+        "A question-and-answer session will be held at the end of the presentation.",
+        "We will take questions and answers following the prepared remarks.",
+        "There will be a question and answer session at the conclusion of today's call.",
+        "Questions and answers will follow later in this call.",
+    ):
+        turns = ["Operator", announcement] + ["CEO", "Revenue grew."] * 8 + [
+            "Operator", "We will now begin the question-and-answer session.",
+            "Analyst", "My question.",
+        ]
+        prepared, qa = split_prepared_from_qa("\n".join(turns))
+        assert "Revenue grew." in prepared, announcement
+        assert "My question." in qa, announcement
+
+
+def test_a_boundary_in_the_opening_lines_is_rejected_on_position_alone():
+    """
+    Second guard, independent of wording: prepared remarks are the bulk
+    of an earnings call, never its first line. This catches an
+    announcement phrased in a way the wording test misses.
+    """
+    turns = ["Operator", "Welcome. Q&A to be arranged."] + ["CEO", "Prepared content."] * 20
+    prepared, qa = split_prepared_from_qa("\n".join(turns))
+    assert qa is None
+    assert "Prepared content." in prepared
+
+
+def test_the_ibm_style_handover_still_splits_correctly():
+    """
+    IBM's operator did not announce the Q&A in the opening, so the
+    original split worked there. The fix must not break it.
+    """
+    turns = ["Operator", "Welcome. And thank you for standing by. All participants "
+             "are in a listen-only mode."] + ["CEO", "Revenue was strong."] * 10 + [
+        "Operator", "We will now begin the question-and-answer session.",
+        "Analyst", "What about margins?",
+    ]
+    prepared, qa = split_prepared_from_qa("\n".join(turns))
+    assert "Revenue was strong." in prepared
+    assert "What about margins?" in qa

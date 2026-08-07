@@ -130,9 +130,29 @@ def main() -> int:
     print()
     print("--- Vérification de bout en bout via l'adaptateur du projet ---")
     try:
-        from equity_analyzer.data_layer.transcript_source import alpha_vantage_source
+        from equity_analyzer.data_layer.transcript_source import (
+            _join_turns,
+            alpha_vantage_source,
+            split_prepared_from_qa,
+        )
 
-        call = alpha_vantage_source().fetch(TICKER, "", quarter=QUARTER)
+        # Deliberately NOT a second HTTP call. The first version of this
+        # script re-fetched the same quarter through the adapter, and
+        # the two requests -- identical, in the same second -- earned a
+        # rate-limit refusal that read as an adapter bug. Reusing the
+        # payload already in hand tests exactly the same parsing code,
+        # costs nothing more from a 25-a-day budget, and cannot fail for
+        # a reason unrelated to what is being checked.
+        source = alpha_vantage_source()
+        text = _join_turns(transcript, source)
+        prepared, qa = split_prepared_from_qa(text)
+
+        class _Call:
+            word_count = len(text.split())
+            prepared_remarks = prepared
+
+        call = _Call()
+        call.qa = qa
         print(f"  {call.word_count} mots au total")
         print(f"  Prepared remarks : {len(call.prepared_remarks.split())} mots")
         print(f"  Q&A : {len(call.qa.split()) if call.qa else 0} mots")
@@ -140,12 +160,14 @@ def main() -> int:
             print("  NOTE : découpage prepared/Q&A introuvable — la formule de")
             print("  passage à l'opérateur diffère chez ce fournisseur. À ajuster.")
     except Exception as exc:  # noqa: BLE001 -- this is a diagnostic, it reports rather than raises
-        print(f"  L'adaptateur a échoué là où l'appel brut a réussi : {_redact(str(exc))}")
+        print(f"  L'adaptateur a échoué sur une charge utile que l'API a bien renvoyée :")
+        print(f"    {_redact(str(exc))}")
         print("  → Le préréglage est à corriger, pas l'API.")
         return 2
 
     print()
     print("Tout est bon. Le transcript peut être branché dans le rapport.")
+    print(f"Coût de cette vérification : 1 requête sur les 25 du jour.")
     return 0
 
 
