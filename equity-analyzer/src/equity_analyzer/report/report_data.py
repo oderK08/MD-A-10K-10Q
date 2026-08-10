@@ -119,6 +119,11 @@ class CallReport:
     beneish_m: SectionResult = None
     piotroski_f: SectionResult = None
 
+    # Set by the caller when the companion document was produced, so
+    # page 2 can point at it. Not the analysis itself: this object is
+    # what the TWO PAGE report renders, and the companion has its own.
+    has_qa_analysis: bool = False
+
     tone_prepared: SectionResult = None
     tone_qa: SectionResult = None
     tone_mdna: SectionResult = None

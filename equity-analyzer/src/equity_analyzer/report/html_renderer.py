@@ -535,6 +535,14 @@ def _render_tone(report: CallReport) -> str:
 
 def _render_provenance(report: CallReport) -> str:
     analysis = report.analysis
+    # Said on page 2 rather than left to be discovered in a folder: the
+    # companion holds what was dodged and what slipped, and a reader who
+    # does not know it exists will not go looking.
+    qa_pointer = (
+        " Le détail de la session questions et réponses (esquives, concessions, "
+        "signaux prospectifs) figure dans le document joint."
+        if report.has_qa_analysis else ""
+    )
     filing_line = ""
     if report.quarter_filing is not None:
         filing = report.quarter_filing
@@ -549,7 +557,7 @@ def _render_provenance(report: CallReport) -> str:
       Transcript : {_t(report.call.source)}, {report.call.word_count} mots.
       Lecture : {_t(getattr(analysis, "model", "n/a"))}.
       Chiffres : SEC EDGAR.{_t(filing_line)}
-      Les citations de la page 1 sont vérifiables mot pour mot dans le transcript en cache.
+      Les citations de la page 1 sont vérifiables mot pour mot dans le transcript en cache.{qa_pointer}
     </p>
     """
 
@@ -579,6 +587,11 @@ def render_html(report: CallReport) -> str:
     {_render_provenance(report)}
   </div>
 """
+    return _document(title, body)
+
+
+def _document(title: str, body: str) -> str:
+    """The shell both documents share: one stylesheet, one page footer."""
     return f"""<!doctype html>
 <html>
 <head>
@@ -594,4 +607,191 @@ def render_html(report: CallReport) -> str:
 """
 
 
-__all__ = ["MAX_READING_WORDS", "render_html"]
+# -- The companion document: the Q&A, laid out ---------------------------
+#
+# A SECOND DOCUMENT RATHER THAN A THIRD PAGE. The main report promises
+# exactly two pages and that promise is load bearing: it is what makes it
+# readable in one sitting. This section's length is a property of the
+# call, not of a page, so folding it in would either break the promise or
+# force dropping findings, and dropping findings is the one thing this
+# project does not do quietly. Page 2 carries a line pointing here.
+
+_SEVERITY_LABELS = {
+    "high": "grave",
+    "medium": "moyenne",
+    "low": "faible",
+}
+_DIRECTION_LABELS = {
+    "positive": "favorable",
+    "negative": "défavorable",
+    "neutral": "neutre",
+}
+
+
+def _qa_dodged(analysis) -> str:
+    if not analysis.dodged_questions:
+        return "<p class=\"muted\">Aucune esquive nette relevée.</p>"
+    rows = []
+    for item in analysis.dodged_questions:
+        severity = str(item.get("severity", "")).lower()
+        label = _SEVERITY_LABELS.get(severity, severity or "n/a")
+        # Bold for the ones where a precise figure was asked for and
+        # refused. Weight, not colour, like everywhere else.
+        emphasis = "flag-on" if severity == "high" else "flag-off"
+        rows.append(
+            f"<tr><td>{_t(item.get('analyst') or 'analyste non nommé')}</td>"
+            f"<td>{_t(item.get('question') or '')}</td>"
+            f"<td>{_t(item.get('what_was_asked') or '')}</td>"
+            f"<td>{_t(item.get('what_was_given') or '')}</td>"
+            f'<td><span class="{emphasis}">{_t(label)}</span></td></tr>'
+        )
+    return f"""
+    <table>
+      <tr><th>Analyste</th><th>Question</th><th>Demandé</th><th>Obtenu</th><th>Gravité</th></tr>
+      {"".join(rows)}
+    </table>
+    """
+
+
+def _qa_guidance(analysis) -> str:
+    if not analysis.implicit_guidance:
+        return "<p class=\"muted\">Rien de prospectif glissé hors communiqué.</p>"
+    rows = []
+    for item in analysis.implicit_guidance:
+        direction = str(item.get("direction", "")).lower()
+        rows.append(
+            f"<tr><td>{_t(item.get('topic') or '')}</td>"
+            f"<td>{_t(item.get('signal') or '')}</td>"
+            f"<td>{_t(item.get('buried_in') or '')}</td>"
+            f"<td>{_t(_DIRECTION_LABELS.get(direction, direction or 'n/a'))}</td></tr>"
+        )
+    return f"""
+    <table>
+      <tr><th>Sujet</th><th>Signal prospectif</th><th>Glissé dans</th><th>Sens</th></tr>
+      {"".join(rows)}
+    </table>
+    """
+
+
+def _qa_concessions(analysis) -> str:
+    if not analysis.concessions:
+        return "<p class=\"muted\">Aucune concession relevée.</p>"
+    return "\n".join(
+        f'<p class="bullet">· <strong>{_t(item.get("topic") or "")}</strong> : '
+        f'{_t(item.get("admission") or "")}'
+        + (f' « {_t(item.get("verbatim"))} »' if item.get("verbatim") else "")
+        + "</p>"
+        for item in analysis.concessions
+    )
+
+
+def _qa_themes(analysis) -> str:
+    if not analysis.recurring_themes:
+        return ""
+    rows = "".join(
+        f"<tr><td>{_t(item.get('theme') or '')}</td>"
+        f'<td class="num">{_t(item.get("analyst_count") or "n/a")}</td>'
+        f"<td>{_t(item.get('summary') or '')}</td></tr>"
+        for item in analysis.recurring_themes
+    )
+    return f"""
+    <h2>Ce sur quoi plusieurs analystes sont revenus</h2>
+    <p class="note">Le nombre d'analystes qui posent la même question est une
+    mesure de ce que le marché n'a pas compris, ou n'a pas cru.</p>
+    <table>
+      <tr><th>Thème</th><th class="num">Analystes</th><th>Résumé</th></tr>
+      {rows}
+    </table>
+    """
+
+
+def _qa_lists(analysis) -> str:
+    blocks = []
+    if analysis.tone_shift_markers:
+        items = "\n".join(
+            f'<p class="bullet">· {_t(marker)}</p>' for marker in analysis.tone_shift_markers
+        )
+        blocks.append(f"<h2>Formulations notables</h2>{items}")
+    if analysis.uncertain_figures:
+        items = "\n".join(
+            f'<p class="bullet">· {_t(figure)}</p>' for figure in analysis.uncertain_figures
+        )
+        blocks.append(
+            "<h2>Chiffres à vérifier</h2>"
+            '<p class="note">Repérés par le modèle comme probablement mal '
+            "transcrits. À contrôler sur le communiqué avant de s'en servir.</p>"
+            f"{items}"
+        )
+    return "\n".join(blocks)
+
+
+def _qa_period_check(report: CallReport, analysis) -> str:
+    """
+    A third, independent check on the pairing.
+
+    EDGAR said which quarter this is and `verify_against_declared` read
+    the opening of the call. This is the model saying which period it
+    thinks it just read, and it never overrides either of them: it only
+    speaks up when it disagrees, because three sources agreeing is worth
+    nothing to print and two disagreeing is worth a lot.
+    """
+    declared = (analysis.declared_period or "").strip()
+    if not declared:
+        return ""
+    asked = report.call.quarter
+    if declared == asked or _quarter_label(asked).lower() in declared.lower():
+        return ""
+    return (
+        f'<div class="caveat"><p>La lecture situe cette session en '
+        f"« {_t(declared)} », alors que le dépôt SEC désigne {_t(_quarter_label(asked))}. "
+        f"Appariement à vérifier avant de conclure.</p></div>"
+    )
+
+
+def render_qa_html(report: CallReport, analysis) -> str:
+    """
+    The Q&A companion: what was dodged, what was conceded, what slipped.
+
+    Uncapped on purpose. The main report is exactly two pages because a
+    reader reads it in one sitting; this one is a working document whose
+    length follows the session, and truncating it would mean dropping
+    findings rather than shortening prose.
+    """
+    title = f"{_t(report.company_name)} · questions et réponses {_t(report.call.quarter)}"
+    hard = len(analysis.hard_dodges)
+    lede = (
+        "Aucune question esquivée, aucune concession, rien de prospectif hors "
+        "communiqué. Une session sans prise est elle aussi une information."
+        if analysis.is_empty else
+        f"{len(analysis.dodged_questions)} esquive(s) dont {hard} sur une donnée "
+        f"chiffrée refusée, {len(analysis.concessions)} concession(s), "
+        f"{len(analysis.implicit_guidance)} signal(aux) prospectif(s)."
+    )
+    body = f"""
+  {_render_header(report)}
+  <p class="kicker">Questions et réponses</p>
+  <p class="lede">{lede}</p>
+  {_qa_period_check(report, analysis)}
+  <h2>Les esquives</h2>
+  <p class="note">Gravité « grave » : une information chiffrée précise a été
+  demandée et refusée.</p>
+  {_qa_dodged(analysis)}
+  <h2>Ce qui a valeur prospective, hors communiqué</h2>
+  <p class="note">La partie la plus utile : ce qui engage l'avenir et ne figurait
+  pas dans le communiqué de résultats.</p>
+  {_qa_guidance(analysis)}
+  <h2>Les concessions</h2>
+  {_qa_concessions(analysis)}
+  {_qa_themes(analysis)}
+  {_qa_lists(analysis)}
+  <p class="footer">
+    Généré le {report.generated_at.date().isoformat()}.
+    Session lue par {_t(analysis.model)}, sur la seule moitié questions et
+    réponses du transcript ({_t(report.call.source)}).
+    Document d'accompagnement du rapport principal.
+  </p>
+"""
+    return _document(title, body)
+
+
+__all__ = ["MAX_READING_WORDS", "render_html", "render_qa_html"]
