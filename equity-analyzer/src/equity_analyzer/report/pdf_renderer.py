@@ -88,12 +88,11 @@ def render_pdf_fitted(html: str, max_pages: int) -> bytes:
     Renders `html`, compacting it as needed so the result fits in
     `max_pages`.
 
-    The main report is specified as exactly two pages, and content
-    length is not knowable in advance -- a filing with ten changed
-    sub-themes and several failed Piotroski criteria produces more rows
-    than one with two. Rather than tuning the stylesheet against one
-    sample and hoping, this renders, counts the real pages, and retries
-    with progressively tighter type until it fits.
+    The report has a page budget and content length is not knowable in
+    advance -- a Q&A that dodged eight questions produces four times the
+    rows of one that dodged two. Rather than tuning the stylesheet
+    against one sample and hoping, this renders, counts the real pages,
+    and retries with progressively tighter type until it fits.
 
     Returns the first rendering that fits. If even the tightest step
     overruns, returns THAT rendering rather than raising: a slightly
@@ -101,14 +100,20 @@ def render_pdf_fitted(html: str, max_pages: int) -> bytes:
     caller can compare `page_count()` against its budget if it needs to
     know. Never silently drops content.
 
-    Measured range: the steps below recover a document that naturally
-    needs THREE pages down to two; one that needs four does not come
-    back (see test_the_page_fitter_actually_compacts_overflowing_content,
-    which is sized to the real limit rather than to a range this doesn't
-    have). That is comfortably wider than the actual report needs -- the
-    heaviest report the pipeline can produce fits in two pages at
-    natural size -- so this is a safety net, not the load-bearing
-    mechanism it was before the "Chiffres clés" table was removed.
+    Measured range: the steps below recover ONE page and not two. A
+    document that naturally needs three comes back to two, and a real
+    Q&A load that naturally needs four comes back to three, but a
+    document that needs four against a two page budget does not (see
+    test_the_page_fitter_actually_compacts_overflowing_content, sized to
+    the real limit rather than to a range this doesn't have).
+
+    Which side of the net a report lands on depends on whether it has a
+    Q&A page. Without one it fits the budget at natural size and this is
+    a safety net. With one, compaction is the NORMAL path rather than
+    the exception, because the length of that page is a property of the
+    call: past roughly eight dodges and six concessions even the tightest
+    step overruns, and the report grows to four pages rather than losing
+    a row. That is the intended trade.
     """
     rendered = render_pdf(html)
     if page_count(rendered) <= max_pages:
@@ -120,15 +125,23 @@ def render_pdf_fitted(html: str, max_pages: int) -> bytes:
     return rendered
 
 
-def save_pdf(html: str, output_path: Union[str, Path], max_pages: int = None) -> None:
+def save_pdf(html: str, output_path: Union[str, Path], max_pages: int = None) -> int:
     """
-    Renders `html` to PDF and writes it to `output_path`.
+    Renders `html` to PDF, writes it to `output_path`, and returns how
+    many pages it actually has.
 
     With `max_pages`, compacts the layout as needed to fit that budget
     (see `render_pdf_fitted`); without it, renders at natural length --
     which is what the unbounded "détail" report wants.
+
+    THE RETURN VALUE IS COUNTED, NOT ASSUMED. `render_pdf_fitted` keeps
+    the longest render rather than dropping content, so asking for three
+    pages is a request and not a promise, and a caller that announced
+    "3 pages" from the argument it passed in would be reporting its own
+    intention as a fact. Counting the real `/Type /Page` objects is the
+    only way to say what was written.
     """
-    if max_pages is None:
-        Path(output_path).write_bytes(render_pdf(html))
-    else:
-        Path(output_path).write_bytes(render_pdf_fitted(html, max_pages))
+    rendered = (render_pdf(html) if max_pages is None
+                else render_pdf_fitted(html, max_pages))
+    Path(output_path).write_bytes(rendered)
+    return page_count(rendered)

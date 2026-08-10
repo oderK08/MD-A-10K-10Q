@@ -1,5 +1,5 @@
 """
-Assembles everything the two-page report shows into one object, ready to
+Assembles everything the report shows into one object, ready to
 render. Pure: no network, no API key, no clock beyond the timestamp it
 is handed. Everything it needs has already been fetched by the caller.
 
@@ -93,7 +93,7 @@ class CallInfo:
 
 @dataclass(frozen=True)
 class CallReport:
-    """Everything the two-page report renders, and nothing it does not."""
+    """Everything the report renders, and nothing it does not."""
 
     ticker: str
     company_name: str

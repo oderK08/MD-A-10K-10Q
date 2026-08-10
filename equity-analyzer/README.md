@@ -20,7 +20,7 @@ TICKER=AAOI ANTHROPIC_API_KEY=... ALPHAVANTAGE_API_KEY=... python scripts/rappor
 # -> rapports/AAOI.pdf
 ```
 
-Sans terminal : onglet **Actions** du dépôt → *Rapport (un ticker, 2 pages)* →
+Sans terminal : onglet **Actions** du dépôt → *Rapport (un ticker)* →
 « Run workflow », saisir le ticker. Le PDF sort en artefact du run.
 
 ## Le principe
@@ -66,8 +66,8 @@ Une seconde passe la lit seule et rend du **JSON**, pas de la prose. La
 page 1 est en prose parce qu'on la lit ; ici, « quel analyste a demandé
 quoi, ce qui a réellement été rendu, quelle est la gravité de l'écart »
 a une forme de tableau, et un modèle à qui on demande de la prose
-l'aplatit en un paragraphe qui se lit bien et ne se parcourt pas. Le
-document joint le remet en forme :
+l'aplatit en un paragraphe qui se lit bien et ne se parcourt pas. La
+page 2 le remet en forme :
 
 | Section | Ce qu'elle contient |
 |---|---|
@@ -111,11 +111,16 @@ imprimées et deux en désaccord valent beaucoup.
 
 ## Ce qui est garanti dans le document
 
-- **Exactement deux pages.** Pas une cible, une garantie. La coupure est
-  explicite, le texte de la page 1 est plafonné et tronqué à une frontière
-  de phrase si le modèle déborde, et `save_pdf(..., max_pages=2)` **rend le
-  PDF, compte ses vraies pages** et recompose avec une feuille de style de
-  plus en plus dense jusqu'à ce que ça tienne.
+- **Deux pages garanties, une troisième bornée.** Sans Q&A à disséquer, le
+  document fait exactement deux pages : la coupure est explicite, le texte
+  de la page 1 est plafonné et tronqué à une frontière de phrase si le
+  modèle déborde, et `save_pdf(..., max_pages=3)` **rend le PDF, compte ses
+  vraies pages** et recompose avec une feuille de style de plus en plus
+  dense jusqu'à ce que ça tienne. Avec une Q&A, ce mécanisme ramène la
+  charge d'un vrai run à trois pages, et une session hors norme en fait
+  quatre plutôt que de perdre une ligne : voir plus haut, c'est le seul
+  endroit du document où le nombre de pages est une cible et non une
+  garantie.
 - **Aucune couleur.** Zone Altman en toutes lettres, Beneish en gras, mises
   en garde au filet : rien n'est perdu en noir et blanc ou à l'impression.
   Un test rejette toute couleur hexadécimale dont R, G et B ne sont pas
@@ -400,8 +405,16 @@ contraire.
   l'analyse utilisable) ; **il sépare ce qui est dit de ce qui est déduit**
   (un gérant doit distinguer d'un coup d'œil ce qu'il doit vérifier de ce
   qu'il doit soupeser) ; **il tient en une page**.
-  Il produit cinq sections : Verdict, Face aux attentes, Les déclarations
-  clés, Les esquives, À surveiller.
+  Il produit quatre sections : Verdict, Face aux attentes, Les déclarations
+  clés, À surveiller. **Cinq quand il n'y a pas de page 2** : « Les
+  esquives » revient alors, parce que la page 2 est le seul autre endroit
+  du document qui les mentionne. Avec elle, les répéter en prose coûterait
+  un cinquième d'une page plafonnée à redire ce que le lecteur va lire mis
+  en forme, et ce cinquième est pris aux engagements chiffrés, qui
+  n'apparaissent nulle part ailleurs. Mesuré sur un vrai run TSLA : la même
+  question esquivée sortait en paragraphe page 1 et en ligne page 2.
+  Corollaire d'ordonnancement : la passe Q&A tourne **avant** la lecture,
+  puisque la lecture doit savoir si la page 2 existera.
   Ce qui reste interdit : importer un fait extérieur sur la société (autre
   publication, actualité, cours, mémoire d'entraînement), et donner une
   recommandation d'achat ou de vente. Trancher sur la balance de **ce
@@ -446,8 +459,10 @@ Chaque test de mise en page rend un vrai PDF et compte ses vrais objets
 cette contrainte existe pour empêcher : « la feuille de style a l'air de
 tenir » et « le document tient » sont deux affirmations différentes.
 Le plafond de la page 1 (`MAX_READING_WORDS`) est **encadré des deux
-côtés** : un test vérifie qu'un texte au plafond tient en deux pages, un
-autre qu'un texte quarante mots plus long déborde vraiment. Sans le second,
+côtés** : un test vérifie qu'un texte au plafond laisse le rapport à deux
+pages, un autre qu'un texte quarante mots plus long déborde vraiment. Les
+deux seuils de la page Q&A sont gelés de la même façon, la charge d'un vrai
+run d'un côté et la session hors norme de l'autre. Sans ces contrôles hauts,
 le plafond pourrait être abaissé à 50 mots et tout resterait vert pendant
 que la page 1 serait aux deux tiers vide.
 
