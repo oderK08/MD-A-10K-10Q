@@ -214,6 +214,57 @@ def test_an_empty_sheet_is_treated_as_no_baseline_at_all():
     assert "NON DISPONIBLES" in block
 
 
+def test_a_baseline_from_further_back_says_how_far_back_it_is():
+    """
+    THE guard that makes walking back honest, and the reason walking
+    back was not free to add.
+
+    If the quarter immediately before could not be had, the baseline
+    comes from further away and calls sit UNSEEN between it and the one
+    being read. A figure that moved in one of those and was merely
+    restated today would look exactly like today's news. That is a wrong
+    answer stated confidently, which this project treats as worse than
+    an absent one, so the distance travels with the data.
+    """
+    block = as_prompt_block(GuidanceSheet(
+        ticker="MSFT", quarter="2026Q2", model="m",
+        commitments=_ANSWER["commitments"], quarters_before=2,
+    ))
+
+    assert "IL Y A 2 TRIMESTRES" in block
+    assert "PAS les engagements du trimestre precedent" in block
+    assert "pas forcement dans le call que tu lis" in block
+
+
+def test_the_adjacent_baseline_carries_no_such_warning():
+    """
+    The normal case must stay clean. A caveat printed when it does not
+    apply teaches the reader to skip caveats.
+    """
+    block = as_prompt_block(GuidanceSheet(
+        ticker="MSFT", quarter="2026Q3", model="m",
+        commitments=_ANSWER["commitments"], quarters_before=1,
+    ))
+
+    assert "TRIMESTRE PRECEDENT" in block
+    assert "ATTENTION" not in block
+
+
+def test_the_distance_survives_the_extraction(monkeypatch):
+    """
+    Set by the caller that did the walking, carried on the sheet. If it
+    were lost here the block above would silently describe a two quarter
+    old baseline as last quarter's.
+    """
+    _answers(monkeypatch, json.dumps(_ANSWER))
+    sheet = extract_guidance(
+        "MSFT", "2026Q2", TRANSCRIPT, api_key="k", quarters_before=3,
+    )
+
+    assert sheet.quarters_before == 3
+    assert sheet.is_adjacent is False
+
+
 def test_a_revision_stated_in_the_call_itself_stays_allowed():
     """
     Without a baseline the model still has one honest route: management

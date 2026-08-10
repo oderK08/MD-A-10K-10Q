@@ -65,7 +65,22 @@ reçoit des faits, pas une botte de foin.
 
 Cette passe n'interprète rien et ne classe rien : décider si un
 changement compte se fait un étage plus haut, là où le trimestre courant
-est aussi sous les yeux. Et quand il n'y a pas de base de comparaison
+est aussi sous les yeux.
+
+**Si le trimestre précédent manque, la recherche recule, mais elle dit de
+combien.** Un seul trimestre jamais publié coûtait sinon toute la base.
+Reculer sans le dire serait pire que de ne rien avoir : entre une base de
+T-2 et le call lu, il y a un call que personne n'a vu, donc un chiffre
+modifié à ce moment-là et simplement reconduit aujourd'hui ressemblerait
+trait pour trait à l'annonce du jour. La distance voyage donc avec les
+données, et au delà de 1 le bloc porte un avertissement qui interdit
+explicitement d'attribuer l'écart au call lu. Le recul est borné à 3
+trimestres : chaque pas coûte une requête sur les 25 du jour, et une base
+vieille d'un an n'a plus grand rapport avec « est-ce que ça a changé
+aujourd'hui ». Un refus de quota arrête la marche immédiatement, comme
+pour la recherche du call principal.
+
+Et quand il n'y a pas de base de comparaison
 (pas de call précédent, quota épuisé, société qui n'a jamais chiffré
 d'engagement), le bloc **le dit au modèle** au lieu de disparaître. C'est
 le point le plus important du dispositif : un modèle sans repère ne
