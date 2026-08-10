@@ -50,6 +50,25 @@ from .alpha_vantage import ALPHA_VANTAGE_URL, soft_error, throttle
 
 DEFAULT_TIMEOUT_SECONDS = 30.0
 
+# Past this, a "surprise" stops being a surprise and starts being a
+# sign that the two figures are not measuring the same thing.
+#
+# Found on a real UBER run: consensus 0.71 against a reported 0.13, a
+# miss of 82%, twice in a row, inside a record that also held a +351%
+# beat. No company misses its consensus by four fifths twice running.
+# What that pattern actually shows is a BASIS MISMATCH: the provider's
+# `reportedEPS` is the GAAP figure, while an analyst consensus is
+# almost always struck on an ADJUSTED basis, and Uber's GAAP earnings
+# swing wildly with the revaluation of its equity stakes. The model
+# read the call correctly and said it could not explain the gap; the
+# report still opened on a verdict built from it.
+#
+# Fifty percent is deliberately loose. Below it, a real surprise is
+# perfectly ordinary. Above it, either the bases differ or the
+# denominator is so small that the percentage carries no information,
+# and BOTH of those deserve a caveat rather than a verdict.
+IMPLAUSIBLE_SURPRISE_PCT = 50.0
+
 # How many quarters of beat/miss history travel with the current one.
 # Four is one fiscal year: enough to tell a habitual small beat from a
 # real inflection, short enough to stay one line on a two-page report.
@@ -99,11 +118,28 @@ class QuarterExpectation:
         return self.reported_eps > self.estimated_eps
 
     @property
+    def comparable(self) -> bool:
+        """
+        False when the gap is too wide to be a real surprise.
+
+        Not a judgement about the company, a judgement about the two
+        numbers: past a certain width they are almost certainly not
+        struck on the same basis, and a beat or miss computed across
+        two bases is a fact about accounting conventions dressed up as
+        a fact about the quarter.
+        """
+        if self.surprise_pct is None:
+            return self.estimated_eps is not None and self.reported_eps is not None
+        return abs(self.surprise_pct) < IMPLAUSIBLE_SURPRISE_PCT
+
+    @property
     def verdict(self) -> str:
         """One word, for a table cell and for the prompt."""
         beat = self.beat
         if beat is None:
             return "inconnu"
+        if not self.comparable:
+            return "bases differentes"
         if self.surprise_pct is not None and abs(self.surprise_pct) < 1.0:
             return "en ligne"
         return "au-dessus" if beat else "en dessous"
@@ -286,6 +322,7 @@ def fetch_earnings_expectations(
 
 __all__ = [
     "EarningsExpectations",
+    "IMPLAUSIBLE_SURPRISE_PCT",
     "ExpectationsRefused",
     "ExpectationsUnavailable",
     "HISTORY_QUARTERS",

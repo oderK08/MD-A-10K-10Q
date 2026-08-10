@@ -153,6 +153,17 @@ def expectations_block(expectation, history=()) -> str:
             f"  Ecart                    : {expectation.surprise_pct:+.1f}% "
             f"({expectation.verdict})"
         )
+    if not expectation.comparable:
+        lines.append("")
+        lines.append(
+            "  ATTENTION : cet ecart est trop large pour etre une vraie surprise. "
+            "Le BPA publie ici est le chiffre GAAP, alors qu'un consensus d'analystes "
+            "est presque toujours etabli sur une base AJUSTEE. Les deux ne mesurent "
+            "donc pas la meme chose et l'ecart ci-dessus ne dit rien du trimestre. "
+            "NE CONSTRUIS PAS de verdict dessus : dis dans la section \"Face aux "
+            "attentes\" que la comparaison n'est pas exploitable et pourquoi, puis "
+            "appuie toi sur ce que la direction dit elle meme de sa performance."
+        )
     if expectation.reported_date is not None:
         lines.append(f"  Publie le                : {expectation.reported_date.isoformat()}")
 

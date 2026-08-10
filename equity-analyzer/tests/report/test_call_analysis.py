@@ -245,3 +245,26 @@ def test_a_failed_call_raises_rather_than_returning_placeholder_text(monkeypatch
     with pytest.raises(ClaudeError) as exc:
         analyse_call("AAOI", "2026Q1", TRANSCRIPT, api_key="sk-test")
     assert "429" in str(exc.value)
+
+
+def test_an_implausible_gap_tells_the_model_not_to_build_a_verdict_on_it():
+    """
+    The page can print a caveat, but only the prompt can stop the model
+    opening on "Mitige, le BPA manque le consensus de 82%" when that 82%
+    is an artefact of comparing GAAP against adjusted.
+    """
+    from equity_analyzer.data_layer.earnings_expectations import QuarterExpectation
+
+    block = expectations_block(QuarterExpectation(
+        fiscal_date_ending=date(2026, 3, 31), reported_date=None,
+        estimated_eps=0.71, reported_eps=0.13, surprise=-0.58, surprise_pct=-81.7,
+    ))
+
+    assert "ATTENTION" in block
+    assert "AJUSTEE" in block
+    assert "NE CONSTRUIS PAS" in block
+
+
+def test_an_ordinary_gap_carries_no_such_warning():
+    block = expectations_block(_expectation(estimated=1.00, reported=1.08, pct=8.0))
+    assert "NE CONSTRUIS PAS" not in block

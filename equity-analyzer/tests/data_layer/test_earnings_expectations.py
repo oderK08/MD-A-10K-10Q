@@ -193,3 +193,63 @@ def test_a_negative_offset_past_the_newest_line_returns_none():
     """
     expectations = parse_earnings_payload("TEST", _payload(_quarter("2026-06-30")))
     assert expectations.at(date(2026, 6, 30), quarters_back=-1) is None
+
+
+# -- Two numbers that are not measuring the same thing ------------------
+
+
+def test_an_implausible_gap_is_marked_as_a_basis_mismatch():
+    """
+    Found on a real UBER run: consensus 0.71 against a reported 0.13, a
+    miss of 82%, twice running, inside a record that also held a +351%
+    beat. No company misses its consensus by four fifths twice in a row.
+    That pattern is the provider's GAAP `reportedEPS` being measured
+    against an analyst consensus struck on an adjusted basis.
+    """
+    expectations = parse_earnings_payload(
+        "UBER", _payload(_quarter("2026-03-31", estimated="0.71", reported="0.13", pct="-81.7"))
+    )
+    quarter = expectations.quarters[0]
+
+    assert quarter.comparable is False
+    assert quarter.verdict == "bases differentes"
+
+
+def test_an_ordinary_surprise_stays_a_verdict():
+    """
+    The guard has to leave the normal case alone, or every report loses
+    the section that gives the reading its direction.
+    """
+    expectations = parse_earnings_payload(
+        "TEST", _payload(_quarter("2026-03-31", estimated="1.00", reported="1.08", pct="8.0"))
+    )
+    quarter = expectations.quarters[0]
+
+    assert quarter.comparable is True
+    assert quarter.verdict == "au-dessus"
+
+
+def test_a_spectacular_beat_is_doubted_the_same_way_as_a_spectacular_miss():
+    """
+    Symmetric on purpose. A +351% beat is exactly as implausible as an
+    82% miss, and doubting only the bad news would bias every report
+    upward.
+    """
+    expectations = parse_earnings_payload(
+        "TEST", _payload(_quarter("2026-03-31", estimated="0.10", reported="0.45", pct="350.7"))
+    )
+    assert expectations.quarters[0].comparable is False
+
+
+def test_the_figures_themselves_are_still_carried_when_the_gap_is_doubted():
+    """
+    The numbers are real and worth printing. It is their COMPARISON that
+    is not, so nothing is dropped, only qualified.
+    """
+    expectations = parse_earnings_payload(
+        "UBER", _payload(_quarter("2026-03-31", estimated="0.71", reported="0.13", pct="-81.7"))
+    )
+    quarter = expectations.quarters[0]
+
+    assert quarter.estimated_eps == 0.71
+    assert quarter.reported_eps == 0.13
