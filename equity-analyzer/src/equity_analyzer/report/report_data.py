@@ -81,6 +81,10 @@ class CallInfo:
     # Alpha Vantage stamps its transcripts with the fiscal label only, so
     # without this the report carried no date at all.
     release_date: Optional[date] = None
+    # False when the text is a machine transcription rather than the
+    # company's own written record. Carried all the way to the page,
+    # because it changes what every quotation on page 1 is worth.
+    verbatim: bool = True
     # Set when the period the company NAMES in the opening of the call
     # is not the one that was requested. Printed on the report, because
     # a wrong pairing is otherwise invisible in the output.
@@ -257,6 +261,7 @@ def build_call_report(
             quarters_back=quarters_back,
             call_date=transcript.call_date,
             release_date=getattr(expectation, "reported_date", None),
+            verbatim=getattr(transcript, "verbatim", True),
             period_warning=period_warning,
         ),
         analysis=analysis,

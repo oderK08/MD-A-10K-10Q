@@ -33,10 +33,13 @@ data/*
 !data/README.md
 !data/Loughran-McDonald_MasterDictionary_1993-2025.csv
 
-# Transcripts mis en cache par scripts/rapport.py. Un transcript passé
-# ne change jamais, donc le cache évite de redépenser le quota du jour.
-# Décommenter pour les committer et les partager entre exécutions.
-#transcripts/
+# Transcripts. VOLONTAIREMENT SUIVIS PAR GIT, ne pas ignorer. Un
+# transcript passé ne change jamais, donc un fichier committé ici est lu
+# avant tout appel au fournisseur et ne coûte aucun quota. C'est aussi
+# par là qu'entre un transcript que tu as produit toi même quand le
+# fournisseur n'a pas le call (voir scripts/importer_transcript.py), et
+# ce qui permet à un lecteur d'ouvrir le texte pour vérifier une
+# citation du rapport.
 
 # PDF générés. Le rapport se regénère à la demande, et un PDF committé
 # est surtout un moyen de croire qu'on regarde le dernier trimestre.

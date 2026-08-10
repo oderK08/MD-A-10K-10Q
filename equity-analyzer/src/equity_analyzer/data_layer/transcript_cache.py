@@ -81,6 +81,9 @@ class TranscriptCache:
             prepared_remarks=payload.get("prepared_remarks", ""),
             qa=payload.get("qa"),
             source=payload.get("source", "cache"),
+            # Absent in files written before the field existed, and those
+            # all came from a provider, so True is the right default.
+            verbatim=payload.get("verbatim", True),
         )
 
     def put(self, quarter: str, transcript: CallTranscript) -> Path:

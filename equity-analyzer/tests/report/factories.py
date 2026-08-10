@@ -104,6 +104,7 @@ def make_transcript(
     # fixture that carries one hides the case every real run hits.
     call_date: date = None,
     fiscal_period: str = "2026Q1",
+    verbatim: bool = True,
 ):
     from equity_analyzer.data_layer.transcript_source import CallTranscript
 
@@ -116,6 +117,7 @@ def make_transcript(
         prepared_remarks=prepared,
         qa=qa,
         source=source,
+        verbatim=verbatim,
     )
 
 
