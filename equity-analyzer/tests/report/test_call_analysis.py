@@ -205,6 +205,38 @@ def test_with_a_qa_page_the_reading_is_told_not_to_repeat_the_dodges():
 
 
 @BOTH_PROMPTS
+def test_a_revised_figure_is_asked_for_as_a_change_not_as_a_level(prompt):
+    """
+    Found on a real MSFT report. The reading carried the capex, twice,
+    but wrote "désormais ajusté à approximately $175 billion" without
+    ever saying ajusté depuis quoi. A reader gets a level where the
+    information is the revision.
+
+    The model cannot always close that gap, because the only expectation
+    it is handed is the EPS consensus: nothing tells it last quarter's
+    capex guidance. What it CAN do is report the previous figure when
+    management states it aloud, which on this kind of call is common,
+    and say the comparison basis is missing when it does not.
+    """
+    assert "CE QUI A CHANGE PASSE EN PREMIER" in prompt
+    assert "l'ancien, le nouveau et l'ampleur" in prompt
+    assert "la base de comparaison manque" in prompt
+
+
+@BOTH_PROMPTS
+def test_a_revision_of_a_first_order_figure_belongs_in_the_verdict(prompt):
+    """
+    Same report: the verdict opened on Azure and the quality of the EPS
+    beat, and never mentioned that the investment programme had moved.
+    Nothing in the prompt said a change of that scale outranks a quarter
+    that came in on line.
+    """
+    verdict = prompt.split("## Verdict")[1].split("##")[0]
+    assert "capex" in verdict
+    assert "changement d'echelle d'investissement" in verdict
+
+
+@BOTH_PROMPTS
 def test_system_prompt_states_the_length_budget(prompt):
     """
     Page 1 holds one page and no more. Asking for the right length up
@@ -285,6 +317,57 @@ def test_the_qa_page_flag_reaches_the_system_prompt_actually_sent(monkeypatch):
 
     analyse_call("AAOI", "2026Q1", TRANSCRIPT, api_key="sk-test", qa_page=False)
     assert "## Les esquives" in sent["system"]
+
+
+def test_the_prior_guidance_baseline_reaches_the_request_before_the_transcript(monkeypatch):
+    """
+    Both baselines sit in FRONT of the call, so the model reads it
+    already knowing what it is measured against rather than forming a
+    view and then checking it. They answer different questions and
+    neither replaces the other: the consensus says what the QUARTER was
+    expected to earn, the guidance says what the COMPANY said it would
+    do. A quarter can beat the first while quietly halving the second.
+    """
+    from equity_analyzer.report import claude_client
+
+    sent = {}
+
+    def _capture(*a, **k):
+        sent["user"] = k["json"]["messages"][0]["content"]
+        return _Response(payload={"content": [{"type": "text", "text": "Neutre."}]})
+
+    monkeypatch.setattr(claude_client.requests, "post", _capture)
+    analyse_call(
+        "AAOI", "2026Q1", TRANSCRIPT, api_key="sk-test",
+        expectation=_expectation(),
+        prior_guidance="ENGAGEMENTS CHIFFRES PRIS AU TRIMESTRE PRECEDENT (2025Q4) :\n  capex : 80 milliards",
+    )
+
+    body = sent["user"]
+    assert "capex : 80 milliards" in body
+    assert body.index("ENGAGEMENTS CHIFFRES") < body.index("---DEBUT DU TRANSCRIPT---")
+    assert body.index("ATTENTES DU MARCHE") < body.index("ENGAGEMENTS CHIFFRES")
+
+
+def test_without_a_baseline_the_prompt_carries_no_empty_guidance_block(monkeypatch):
+    """
+    An empty string means the caller is not using this at all, which is
+    different from a caller that looked and found nothing. The second
+    case sends the "no baseline" sentence, and that sentence is built by
+    guidance_sheet, not improvised here.
+    """
+    from equity_analyzer.report import claude_client
+
+    sent = {}
+
+    def _capture(*a, **k):
+        sent["user"] = k["json"]["messages"][0]["content"]
+        return _Response(payload={"content": [{"type": "text", "text": "Neutre."}]})
+
+    monkeypatch.setattr(claude_client.requests, "post", _capture)
+    analyse_call("AAOI", "2026Q1", TRANSCRIPT, api_key="sk-test")
+
+    assert "ENGAGEMENTS" not in sent["user"]
 
 
 def test_an_empty_transcript_never_reaches_the_api():

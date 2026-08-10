@@ -137,13 +137,17 @@ REGLES ABSOLUES
 CE QUE TU PRODUIS, exactement ces {{sections}} sections, dans cet ordre, en markdown avec des titres de niveau 2 (##)
 
 ## Verdict
-Une a deux phrases. Commence par "Plutot bullish", "Plutot bearish", "Mitige" ou "Neutre", suivi de la raison principale. C'est la premiere chose que le lecteur voit, ne la noie pas.
+Une a deux phrases. Commence par "Plutot bullish", "Plutot bearish", "Mitige" ou "Neutre", suivi de la raison principale. C'est la premiere chose que le lecteur voit, ne la noie pas. Si la direction revise dans ce call un engagement chiffre de premier ordre (capex, guidance de revenu, marge visee), ca appartient au verdict : un changement d'echelle d'investissement pese plus qu'un trimestre en ligne.
 
 ## Face aux attentes
 Le trimestre a-t-il battu, manque ou tenu le consensus, et surtout : qu'est-ce que la direction en dit. Un beat que le management passe sous silence et un beat qu'il met en avant ne se lisent pas pareil. Situe aussi ce trimestre dans le palmares des precedents. Citation a l'appui.
 
 ## Les declarations cles
 Les engagements chiffres et datables : guidance, marges visees, capex, calendrier produit, prix. Citation exacte a chaque fois, puis en une phrase ce que ca implique. C'est le coeur de ton analyse, donne lui le plus de place.
+
+CE QUI A CHANGE PASSE EN PREMIER. Un chiffre reconduit et un chiffre revise ne valent pas la meme chose : commence par les engagements que la direction MODIFIE dans ce call, avant ceux qu'elle reconduit.
+
+QUAND UN CHIFFRE EN REVISE UN AUTRE, c'est l'ecart qui est l'information, pas le niveau. Donne l'ancien, le nouveau et l'ampleur du changement, avec la citation ou la direction l'annonce. Si l'ancien chiffre n'est pas prononce dans ce call, tu ne l'as pas : ecris que la base de comparaison manque plutot que de la deviner, et surtout n'ecris pas "desormais releve a" ou "ajuste a" sans dire depuis quoi, ce qui laisse croire a une comparaison que tu n'as pas faite.
 
 {{dodges}}
 ## A surveiller
@@ -249,24 +253,37 @@ def build_prompt(
     expectation=None,
     history=(),
     verbatim: bool = True,
+    prior_guidance: str = "",
 ) -> str:
     """
-    The transcript, whole, with the expectations in front of it.
+    The transcript, whole, with everything it is measured against in
+    front of it.
 
     Nothing in the call is summarised or pre-selected on the way in.
     Trimming it before the model reads it would mean deciding what
     matters first, which is exactly the judgement being asked for.
 
-    The expectations come FIRST and the transcript second, so the model
+    THE TWO BASELINES COME FIRST and the transcript second, so the model
     reads the call already knowing what it has to be measured against
-    rather than forming a view and then checking it.
+    rather than forming a view and then checking it. They answer
+    different questions and neither replaces the other: the consensus
+    says what the QUARTER was expected to earn, the prior guidance says
+    what the COMPANY said it would do. A quarter can beat the first
+    while quietly halving the second.
+
+    `prior_guidance` is already rendered text (see
+    guidance_sheet.as_prompt_block), including when it is the sentence
+    saying there is no baseline. Empty means the caller is not using
+    this at all, and only then is the block absent.
     """
     who = company_name or ticker
     warning = "" if verbatim else f"{_MACHINE_TRANSCRIPT_NOTE}\n\n"
+    baseline = f"{prior_guidance}\n\n" if prior_guidance else ""
     return (
         f"Earnings call de {who} ({ticker}), trimestre {quarter}.\n\n"
         f"{warning}"
         f"{expectations_block(expectation, history)}\n\n"
+        f"{baseline}"
         f"Transcript integral ci-dessous, tel que publie.\n\n"
         f"---DEBUT DU TRANSCRIPT---\n{transcript_text}\n---FIN DU TRANSCRIPT---"
     )
@@ -283,6 +300,7 @@ def analyse_call(
     history=(),
     verbatim: bool = True,
     qa_page: bool = False,
+    prior_guidance: str = "",
     model: str = DEFAULT_MODEL,
     max_tokens: int = MAX_TOKENS,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
@@ -306,7 +324,7 @@ def analyse_call(
     text = call_claude(
         build_prompt(
             ticker, quarter, transcript_text, company_name, expectation, history,
-            verbatim=verbatim,
+            verbatim=verbatim, prior_guidance=prior_guidance,
         ),
         api_key=api_key,
         system_prompt=system_prompt(qa_page),

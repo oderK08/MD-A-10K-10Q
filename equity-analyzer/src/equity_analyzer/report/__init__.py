@@ -14,6 +14,7 @@ without one is exactly two pages.
 """
 
 from .call_analysis import CallAnalysis, analyse_call, build_prompt
+from .guidance_sheet import GuidanceSheet, as_prompt_block, extract_guidance
 from .qa_analysis import QaAnalysis, analyse_qa
 from .claude_client import ClaudeError, DEFAULT_MODEL, call_claude
 from .errors import PdfRenderError, ReportError
@@ -24,8 +25,11 @@ from .report_data import CallInfo, CallReport, SectionResult, build_call_report
 
 __all__ = [
     "CallAnalysis",
+    "GuidanceSheet",
     "QaAnalysis",
     "analyse_qa",
+    "as_prompt_block",
+    "extract_guidance",
     "CallInfo",
     "CallReport",
     "ClaudeError",
