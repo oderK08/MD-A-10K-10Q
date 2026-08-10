@@ -158,6 +158,19 @@ class CallTranscript:
     prepared_remarks: str
     qa: Optional[str]
     source: str  # how it was obtained, printed in the report for provenance
+    # Is this the company's own written record, or a machine's guess at
+    # what was said?
+    #
+    # THIS CHANGES WHAT A QUOTATION MEANS, which is why it is a field and
+    # not a footnote. The whole of page 1 rests on quoting verbatim,
+    # because a provider transcript is an official written record and a
+    # reader can open it and check. A speech-to-text transcript is not
+    # that: it is accurate on prose and unreliable on exactly the words
+    # that matter here, since "fifteen" and "fifty" differ by one
+    # phoneme and a guidance number is the whole point. A quote drawn
+    # from one carries the same visual authority and none of the same
+    # guarantee, so the report has to say which it is holding.
+    verbatim: bool = True
 
     @property
     def word_count(self) -> int:

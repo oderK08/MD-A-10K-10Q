@@ -215,6 +215,18 @@ def _render_caveats(report: CallReport) -> str:
         )
     if call.period_warning:
         caveats.append(f"Appariement de période : {call.period_warning}")
+    if not call.verbatim:
+        # Not a footnote. Page 1 quotes, and it quotes because a
+        # provider transcript is an official written record a reader can
+        # open and check. A speech-to-text transcript is accurate on
+        # prose and unreliable on exactly the words that matter here: a
+        # guidance number. "Fifteen" and "fifty" differ by one phoneme.
+        caveats.append(
+            "Ce transcript est une transcription automatique, pas le compte rendu "
+            "officiel de la société. Les citations ci-dessous restituent fidèlement "
+            "le propos mais peuvent contenir des erreurs de transcription, en "
+            "particulier sur les chiffres. À vérifier avant de s'appuyer dessus."
+        )
     if not caveats:
         return ""
     lines = "".join(f"<p>{_t(text)}</p>" for text in caveats)

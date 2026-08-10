@@ -386,6 +386,7 @@ def main() -> int:
             company_name=company_name,
             expectation=expectation,
             history=history or (),
+            verbatim=call.verbatim,
             **({"model": ANTHROPIC_MODEL} if ANTHROPIC_MODEL else {}),
         )
     except ClaudeError as exc:

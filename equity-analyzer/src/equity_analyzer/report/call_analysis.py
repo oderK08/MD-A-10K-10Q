@@ -184,6 +184,16 @@ def expectations_block(expectation, history=()) -> str:
     return "\n".join(lines)
 
 
+_MACHINE_TRANSCRIPT_NOTE = (
+    "AVERTISSEMENT SUR LA SOURCE : ce transcript est une transcription "
+    "AUTOMATIQUE de l'audio, pas le compte rendu ecrit de la societe. Le "
+    "propos est fidele, mais un mot a pu etre mal entendu, et c'est le plus "
+    "probable sur les CHIFFRES (\"fifteen\" et \"fifty\" se ressemblent). Tu "
+    "cites normalement, mais quand un chiffre porte ta conclusion, dis qu'il "
+    "vient d'une transcription automatique et reste a verifier."
+)
+
+
 def build_prompt(
     ticker: str,
     quarter: str,
@@ -191,6 +201,7 @@ def build_prompt(
     company_name: Optional[str] = None,
     expectation=None,
     history=(),
+    verbatim: bool = True,
 ) -> str:
     """
     The transcript, whole, with the expectations in front of it.
@@ -204,8 +215,10 @@ def build_prompt(
     rather than forming a view and then checking it.
     """
     who = company_name or ticker
+    warning = "" if verbatim else f"{_MACHINE_TRANSCRIPT_NOTE}\n\n"
     return (
         f"Earnings call de {who} ({ticker}), trimestre {quarter}.\n\n"
+        f"{warning}"
         f"{expectations_block(expectation, history)}\n\n"
         f"Transcript integral ci-dessous, tel que publie.\n\n"
         f"---DEBUT DU TRANSCRIPT---\n{transcript_text}\n---FIN DU TRANSCRIPT---"
@@ -221,6 +234,7 @@ def analyse_call(
     company_name: Optional[str] = None,
     expectation=None,
     history=(),
+    verbatim: bool = True,
     model: str = DEFAULT_MODEL,
     max_tokens: int = MAX_TOKENS,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
@@ -237,7 +251,10 @@ def analyse_call(
         raise ClaudeError("transcript vide : rien a analyser")
 
     text = call_claude(
-        build_prompt(ticker, quarter, transcript_text, company_name, expectation, history),
+        build_prompt(
+            ticker, quarter, transcript_text, company_name, expectation, history,
+            verbatim=verbatim,
+        ),
         api_key=api_key,
         system_prompt=_SYSTEM_PROMPT,
         model=model,

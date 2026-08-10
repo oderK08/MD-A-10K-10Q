@@ -108,6 +108,55 @@ toutes les raisons d'échec (quota, réseau, panne fournisseur) sont
 temporaires, et en cacher une transformerait un problème passager en trou
 permanent qui ressemble exactement à une société sans transcript.
 
+## Quand le fournisseur n'a pas le call
+
+Alpha Vantage couvre bien les grandes capitalisations et mal les
+petites, et publie le trimestre le plus récent avec un retard qui mord
+justement en pleine earnings season. La route honnête est alors de
+transcrire le webcast soi même : une heure d'anglais des affaires
+scripté est largement à la portée d'un modèle de la famille Whisper,
+pour quelques centimes.
+
+```bash
+TICKER=UBER QUARTER=2026Q2 SOURCE_FILE=uber-q2.txt \
+    SOURCE="Whisper large-v3" CALL_DATE=2026-08-05 \
+    python scripts/importer_transcript.py
+# -> transcripts/UBER_2026Q2.json
+```
+
+Committe le fichier, relance le workflow sur ce ticker. **Il n'y a pas
+de chemin de code particulier** : le cache est déjà la première chose que
+la source consulte, donc un fichier présent dans `transcripts/` est lu
+avant tout appel et le run ne coûte aucun quota fournisseur. Le dossier
+est suivi par Git exprès, ce qui permet aussi à un lecteur d'ouvrir le
+texte pour vérifier une citation du rapport.
+
+`QUARTER` est le repère **fiscal** de la société, celui qu'affiche le
+rapport (`2026Q2`), pas un trimestre civil. Le script refuse un autre
+format, et refuse un fichier de moins de 1500 mots : un vrai call en
+fait 6 000 à 12 000, et en dessous c'est un fichier tronqué, un résumé
+ou le mauvais document. Mieux vaut refuser là qu'après que le modèle
+l'ait lu.
+
+**Une transcription automatique n'est pas un verbatim.** C'est la seule
+chose qui change vraiment, et elle est traitée comme telle. Toute la
+page 1 repose sur la citation exacte, parce qu'un transcript de
+fournisseur est un compte rendu écrit officiel qu'un lecteur peut
+ouvrir et vérifier. Une transcription audio ne l'est pas : elle est
+fidèle sur la prose et peu fiable sur exactement les mots qui portent
+une conclusion ici, puisque « fifteen » et « fifty » ne diffèrent que
+d'un phonème et qu'un chiffre de guidance est tout l'enjeu. Un
+transcript importé est donc marqué non verbatim par défaut, le rapport
+l'annonce **au dessus de la lecture**, et le prompt demande au modèle de
+signaler quand un chiffre porte sa conclusion. Il faut un `VERBATIM=1`
+explicite pour dire le contraire.
+
+Ce que ce script ne fait **pas** : récupérer quoi que ce soit. La
+distinction est juridique et pas technique. Transcrire un call public
+auquel on vous a invité à assister est une chose ; recopier le texte
+d'un site de transcripts en est une autre, et ce projet ne fournit pas
+la seconde.
+
 ## Ce qui n'est pas deviné
 
 **Quel trimestre est « le dernier »** est répondu par EDGAR. Le fournisseur

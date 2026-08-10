@@ -268,3 +268,19 @@ def test_an_implausible_gap_tells_the_model_not_to_build_a_verdict_on_it():
 def test_an_ordinary_gap_carries_no_such_warning():
     block = expectations_block(_expectation(estimated=1.00, reported=1.08, pct=8.0))
     assert "NE CONSTRUIS PAS" not in block
+
+
+def test_a_machine_transcription_warns_the_model_about_numbers():
+    """
+    The page can warn the reader, but only the prompt can stop the model
+    resting a verdict on a figure it may have misheard.
+    """
+    prompt = build_prompt("TEST", "2026Q2", TRANSCRIPT, verbatim=False)
+
+    assert "AUTOMATIQUE" in prompt
+    assert "CHIFFRES" in prompt
+    assert prompt.index("AVERTISSEMENT SUR LA SOURCE") < prompt.index("DEBUT DU TRANSCRIPT")
+
+
+def test_a_provider_transcript_gets_no_such_warning():
+    assert "AVERTISSEMENT SUR LA SOURCE" not in build_prompt("TEST", "2026Q2", TRANSCRIPT)

@@ -513,3 +513,34 @@ def test_no_date_at_all_says_so_rather_than_showing_nothing():
         call_quarter="2026Q2",
     )
     assert "date du call non fournie" in render_html(report)
+
+
+# -- A machine transcription is not a verbatim record -------------------
+
+
+def test_a_machine_transcription_is_flagged_above_the_reading():
+    """
+    Page 1 quotes, and it quotes because a provider transcript is an
+    official written record a reader can open and check. Speech to text
+    is accurate on prose and unreliable on exactly the words that carry
+    a conclusion here: "fifteen" and "fifty" differ by one phoneme, and
+    a guidance number is the whole point.
+    """
+    report = build_call_report(
+        "TEST", "Test Company Inc.", "0000000001",
+        make_transcript(verbatim=False, source="Whisper large-v3"),
+        make_analysis(text=READING), call_quarter="2026Q2",
+    )
+    html = render_html(report)
+
+    assert "transcription automatique" in html
+    assert "erreurs de transcription" in html
+    assert html.index("transcription automatique") < html.index("Verdict")
+
+
+def test_a_provider_transcript_carries_no_such_warning():
+    """
+    The warning has to stay rare, or it becomes wallpaper and stops
+    being read on the report where it matters.
+    """
+    assert "transcription automatique" not in render_html(build_report())
