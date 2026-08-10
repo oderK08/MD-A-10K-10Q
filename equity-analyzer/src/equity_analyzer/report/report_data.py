@@ -223,7 +223,7 @@ def build_call_report(
             expectations_reason or "consensus non demandé pour ce rapport"
         )
 
-    tone_mdna = _unavailable("aucun 10-Q lu pour ce trimestre")
+    tone_mdna = _unavailable("aucun dépôt périodique lu pour ce trimestre")
     if quarter_filing is not None and quarter_filing.text_sections is not None:
         if lm_dictionary is None:
             tone_mdna = _unavailable("dictionnaire Loughran-McDonald non fourni")

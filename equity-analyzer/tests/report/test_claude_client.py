@@ -35,7 +35,7 @@ def _post_returning(response, captured=None):
 def test_returns_the_models_text(monkeypatch):
     monkeypatch.setattr(
         claude_client.requests, "post",
-        _post_returning(_Response(payload={"content": [{"text": "  une lecture  "}]})),
+        _post_returning(_Response(payload={"content": [{"type": "text", "text": "  une lecture  "}]})),
     )
     assert call_claude("p", api_key="k", system_prompt="s") == "une lecture"
 
@@ -44,7 +44,7 @@ def test_the_system_prompt_and_the_model_are_sent_as_given(monkeypatch):
     sent = []
     monkeypatch.setattr(
         claude_client.requests, "post",
-        _post_returning(_Response(payload={"content": [{"text": "ok"}]}), sent),
+        _post_returning(_Response(payload={"content": [{"type": "text", "text": "ok"}]}), sent),
     )
     call_claude("mon prompt", api_key="k", system_prompt="mon system", model="claude-opus-5")
 
@@ -63,7 +63,7 @@ def test_temperature_is_omitted_for_the_claude_5_family(monkeypatch):
     sent = []
     monkeypatch.setattr(
         claude_client.requests, "post",
-        _post_returning(_Response(payload={"content": [{"text": "ok"}]}), sent),
+        _post_returning(_Response(payload={"content": [{"type": "text", "text": "ok"}]}), sent),
     )
     call_claude("p", api_key="k", system_prompt="s", model="claude-sonnet-5")
     assert "temperature" not in sent[0]
@@ -73,7 +73,7 @@ def test_temperature_is_still_sent_where_it_is_supported(monkeypatch):
     sent = []
     monkeypatch.setattr(
         claude_client.requests, "post",
-        _post_returning(_Response(payload={"content": [{"text": "ok"}]}), sent),
+        _post_returning(_Response(payload={"content": [{"type": "text", "text": "ok"}]}), sent),
     )
     call_claude("p", api_key="k", system_prompt="s", model="claude-haiku-4-5-20251001")
     assert sent[0]["temperature"] == 0
@@ -118,6 +118,57 @@ def test_an_unexpected_response_shape_is_an_error_not_a_crash(monkeypatch):
         call_claude("p", api_key="k", system_prompt="s")
 
 
+def test_a_non_text_block_in_front_does_not_break_the_reading(monkeypatch):
+    """
+    THE regression, and it cost a real PLTR run. The Messages API
+    returns a LIST of content blocks and only some are text. A block of
+    another type sitting first is a perfectly valid response;
+    `content[0]["text"]` turned it into KeyError at the most expensive
+    possible moment, with the transcript already fetched and paid for.
+    """
+    monkeypatch.setattr(
+        claude_client.requests, "post",
+        _post_returning(_Response(payload={"content": [
+            {"type": "thinking", "thinking": "je pese le call"},
+            {"type": "text", "text": "## Verdict\nPlutot bullish."},
+        ]})),
+    )
+    assert call_claude("p", api_key="k", system_prompt="s").startswith("## Verdict")
+
+
+def test_several_text_blocks_are_all_kept(monkeypatch):
+    """
+    Taking only the first would silently drop the rest of the reading,
+    which is worse than crashing: the page would look complete.
+    """
+    monkeypatch.setattr(
+        claude_client.requests, "post",
+        _post_returning(_Response(payload={"content": [
+            {"type": "text", "text": "## Verdict"},
+            {"type": "text", "text": "Plutot bearish."},
+        ]})),
+    )
+    assert call_claude("p", api_key="k", system_prompt="s") == "## Verdict\nPlutot bearish."
+
+
+def test_an_answer_with_no_text_block_says_what_it_did_contain(monkeypatch):
+    """
+    The block types and the stop reason are the only clues to why, and
+    the run is over by the time anyone reads this line.
+    """
+    monkeypatch.setattr(
+        claude_client.requests, "post",
+        _post_returning(_Response(payload={
+            "content": [{"type": "thinking", "thinking": "..."}],
+            "stop_reason": "max_tokens",
+        })),
+    )
+    with pytest.raises(ClaudeError) as exc:
+        call_claude("p", api_key="k", system_prompt="s")
+    assert "thinking" in str(exc.value)
+    assert "max_tokens" in str(exc.value)
+
+
 def test_an_empty_answer_is_an_error(monkeypatch):
     """
     An empty string would flow downstream and render as a blank page 1,
@@ -125,7 +176,7 @@ def test_an_empty_answer_is_an_error(monkeypatch):
     """
     monkeypatch.setattr(
         claude_client.requests, "post",
-        _post_returning(_Response(payload={"content": [{"text": "   "}]})),
+        _post_returning(_Response(payload={"content": [{"type": "text", "text": "   "}]})),
     )
     with pytest.raises(ClaudeError):
         call_claude("p", api_key="k", system_prompt="s")

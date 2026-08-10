@@ -105,25 +105,34 @@ _CSS_TEMPLATE = """
 """
 
 # What page 1 actually holds, MEASURED against rendered PDFs rather than
-# estimated, with the header, the consensus strip and the beat history
-# all present: 640 words render two pages and 650 render three. The cap
-# is set at 630 rather than 640 because a reading that HAS been
-# truncated also carries the note saying so, and that note costs the
-# last ten words of room. The prompt asks for 450 to 600, so this still
-# sits above the requested range: it is a safety net for a model that
-# overruns, not the working target.
+# estimated, and measured WITH THE PRODUCTION FONT EMBEDDED. That last
+# part is not a detail: the first version of this number was calibrated
+# on a machine where Lato was not installed, so the report fell back to
+# Helvetica, which is narrower. The number looked right, every test was
+# green, and CI went red on the first real run because the runner
+# installs `fonts-lato` and therefore renders the wider face. A page
+# budget measured in the wrong typeface is not a measurement.
+#
+# The Lato numbers, with the header, the consensus strip and the beat
+# history all present:
+#   620 mots  -> 2 pages      625 mots -> 3 pages
+#   610 mots  -> 2 pages once the "reading truncated" note is added too,
+#                and that note is why the cap is 610 and not 620.
+# The prompt asks for 450 to 600, so this still sits above the requested
+# range: it is a safety net for a model that overruns, not the target.
 #
 # One case is tighter and is handled downstream rather than by lowering
 # this number for everyone: when BOTH page 1 caveats fire at once (a
 # stale call AND a period mismatch, which is rare and means the report
 # needs those warnings more than it needs a roomy page), real capacity
-# drops to around 580 words and the natural render can run to three
-# pages. `save_pdf(..., max_pages=2)` compacts it back, which is the
-# mechanism this project already chose over letting a report overflow.
+# drops to around 540 words and the natural render runs to three pages.
+# `save_pdf(..., max_pages=2)` compacts it back, which is the mechanism
+# this project already chose over letting a report overflow.
 #
-# Both numbers are frozen by tests, so a future style change that
-# shrinks the real capacity fails there rather than on a real report.
-MAX_READING_WORDS = 630
+# Frozen from both sides by tests, and those tests refuse to run at all
+# when the production font is missing rather than quietly re-measuring
+# Helvetica (see tests/report/test_call_report.py).
+MAX_READING_WORDS = 610
 
 
 def _css() -> str:
@@ -459,8 +468,25 @@ def _render_red_flags(report: CallReport) -> str:
     """
 
 
+def _mdna_label(report: CallReport) -> str:
+    """
+    The MD&A's item number depends on the form: Item 2 in a 10-Q, Item 7
+    in a 10-K. Not cosmetic. One quarter in four is reported in the
+    10-K rather than a 10-Q (see cik_lookup.latest_reported_period), so
+    a hardcoded "10-Q" would be wrong on a quarter of all reports, and
+    wrong in the direction that makes a reader look for a document that
+    does not exist.
+    """
+    filing = report.quarter_filing
+    if filing is None:
+        return "MD&A du dépôt"
+    form = getattr(filing.form_type, "value", filing.form_type)
+    item = "Item 7" if form == "10-K" else "Item 2"
+    return f"MD&A du {form} ({item})"
+
+
 def _render_tone(report: CallReport) -> str:
-    mdna_label = "MD&A du 10-Q (Item 2)"
+    mdna_label = _mdna_label(report)
     return f"""
     <h2>Tonalité (Loughran-McDonald)</h2>
     <table>
@@ -479,8 +505,9 @@ def _render_provenance(report: CallReport) -> str:
     filing_line = ""
     if report.quarter_filing is not None:
         filing = report.quarter_filing
+        form = getattr(filing.form_type, "value", filing.form_type)
         filing_line = (
-            f" 10-Q {filing.fiscal_period} {filing.fiscal_year}, déposé le "
+            f" {form} {filing.fiscal_period} {filing.fiscal_year}, déposé le "
             f"{filing.filed_date.isoformat()}, accession {filing.accession_number}."
         )
     return f"""

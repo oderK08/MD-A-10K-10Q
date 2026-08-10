@@ -54,9 +54,10 @@ jobs:
       - name: Installer la police du rapport (Lato)
         # Le rapport intègre Lato dans le PDF via @font-face pointant sur
         # un vrai fichier .ttf : xhtml2pdf ne consulte pas la base de
-        # polices système. Sans ce paquet, report/fonts.py se rabat
-        # proprement sur la sans-serif générique et le rapport se génère
-        # quand même, simplement dans une autre police.
+        # polices système. Et ce n'est pas qu'une question d'allure : le
+        # plafond de mots de la page 1 est calibré sur la largeur de
+        # cette fonte, donc rendre dans une autre est rendre un document
+        # qui n'a pas été mesuré. Vérifié durement à l'étape suivante.
         run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-lato
 
       - name: Installer les dépendances
@@ -66,6 +67,22 @@ jobs:
           pip install --ignore-installed cryptography
           pip install -r requirements.txt
           pip install -e .
+
+      - name: Vérifier que la police du rapport est bien résolue
+        # Combien de mots tiennent sur la page 1 dépend de la fonte, et
+        # le plafond est calibré sur Lato. Sans elle, xhtml2pdf se
+        # rabat sur Helvetica, plus étroite : les tests de pagination se
+        # mettraient en veille et le PDF sortirait dans une autre fonte
+        # que celle sur laquelle il a été mesuré. Ça doit échouer fort
+        # plutôt que passer en silence.
+        run: |
+          python -c "
+          from equity_analyzer.report.fonts import font_face_css
+          import sys
+          if not font_face_css():
+              sys.exit('Lato introuvable : le paquet fonts-lato manque.')
+          print('Police du rapport résolue.')
+          "
 
       - name: Lancer la suite de tests
         # Entièrement hors-ligne (fixtures locales), donc c'est un vrai

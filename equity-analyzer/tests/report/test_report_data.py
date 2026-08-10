@@ -176,7 +176,7 @@ def test_the_mdna_is_scored_when_the_quarter_filing_was_read():
 def test_no_quarter_filing_means_no_mdna_tone_and_says_why():
     report = _build()
     assert not report.tone_mdna.available
-    assert "10-Q" in report.tone_mdna.unavailable_reason
+    assert "dépôt" in report.tone_mdna.unavailable_reason
 
 
 # -- Expectations -------------------------------------------------------

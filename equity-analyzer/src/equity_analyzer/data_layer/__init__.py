@@ -1,9 +1,8 @@
 from .cik_lookup import (
     CikLookup,
-    ComparisonPair,
     FilingNotFoundError,
     FilingRef,
-    latest_quarterly_pair,
+    latest_reported_period,
     list_filings,
 )
 from .edgar_client import EdgarClient, EdgarClientConfig, EdgarClientError, filing_index_url
@@ -49,10 +48,9 @@ from .xbrl_normalizer import (
 
 __all__ = [
     "CikLookup",
-    "ComparisonPair",
     "FilingNotFoundError",
     "FilingRef",
-    "latest_quarterly_pair",
+    "latest_reported_period",
     "list_filings",
     "EdgarClient",
     "EdgarClientConfig",

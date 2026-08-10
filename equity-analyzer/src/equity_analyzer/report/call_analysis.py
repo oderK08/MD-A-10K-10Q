@@ -58,14 +58,14 @@ from .claude_client import (
 # judgement being delegated.
 MAX_TOKENS = 2000
 
-# The word budget page 1 can actually hold, measured against a real
-# rendered PDF rather than estimated (see
-# tests/report/test_call_report.py::test_a_reading_at_the_cap_still_
-# leaves_the_report_at_two_pages). The prompt asks for less than the cap
-# so the cap stays a safety net for a model that overruns, not the
-# working target.
-TARGET_WORDS_LOW = 450
-TARGET_WORDS_HIGH = 600
+# Measured against the real page, then given room. The page holds 610
+# words (report.html_renderer.MAX_READING_WORDS); asking for up to 600
+# left ten words of slack, and the first real run came back at 615, so
+# the tail of the last section was cut. A model asked for a length
+# lands near it, not on it, so the ask sits far enough below the cap
+# that an ordinary overrun still fits whole.
+TARGET_WORDS_LOW = 400
+TARGET_WORDS_HIGH = 540
 
 _SYSTEM_PROMPT = f"""Tu es un analyste equity chevronne. Tu viens de lire le transcript integral d'un earnings call et tu dois en rendre compte a un gerant qui n'a pas eu le temps de l'ecouter et qui doit decider s'il bouge sa ligne.
 

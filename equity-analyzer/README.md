@@ -75,8 +75,30 @@ s'arrête sans écrire de PDF.
 | | Coût |
 |---|---|
 | SEC EDGAR | 4 requêtes, gratuit, sans compte. Client throttlé à 5 req/s, sous la limite SEC de 10/s. |
-| Alpha Vantage | 2 des 25 requêtes quotidiennes du tier gratuit (1 consensus, 1 transcript). 2 à 4 de plus seulement si les trimestres les plus récents ne sont pas encore publiés. Un transcript déjà récupéré sort du cache disque et ne coûte rien. |
+| Alpha Vantage | 2 des 25 requêtes quotidiennes du tier gratuit (1 transcript, 1 consensus). 2 à 4 de plus seulement si les trimestres les plus récents ne sont pas encore publiés. Un transcript déjà récupéré sort du cache disque et ne coûte rien. Compter ~15 s d'attente entre deux requêtes, voir ci-dessous. |
 | Anthropic | 1 appel, de l'ordre de 10 000 tokens en entrée et 900 en sortie. Compter 3 à 6 centimes sur Sonnet, 5 à 10 fois moins sur Haiku. |
+
+**Le tier gratuit limite aussi le débit, pas seulement le volume**, et les
+deux se ressemblent dans la réponse. Deux modules différents interrogent
+Alpha Vantage (le transcript et le consensus) et un premier run réel les
+a envoyés dans la même milliseconde, ce qui a valu un « please consider
+spreading out your free API requests more sparingly » sur le second. La
+limite appartient au **fournisseur**, pas à l'un ou l'autre appelant :
+`data_layer/alpha_vantage.py` porte donc un throttle partagé que les deux
+traversent, sur le même principe que le throttle SEC déjà présent dans
+`EdgarClient`. Un refus est en outre **réessayé une fois** après une
+pause, parce qu'une limite de débit et un quota journalier épuisé
+arrivent avec le même HTTP 200 et une prose qui se recoupe : attendre et
+redemander est la seule réponse honnête à cette ambiguïté.
+
+**Le transcript est demandé avant le consensus**, et l'ordre porte. Le
+budget du jour est partagé entre les deux et ils ne pèsent pas pareil :
+sans transcript il n'y a pas de page 1 donc pas de rapport, alors qu'un
+consensus manquant se dégrade en une phrase imprimée. La ressource rare
+va d'abord à la requête critique. Et c'est le transcript qui dit **de
+quel trimestre** le call est, donc demander le consensus ensuite revient
+à le demander une fois pour le bon trimestre au lieu de demander le plus
+récent puis de corriger.
 
 Le cache est ce qui rend le tier gratuit viable : un transcript passé ne
 change jamais, donc chaque société ne produit qu'**un** transcript neuf par
@@ -97,14 +119,36 @@ pour l'essentiel de la population visée. Le problème est concret : une
 requête réelle pour `MSFT 2026Q2` a renvoyé le call du trimestre clos en
 décembre 2025.
 
-**Le trimestre déposé n'est pas toujours le trimestre publié.** Une société
-peut déposer son 10-Q quelques jours après avoir publié, avant que le
-fournisseur n'ait mis le call en ligne (constaté sur AAOI). La recherche
-remonte alors trimestre par trimestre, et le rapport **dit de combien** il a
-fallu remonter plutôt que de faire passer un call plus ancien pour le
-courant. Le consensus affiché remonte avec lui : mesurer une lecture du T1
-contre les attentes du T2 serait pire que pas de consensus du tout, parce
-que ça a l'air fondé.
+**Le quatrième trimestre n'est pas un 10-Q.** Un exercice compte quatre
+trimestres mais seulement trois 10-Q : le quatrième est publié dans le
+10-K, avec l'année complète. Chercher « le dernier 10-Q » saute donc un
+trimestre sur quatre, pour toutes les sociétés, et le saute en silence
+puisqu'un dépôt de T3 est un dépôt parfaitement valide. Trouvé sur un
+vrai run MSFT : exercice clos en juin, T4 clos le 30 juin publié dans le
+10-K de fin juillet, et l'outil est allé lire le call d'avril en le
+présentant comme le dernier. La sélection porte donc sur le dernier
+**10-Q ou 10-K**, ordonné par période de report.
+
+**Et publier n'est pas déposer.** Le call a lieu le jour du communiqué ;
+le 10-Q ou le 10-K qu'EDGAR indexe suit deux à six semaines plus tard.
+Dans cette fenêtre le call le plus récent existe alors que le dernier
+dépôt périodique porte sur le trimestre d'avant. Le **8-K de résultats
+(Item 2.02)**, déposé le jour même du communiqué, est le signal le moins
+cher qu'un trimestre plus récent a été publié : quand sa période dépasse
+celle du dernier dépôt périodique, la recherche part d'un trimestre plus
+loin. Avancer d'un cran depuis un repère fiscal **connu** est sûr là où
+déduire un trimestre du calendrier ne l'est pas : le repère porte déjà
+l'étiquetage de la société, donc un déposant à clôture juin passe de son
+T3 à son T4 sans que personne ait codé en dur la fin de son exercice.
+
+**Et dans l'autre sens, le trimestre déposé n'est pas toujours publié
+chez le fournisseur.** Une société peut déposer quelques jours après
+avoir publié, avant que le transcript ne soit en ligne (constaté sur
+AAOI). La recherche remonte alors trimestre par trimestre, et le rapport
+**dit de combien** il a fallu remonter plutôt que de faire passer un call
+plus ancien pour le courant. Le consensus remonte avec lui : mesurer une
+lecture du T1 contre les attentes du T2 serait pire que pas de consensus
+du tout, parce que ça a l'air fondé.
 
 **Et on vérifie quand même.** `verify_against_declared` compare le repère
 demandé à la période que la société **annonce à voix haute** dans les
@@ -340,6 +384,14 @@ matière première, qui est plus sale que sa documentation.
   à une société sans historique. Vérifié avant de chercher le champ attendu,
   parce que sinon les trois remontent comme « champ manquant » et pointent
   le lecteur vers les noms de champs quand le vrai problème est le quota.
+- **L'endpoint `EARNINGS` est bien dans le tier gratuit.** C'était la
+  dernière inconnue du projet, tranchée par un vrai run : MSFT T3 2026,
+  attendu 4,09, publié 4,27.
+- **Et ce tier limite le débit autant que le volume.** Le même run a vu
+  la deuxième requête refusée pour cause de rafale, alors que le quota
+  du jour était intact. Le message mentionne les deux limites à la fois,
+  donc on ne peut pas les distinguer en le lisant : d'où le throttle
+  partagé et la reprise unique décrits plus haut.
 - La famille Claude 5 **refuse** le paramètre `temperature` (HTTP 400,
   « `temperature` is deprecated for this model »), donc l'envoyer
   inconditionnellement rend ces modèles inutilisables. Omis là où il n'est

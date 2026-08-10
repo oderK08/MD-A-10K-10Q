@@ -53,6 +53,40 @@ def accepts_temperature(model: str) -> bool:
     return not _NO_TEMPERATURE_RE.search(model or "")
 
 
+def _block_types(payload) -> str:
+    """The `type` of every content block, for an error message worth reading."""
+    blocks = payload.get("content") if isinstance(payload, dict) else None
+    if not isinstance(blocks, list):
+        return ""
+    return ", ".join(str(b.get("type", "?")) for b in blocks if isinstance(b, dict))
+
+
+def _text_of(payload) -> str:
+    """
+    Every text block in the answer, joined, in order.
+
+    NOT `content[0]["text"]`, which is what this did until a real PLTR
+    run died on `KeyError: 'text'` with the transcript already fetched
+    and paid for. The Messages API returns a LIST of content blocks and
+    only some of them are text; a block of another type sitting first
+    is a perfectly valid response, and reaching blindly into position
+    zero turns it into a crash at the most expensive possible moment.
+
+    Reading every text block rather than the first one is also the right
+    answer when there are several: taking one would silently drop the
+    rest of the reading.
+    """
+    blocks = payload.get("content") if isinstance(payload, dict) else None
+    if not isinstance(blocks, list):
+        return ""
+    parts = [
+        block.get("text", "")
+        for block in blocks
+        if isinstance(block, dict) and block.get("type") == "text"
+    ]
+    return "\n".join(part for part in parts if part).strip()
+
+
 def call_claude(
     prompt: str,
     *,
@@ -96,12 +130,16 @@ def call_claude(
 
     try:
         payload = response.json()
-        text = payload["content"][0]["text"].strip()
-    except (ValueError, KeyError, IndexError, TypeError) as exc:
-        raise ClaudeError(f"réponse inattendue de l'API Claude : {exc}") from exc
+    except ValueError as exc:
+        raise ClaudeError(f"l'API Claude a renvoyé du non-JSON : {exc}") from exc
 
+    text = _text_of(payload)
     if not text:
-        raise ClaudeError("l'API Claude a renvoyé une réponse vide")
+        raise ClaudeError(
+            "l'API Claude n'a renvoyé aucun bloc de texte "
+            f"(blocs : {_block_types(payload) or 'aucun'}, "
+            f"stop_reason : {payload.get('stop_reason') if isinstance(payload, dict) else 'n/a'})"
+        )
     return text
 
 

@@ -46,14 +46,9 @@ from typing import Optional
 
 import requests
 
+from .alpha_vantage import ALPHA_VANTAGE_URL, soft_error, throttle
+
 DEFAULT_TIMEOUT_SECONDS = 30.0
-
-ALPHA_VANTAGE_URL = "https://www.alphavantage.co/query"
-
-# Same soft-failure keys as transcript_source: Alpha Vantage answers an
-# exhausted quota, a premium-only endpoint and an unknown symbol with
-# HTTP 200 and a prose message, so `response.ok` is true for all three.
-_SOFT_ERROR_KEYS = ("Information", "Note", "Error Message")
 
 # How many quarters of beat/miss history travel with the current one.
 # Four is one fiscal year: enough to tell a habitual small beat from a
@@ -133,12 +128,19 @@ class EarningsExpectations:
         quarters before it.
 
         The offset exists because the call being read is not always the
-        newest quarter on file: a company can file its 10-Q days after
-        reporting, before the transcript provider has published the call
-        (see transcript_period.find_latest_available). The expectations
-        shown then have to be the ones for the call actually read, not
-        for the newest quarter, or the report would compare a reading of
+        newest quarter on file, and it slips in BOTH directions. A
+        company can file days after reporting, before the provider has
+        published the call, so the call read is older (positive offset).
+        It can also have reported a quarter it has not yet filed, so the
+        call read is NEWER than anything on EDGAR (negative offset, and
+        the list is newest first, so one quarter newer is one index
+        lower). Either way the expectations shown have to be the ones
+        for the call actually read, or the report measures a reading of
         one quarter against the consensus for another.
+
+        A negative offset that runs off the top of the list returns
+        None, which is the right answer: the provider has no consensus
+        line for a quarter it has not published either.
 
         Returns None rather than the nearest entry when the anchor date
         is not in the list: guessing which quarter the caller meant is
@@ -196,12 +198,9 @@ def parse_earnings_payload(ticker: str, payload) -> EarningsExpectations:
     matched on, and an entry that cannot be matched can only ever be
     shown next to the wrong quarter.
     """
-    for key in _SOFT_ERROR_KEYS:
-        message = payload.get(key) if isinstance(payload, dict) else None
-        if message:
-            raise ExpectationsRefused(
-                f"Alpha Vantage a refusé ({key}) : {str(message)[:300]}"
-            )
+    refusal = soft_error(payload)
+    if refusal:
+        raise ExpectationsRefused(f"Alpha Vantage a refusé ({refusal})")
 
     if not isinstance(payload, dict):
         raise ExpectationsUnavailable("réponse Alpha Vantage de forme inattendue")
@@ -261,6 +260,9 @@ def fetch_earnings_expectations(
     if not api_key:
         raise ExpectationsUnavailable(f"pas de clé Alpha Vantage dans ${api_key_env}")
 
+    # Shared with the transcript request: the rate limit belongs to the
+    # provider, not to this module (see data_layer/alpha_vantage.py).
+    throttle()
     try:
         response = requests.get(
             ALPHA_VANTAGE_URL,

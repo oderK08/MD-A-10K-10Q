@@ -113,76 +113,37 @@ def list_filings(
     return results
 
 
-@dataclass(frozen=True)
-class ComparisonPair:
-    """
-    The two filings a quarterly report compares: the newest one and
-    whatever it immediately follows.
-
-    `prior_is_annual` is True at a fiscal-year boundary, where the
-    quarter before Q1 is the 10-K. That is a real comparison, not a
-    degraded one, but it is NOT like-for-like: a 10-K's MD&A discusses a
-    full year and is written at length, so a Q1-vs-10-K diff shows far
-    more movement than a Q3-vs-Q2 diff for reasons that have nothing to
-    do with the business. The flag exists so the report can say so
-    instead of letting the reader read a structural artefact as news.
-    """
-    current: FilingRef
-    prior: Optional[FilingRef]
-    prior_is_annual: bool
-
-
 def _chronological_key(ref: FilingRef) -> date:
     """
     The date a filing's CONTENT belongs to (period of report), falling
     back to when it was filed. Ordering by filed_date alone would be
-    wrong whenever a filer submits late or files an amended period out of
-    order; the discussion in a filing is about its period, not about the
-    day the lawyers finished.
+    wrong whenever a filer submits late or files an amended period out
+    of order; what a filing discusses is its period, not the day the
+    lawyers finished.
     """
     return ref.period_of_report or ref.filed_date
 
 
-def latest_quarterly_pair(client: EdgarClient, cik: str) -> ComparisonPair:
+def latest_reported_period(client: EdgarClient, cik: str) -> FilingRef:
     """
-    The most recent 10-Q, paired with the filing that immediately
-    precedes it in time -- the previous 10-Q, or the 10-K when the newest
-    quarter is a Q1.
+    The most recent period the company has filed a periodic report for,
+    whether that report is a 10-Q or a 10-K.
 
-    This is what makes the report about NEWS FLOW: what management said
-    this quarter that it did not say last quarter, and what it stopped
-    saying. Comparing two consecutive 10-Ks instead (the pipeline's
-    original behaviour) means a company that just published its Q3 gets
-    analysed on text that can be nine to twelve months old, and the
-    quarter that just came out is never read at all.
+    BOTH FORMS, and that is the whole point of this function. A fiscal
+    year has four quarters but only three 10-Qs: the fourth quarter is
+    reported inside the 10-K, alongside the full year. Selecting "the
+    newest 10-Q" therefore skips one quarter in four for every company
+    on earth, and skips it silently, because a Q3 filing is a perfectly
+    valid filing and nothing downstream can tell it is the wrong one.
 
-    Raises FilingNotFoundError when the CIK has no 10-Q in
-    `filings.recent`. Returns `prior=None` -- rather than raising --
-    when it has exactly one filing on record: a current-quarter report
-    with no comparison is degraded, but it is still a report, and the
-    caller decides.
+    Found on a real MSFT run. Microsoft's fiscal year ends in June, so
+    its Q4 ends 30 June and is reported in the 10-K filed in late July.
+    Asking for the newest 10-Q in August returned the quarter ended 31
+    March, and the tool went off and read an earnings call from April
+    while presenting it as the latest one.
+
+    Ordered by period of report rather than by filing date: a company
+    that files late still belongs to its own quarter.
     """
     refs = list_filings(client, cik, ["10-Q", "10-K"])
-    quarterlies = [r for r in refs if r.form_type == "10-Q"]
-    if not quarterlies:
-        raise FilingNotFoundError(
-            f"No 10-Q filings found for CIK {cik} in recent submissions. "
-            f"This report compares consecutive quarters, so a company with "
-            f"no quarterly filings on record cannot be analysed this way."
-        )
-
-    current = max(quarterlies, key=_chronological_key)
-    cutoff = _chronological_key(current)
-    earlier = [
-        r for r in refs
-        if _chronological_key(r) < cutoff and r.accession_number != current.accession_number
-    ]
-    if not earlier:
-        return ComparisonPair(current=current, prior=None, prior_is_annual=False)
-
-    prior = max(earlier, key=_chronological_key)
-    return ComparisonPair(
-        current=current,
-        prior=prior,
-        prior_is_annual=prior.form_type == "10-K",
-    )
+    return max(refs, key=_chronological_key)

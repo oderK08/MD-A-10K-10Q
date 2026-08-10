@@ -7,7 +7,7 @@ import pytest
 from equity_analyzer.data_layer.cik_lookup import (
     CikLookup,
     FilingNotFoundError,
-    latest_quarterly_pair,
+    latest_reported_period,
     list_filings,
 )
 
@@ -132,38 +132,36 @@ def _submissions(rows):
     }
 
 
-def test_latest_quarterly_pair_compares_two_consecutive_quarters():
+def test_latest_reported_period_takes_the_newest_quarter():
     client = FakeEdgarClient({}, _submissions([
         ("10-Q", "acc-q3", "2026-09-04", "2026-08-28"),
         ("10-Q", "acc-q2", "2026-06-05", "2026-05-29"),
-        ("10-Q", "acc-q1", "2026-03-06", "2026-02-27"),
         ("10-K", "acc-fy",  "2025-10-10", "2025-08-29"),
     ]))
-    pair = latest_quarterly_pair(client, "0000320193")
-    assert pair.current.accession_number == "acc-q3"
-    assert pair.prior.accession_number == "acc-q2"
-    assert pair.prior_is_annual is False
+    assert latest_reported_period(client, "0000320193").accession_number == "acc-q3"
 
 
-def test_latest_quarterly_pair_falls_back_to_the_10k_at_a_q1_boundary():
+def test_the_fourth_quarter_is_found_even_though_it_is_a_10k():
     """
-    The filing before a Q1 is the annual report, not another quarter.
-    Skipping to the previous 10-Q instead would compare Q1 of this year
-    against Q3 of last year -- a nine-month gap presented as a quarterly
-    change.
+    THE bug this function exists for, found on a real MSFT run. A fiscal
+    year has four quarters but only three 10-Qs: the fourth is reported
+    inside the 10-K. Microsoft's year ends in June, so its Q4 ends 30
+    June and is filed in late July. Selecting the newest 10-Q in August
+    returned the quarter ended 31 March, and the tool read an April
+    earnings call while presenting it as the latest one.
+
+    Silent, too: a Q3 filing is a perfectly valid filing, and nothing
+    downstream can tell it is the wrong one.
     """
     client = FakeEdgarClient({}, _submissions([
-        ("10-Q", "acc-q1", "2026-03-06", "2026-02-27"),
-        ("10-K", "acc-fy",  "2025-10-10", "2025-08-29"),
-        ("10-Q", "acc-q3-prev", "2025-07-04", "2025-05-29"),
+        ("10-K", "acc-fy2026", "2026-07-30", "2026-06-30"),
+        ("10-Q", "acc-q3", "2026-04-24", "2026-03-31"),
+        ("10-Q", "acc-q2", "2026-01-28", "2025-12-31"),
     ]))
-    pair = latest_quarterly_pair(client, "0000320193")
-    assert pair.current.accession_number == "acc-q1"
-    assert pair.prior.accession_number == "acc-fy"
-    assert pair.prior_is_annual is True
+    assert latest_reported_period(client, "0000320193").accession_number == "acc-fy2026"
 
 
-def test_latest_quarterly_pair_orders_by_period_not_filing_date():
+def test_latest_reported_period_orders_by_period_not_filing_date():
     """
     A filing submitted late still belongs to its own period. Ordering by
     filed_date would make a delinquent Q2 filed after Q3 look like the
@@ -172,27 +170,25 @@ def test_latest_quarterly_pair_orders_by_period_not_filing_date():
     client = FakeEdgarClient({}, _submissions([
         ("10-Q", "acc-q2-late", "2026-09-30", "2026-05-29"),
         ("10-Q", "acc-q3", "2026-09-04", "2026-08-28"),
-        ("10-Q", "acc-q1", "2026-03-06", "2026-02-27"),
     ]))
-    pair = latest_quarterly_pair(client, "0000320193")
-    assert pair.current.accession_number == "acc-q3"
-    assert pair.prior.accession_number == "acc-q2-late"
+    assert latest_reported_period(client, "0000320193").accession_number == "acc-q3"
 
 
-def test_latest_quarterly_pair_without_any_earlier_filing():
-    client = FakeEdgarClient({}, _submissions([
-        ("10-Q", "acc-only", "2026-09-04", "2026-08-28"),
-    ]))
-    pair = latest_quarterly_pair(client, "0000320193")
-    assert pair.current.accession_number == "acc-only"
-    assert pair.prior is None
-    assert pair.prior_is_annual is False
-
-
-def test_latest_quarterly_pair_raises_when_the_filer_has_no_10q():
+def test_a_filer_with_only_annual_reports_still_resolves():
+    """
+    Not every issuer files 10-Qs. Refusing them would be refusing a
+    company that has an annual report and an annual earnings call.
+    """
     client = FakeEdgarClient({}, _submissions([
         ("10-K", "acc-fy", "2025-10-10", "2025-08-29"),
         ("10-K", "acc-fy-1", "2024-10-10", "2024-08-30"),
     ]))
-    with pytest.raises(FilingNotFoundError, match="No 10-Q filings"):
-        latest_quarterly_pair(client, "0000320193")
+    assert latest_reported_period(client, "0000320193").accession_number == "acc-fy"
+
+
+def test_latest_reported_period_raises_when_there_is_nothing_periodic():
+    client = FakeEdgarClient({}, _submissions([
+        ("8-K", "acc-8k", "2026-07-30", "2026-06-30"),
+    ]))
+    with pytest.raises(FilingNotFoundError):
+        latest_reported_period(client, "0000320193")

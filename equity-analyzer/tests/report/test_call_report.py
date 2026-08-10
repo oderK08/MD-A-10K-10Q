@@ -16,8 +16,11 @@ import re
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from equity_analyzer.data_layer.models import FilingTextSections, FormType, PeriodDuration
 from equity_analyzer.report import html_renderer
+from equity_analyzer.report.fonts import font_face_css
 from equity_analyzer.report.html_renderer import MAX_READING_WORDS, render_html
 from equity_analyzer.report.pdf_renderer import page_count, render_pdf, render_pdf_fitted
 from equity_analyzer.report.report_data import build_call_report
@@ -28,6 +31,28 @@ from ..redflags.factories import make_period
 
 DICTIONARY = load_lm_dictionary(
     Path(__file__).parent.parent / "fixtures" / "sample_lm_dictionary.csv"
+)
+
+# HOW MUCH FITS ON A PAGE IS A PROPERTY OF THE TYPEFACE, so the tests
+# that assert something MUST overflow are pinned to the font the report
+# actually ships with. Without Lato installed, xhtml2pdf falls back to
+# Helvetica, which is narrower: those tests would then measure a face no
+# reader ever sees, pass, and let a real overflow through. That is not a
+# hypothetical. The page 1 cap was first calibrated on a machine with no
+# Lato, every test was green, and CI went red on the first real run
+# because the runner installs `fonts-lato`.
+#
+# The tests that assert something must FIT are left running everywhere:
+# the fallback face is narrower, so a budget that holds in Lato holds in
+# Helvetica too.
+REPORT_FONT_INSTALLED = bool(font_face_css())
+needs_report_font = pytest.mark.skipif(
+    not REPORT_FONT_INSTALLED,
+    reason=(
+        "police du rapport (Lato) absente : xhtml2pdf se rabattrait sur "
+        "Helvetica, plus etroite, et cette mesure porterait sur une fonte "
+        "que personne ne lit. `apt-get install fonts-lato` pour l'activer."
+    ),
 )
 
 _ANNUAL_PRIOR = dict(
@@ -245,6 +270,7 @@ def test_a_reading_at_the_cap_still_leaves_the_report_at_two_pages():
     assert page_count(pdf) == 2
 
 
+@needs_report_font
 def test_the_cap_sits_at_the_real_limit_and_not_far_below_it(monkeypatch):
     """
     The other half of the measurement, and the one that keeps the test
@@ -257,6 +283,7 @@ def test_the_cap_sits_at_the_real_limit_and_not_far_below_it(monkeypatch):
     assert page_count(pdf) == 3
 
 
+@needs_report_font
 def test_the_cap_plus_every_caveat_is_compacted_back_to_two_pages():
     """
     The tight case, handled downstream rather than by lowering the cap
@@ -291,6 +318,7 @@ def test_an_overlong_reading_is_truncated_and_the_report_says_so():
     assert page_count(render_pdf(html)) == 2
 
 
+@needs_report_font
 def test_the_worst_realistic_case_is_compacted_back_to_two_pages():
     """
     Built to overflow from both ends at once: a reading at the cap with
@@ -393,3 +421,26 @@ def test_a_reason_the_report_does_not_recognise_is_shown_verbatim():
     from equity_analyzer.report.html_renderer import _readable_reason
 
     assert _readable_reason("quelque chose d'inattendu") == "quelque chose d'inattendu"
+
+
+def test_the_mdna_label_follows_the_form_the_quarter_was_reported_in():
+    """
+    One quarter in four is reported in the 10-K rather than a 10-Q, and
+    the MD&A is Item 7 there, not Item 2. A hardcoded "10-Q (Item 2)"
+    would be wrong on a quarter of all reports, and wrong in the
+    direction that sends a reader looking for a document that does not
+    exist.
+    """
+    # "&" is escaped on the way into the page, so this is the string a
+    # reader actually gets.
+    quarterly = render_html(build_report())
+    assert "MD&amp;A du 10-Q (Item 2)" in quarterly
+
+    annual_quarter = make_filing(
+        form_type=FormType.TEN_K, fiscal_year=2026, fiscal_period="FY",
+        period_end=date(2026, 6, 30),
+        text_sections=_quarter_filing().text_sections,
+    )
+    annual = render_html(build_report(quarter_filing=annual_quarter))
+    assert "MD&amp;A du 10-K (Item 7)" in annual
+    assert "MD&amp;A du 10-Q" not in annual

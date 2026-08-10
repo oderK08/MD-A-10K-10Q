@@ -126,8 +126,13 @@ class CachedTranscriptSource(TranscriptSource):
                 self.hits += 1
                 return cached
 
-        transcript = self._call_inner(ticker, cik, client, quarter)
+        # Counted BEFORE the call, not after. A request that comes back
+        # empty or refused still spent one of the day's twenty five, and
+        # a counter that only tallies successes tells the reader the run
+        # was cheaper than it was. On the first real MSFT run it
+        # reported one API call where two had gone out.
         self.fetches += 1
+        transcript = self._call_inner(ticker, cik, client, quarter)
         # Written only on success: a cached failure would be
         # indistinguishable from a company that has no transcript, and
         # every reason a fetch fails is temporary or fixable.

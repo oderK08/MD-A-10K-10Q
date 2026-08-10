@@ -81,6 +81,28 @@ def previous_label(label: str) -> str:
     return f"{year - 1}Q4" if quarter == 1 else f"{year}Q{quarter - 1}"
 
 
+def next_label(label: str) -> str:
+    """
+    The quarter after, rolling the year forward at Q4.
+
+    Needed for the window between a company REPORTING and FILING. The
+    earnings call happens on the day of the press release; the 10-Q or
+    10-K that EDGAR indexes follows two to six weeks later. During that
+    window the newest call exists and the newest periodic filing is for
+    the quarter before it, so a search anchored on filings alone reads a
+    call one quarter old and says nothing about it.
+
+    Stepping forward one quarter from a KNOWN filed anchor is safe in a
+    way that deriving a quarter from the calendar is not: the anchor
+    carries the company's own fiscal labelling, so a June-year filer
+    steps from its Q3 to its Q4 correctly without anyone hardcoding when
+    its year ends.
+    """
+    year, _, quarter = label.partition("Q")
+    year, quarter = int(year), int(quarter)
+    return f"{year + 1}Q1" if quarter == 4 else f"{year}Q{quarter + 1}"
+
+
 def verify_against_declared(requested: str, transcript_text: str) -> Optional[str]:
     """
     None when the call we received is the one we asked for, otherwise a
@@ -149,6 +171,7 @@ __all__ = [
     "PeriodLabelUnavailable",
     "alpha_vantage_label",
     "find_latest_available",
+    "next_label",
     "previous_label",
     "verify_against_declared",
 ]

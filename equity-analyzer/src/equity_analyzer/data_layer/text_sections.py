@@ -1,4 +1,4 @@
-"""
+r"""
 Extracts the sections we care about (Risk Factors, MD&A, Controls) from the
 raw HTML of a 10-K or 10-Q.
 
