@@ -465,3 +465,51 @@ def test_an_ordinary_gap_still_reads_as_a_plain_verdict():
     html = render_html(build_report())
     assert "Comparaison non exploitable" not in html
     assert "au-dessus" in html
+
+
+# -- When did this call actually happen? --------------------------------
+
+
+def test_the_release_date_is_shown_when_the_provider_gives_no_call_date():
+    """
+    Alpha Vantage stamps a transcript with its fiscal label and nothing
+    else, so `call_date` is None for every call it serves. Without a
+    fallback the report carried no date at all, which during earnings
+    season is the difference between a call from last week and one from
+    April.
+    """
+    html = render_html(build_report(
+        expectation=make_expectation(reported_date=date(2026, 8, 5))
+    ))
+    assert "résultats publiés le 2026-08-05" in html
+
+
+def test_a_real_call_date_wins_over_the_release_date():
+    """
+    They are not the same fact. When a source gives the real call date,
+    that is what gets printed and it is labelled as such.
+    """
+    report = build_call_report(
+        "TEST", "Test Company Inc.", "0000000001",
+        make_transcript(call_date=date(2026, 8, 6)),
+        make_analysis(text=READING),
+        call_quarter="2026Q2",
+        expectation=make_expectation(reported_date=date(2026, 8, 5)),
+    )
+    html = render_html(report)
+
+    assert "call du 2026-08-06" in html
+    assert "résultats publiés" not in html
+
+
+def test_no_date_at_all_says_so_rather_than_showing_nothing():
+    """
+    A silently missing date reads as a report with no provenance. Saying
+    the source did not give one is a shorter sentence and a true one.
+    """
+    report = build_call_report(
+        "TEST", "Test Company Inc.", "0000000001",
+        make_transcript(call_date=None), make_analysis(text=READING),
+        call_quarter="2026Q2",
+    )
+    assert "date du call non fournie" in render_html(report)

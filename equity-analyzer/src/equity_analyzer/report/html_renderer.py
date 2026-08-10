@@ -169,9 +169,17 @@ def _quarter_label(quarter: str) -> str:
 
 def _render_header(report: CallReport) -> str:
     call = report.call
-    date_part = (
-        f" · call du {call.call_date.isoformat()}" if call.call_date is not None else ""
-    )
+    # Two different facts, each labelled as what it is. The provider
+    # stamps most transcripts with a fiscal label and no date, so the
+    # release date from the consensus data is usually the only one there
+    # is, and calling it "the call date" would claim a precision we do
+    # not have.
+    if call.call_date is not None:
+        date_part = f" · call du {call.call_date.isoformat()}"
+    elif call.release_date is not None:
+        date_part = f" · résultats publiés le {call.release_date.isoformat()}"
+    else:
+        date_part = " · date du call non fournie par la source"
     link = (
         f' · <a href="{_e(report.source_filing_url)}">source SEC EDGAR</a>'
         if report.source_filing_url else ""

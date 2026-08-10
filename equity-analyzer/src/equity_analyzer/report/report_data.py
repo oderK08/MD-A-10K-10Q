@@ -68,6 +68,19 @@ class CallInfo:
     # believed to be current is not.
     quarters_back: int = 0
     call_date: Optional[date] = None
+    # The day results were announced, which for practical purposes is the
+    # day of the call. Kept SEPARATE from `call_date` rather than merged
+    # into it: one is the date the transcript provider stamped on the
+    # call, the other is the date the consensus data says the company
+    # reported, and labelling the second as the first would state
+    # something we did not measure.
+    #
+    # It matters more than it looks. During earnings season a reader
+    # holds several of these reports at once, and "T1 2026" alone does
+    # not say whether that quarter was discussed in April or last week.
+    # Alpha Vantage stamps its transcripts with the fiscal label only, so
+    # without this the report carried no date at all.
+    release_date: Optional[date] = None
     # Set when the period the company NAMES in the opening of the call
     # is not the one that was requested. Printed on the report, because
     # a wrong pairing is otherwise invisible in the output.
@@ -243,6 +256,7 @@ def build_call_report(
             source=transcript.source,
             quarters_back=quarters_back,
             call_date=transcript.call_date,
+            release_date=getattr(expectation, "reported_date", None),
             period_warning=period_warning,
         ),
         analysis=analysis,
