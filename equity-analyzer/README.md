@@ -75,7 +75,6 @@ page 2 le remet en forme :
 | **Valeur prospective hors communiqué** | La partie la plus utile : ce qui engage l'avenir et ne figurait pas dans le communiqué, avec le contexte où c'était glissé. |
 | **Les concessions** | Ce que la direction admet, citation courte à l'appui. |
 | **Thèmes récurrents** | Combien d'analystes sont revenus dessus. Une mesure de ce que le marché n'a pas compris, ou n'a pas cru. |
-| **Formulations notables** | Les marqueurs de changement de ton, verbatim. |
 | **Chiffres à vérifier** | Ceux que le modèle soupçonne d'être mal transcrits. |
 
 **Une troisième page, pas un document séparé.** Une première version
@@ -88,14 +87,15 @@ rognée pour tenir.
 et c'est un compromis assumé. La longueur de la page 2 est une propriété
 du call : une session qui esquive huit questions fait huit lignes.
 L'ancienne promesse des deux pages tenait parce que tout y était borné ;
-ça ne l'est plus. Mesuré : une session complète (4 esquives, 4
-concessions, 4 signaux, plus thèmes récurrents, marqueurs de ton et
-chiffres douteux) fait quatre pages au naturel et revient à trois une
-fois compactée, donc **la compaction est le chemin normal ici**, pas un
-cas d'urgence. La marge est mince : treize constats tiennent, quatorze
-non. Au delà, même la feuille la plus dense déborde et le rapport passe
-à quatre pages plutôt que de perdre une ligne. Un rapport un peu long
-vaut mieux qu'un rapport auquel manque la ligne qui comptait.
+ça ne l'est plus. Mesuré : une session complète (5 esquives, 4
+concessions, 5 signaux, plus thèmes récurrents et chiffres douteux) fait
+quatre pages au naturel et revient à trois une fois compactée, donc **la
+compaction est le chemin normal ici**, pas un cas d'urgence. La marge est
+mince : quatorze constats tiennent, quinze non. Au delà, même la feuille
+la plus dense déborde et le rapport passe à quatre pages plutôt que de
+perdre une ligne, la compaction continuant malgré tout d'économiser une
+feuille. Un rapport un peu long vaut mieux qu'un rapport auquel manque la
+ligne qui comptait.
 
 **Le compte annoncé est mesuré sur le PDF écrit**, pas déduit du budget
 demandé, et ça a servi tout de suite : le premier vrai run TSLA du

@@ -716,11 +716,6 @@ def _qa_themes(analysis) -> str:
 
 def _qa_lists(analysis) -> str:
     blocks = []
-    if analysis.tone_shift_markers:
-        items = "\n".join(
-            f'<p class="bullet">· {_t(marker)}</p>' for marker in analysis.tone_shift_markers
-        )
-        blocks.append(f"<h2>Formulations notables</h2>{items}")
     if analysis.uncertain_figures:
         items = "\n".join(
             f'<p class="bullet">· {_t(figure)}</p>' for figure in analysis.uncertain_figures

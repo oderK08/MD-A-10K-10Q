@@ -102,7 +102,6 @@ _SCHEMA = """{
   "recurring_themes": [
     {"theme": "...", "analyst_count": 3, "summary": "..."}
   ],
-  "tone_shift_markers": ["formulations notables, verbatim court"],
   "uncertain_figures": ["chiffres probablement mal transcrits"]
 }"""
 
@@ -148,7 +147,6 @@ class QaAnalysis:
     concessions: list = field(default_factory=list)
     implicit_guidance: list = field(default_factory=list)
     recurring_themes: list = field(default_factory=list)
-    tone_shift_markers: list = field(default_factory=list)
     uncertain_figures: list = field(default_factory=list)
 
     @property
@@ -162,7 +160,7 @@ class QaAnalysis:
         """
         return not any((
             self.dodged_questions, self.concessions, self.implicit_guidance,
-            self.recurring_themes, self.tone_shift_markers,
+            self.recurring_themes,
         ))
 
     @property
@@ -276,7 +274,6 @@ def analyse_qa(
         concessions=_entries(payload, "concessions"),
         implicit_guidance=_entries(payload, "implicit_guidance"),
         recurring_themes=_entries(payload, "recurring_themes"),
-        tone_shift_markers=_strings(payload, "tone_shift_markers"),
         uncertain_figures=_strings(payload, "uncertain_figures"),
     )
 
