@@ -91,7 +91,6 @@ from equity_analyzer.report import (
     analyse_qa,
     build_call_report,
     render_html,
-    render_qa_html,
     save_pdf,
 )
 from equity_analyzer.sentiment import load_lm_dictionary
@@ -101,6 +100,10 @@ USER_AGENT = os.environ.get("SEC_USER_AGENT", "EquityAnalyzer/1.0 contact@exampl
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "").strip()
 ALPHAVANTAGE_API_KEY = os.environ.get("ALPHAVANTAGE_API_KEY", "").strip()
+
+# One document. Page 1 the reading, page 2 the Q&A dissected, page 3 the
+# numbers. Two when there is no Q&A to dissect.
+MAX_PAGES = 3
 
 ROOT = Path(__file__).parent.parent
 CACHE_DIR = ROOT / "transcripts"
@@ -448,12 +451,11 @@ def main() -> int:
 
     # -- The Q&A companion --
     #
-    # SECOND CALL, AND DELIBERATELY OPTIONAL. The two page report is the
-    # deliverable and it is already computable at this point; this reads
-    # the half of the transcript that page 1 only skims, and a failure
-    # here must not cost the report. So it runs before rendering only to
-    # set the pointer on page 2, and every failure downgrades to a
-    # printed reason.
+    # SECOND CALL, AND DELIBERATELY OPTIONAL. It becomes page 2, but the
+    # rest of the report is already computable at this point and a
+    # failure here must not cost it: every failure downgrades to a
+    # printed reason and the document comes out two pages instead of
+    # three.
     qa_analysis = None
     if not (call.qa or "").strip():
         _warn("Session questions-réponses non isolée dans ce transcript : "
@@ -476,19 +478,19 @@ def main() -> int:
         except ClaudeError as exc:
             _warn(f"Lecture de la Q&A échouée, rapport principal inchangé : {exc}")
 
-    report = dataclasses.replace(report, has_qa_analysis=qa_analysis is not None)
+    report = dataclasses.replace(report, qa_analysis=qa_analysis)
 
     REPORTS_DIR.mkdir(exist_ok=True)
     output = REPORTS_DIR / f"{TICKER}.pdf"
-    save_pdf(render_html(report), output, max_pages=2)
-    _ok(f"Rapport écrit : {output.relative_to(ROOT)}")
-
-    if qa_analysis is not None:
-        qa_output = REPORTS_DIR / f"{TICKER}_qa.pdf"
-        # Uncapped: its length follows the session, and capping it would
-        # mean dropping findings rather than shortening prose.
-        save_pdf(render_qa_html(report, qa_analysis), qa_output)
-        _ok(f"Document Q&A écrit : {qa_output.relative_to(ROOT)}")
+    # Three pages, compacted to fit. A target with a net rather than a
+    # guarantee: page 2's length follows the session, so the stylesheet
+    # tightens until it fits and, if even the tightest step overruns,
+    # the longer render is kept. Never a dropped finding.
+    save_pdf(render_html(report), output, max_pages=MAX_PAGES)
+    _ok(
+        f"Rapport écrit : {output.relative_to(ROOT)} "
+        f"({'3 pages' if qa_analysis is not None else '2 pages, pas de Q&A isolée'})"
+    )
 
     print()
     print("=" * 70)

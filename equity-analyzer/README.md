@@ -1,14 +1,19 @@
 # Equity Analyzer
 
-Un ticker en entrée, un PDF de **deux pages** en sortie.
+Un ticker en entrée, **un** PDF de trois pages en sortie.
 
 | | Contenu | D'où ça vient |
 |---|---|---|
 | **Page 1** | La lecture du dernier earnings call par Claude, écrite **contre le consensus** sur lequel le trimestre était attendu | transcript Alpha Vantage + consensus BPA + API Claude |
-| **Page 2** | Les red flags annuels (Altman, Beneish, Piotroski) et la tonalité Loughran-McDonald | SEC EDGAR (XBRL + 10-Q) |
+| **Page 2** | Le même call disséqué : esquives, concessions, signaux prospectifs hors communiqué | seconde passe Claude sur la moitié Q&A |
+| **Page 3** | Les red flags annuels (Altman, Beneish, Piotroski) et la tonalité Loughran-McDonald | SEC EDGAR (XBRL + 10-Q) |
 
-Plus un document joint, `<TICKER>_qa.pdf` : la session questions-réponses
-disséquée (voir plus bas).
+L'ordre est l'argument : les pages 1 et 2 sont toutes deux l'actualité du
+trimestre et vont ensemble, la seconde repassant sur la session que la
+première ne fait qu'effleurer. La page 3 est ce qui bouge le plus
+lentement, la toile de fond, donc elle vient en dernier plutôt que de
+couper le call en deux. **Deux pages** quand il n'y a pas de Q&A à
+disséquer : une page de titres vides serait pire que pas de page.
 
 ```bash
 TICKER=AAOI ANTHROPIC_API_KEY=... ALPHAVANTAGE_API_KEY=... python scripts/rapport.py
@@ -48,7 +53,7 @@ lecture. Un rapport dont la page 1 se dégrade en excuse, composée dans la
 même typo qu'une vraie analyse, est pire que pas de rapport : le script
 s'arrête sans écrire de PDF.
 
-## Le document joint : la Q&A
+## La page 2 : la Q&A disséquée
 
 Le transcript arrive déjà coupé en deux, parce que les remarques
 préparées et la Q&A sont deux actes différents. Les premières sont
@@ -73,13 +78,23 @@ document joint le remet en forme :
 | **Formulations notables** | Les marqueurs de changement de ton, verbatim. |
 | **Chiffres à vérifier** | Ceux que le modèle soupçonne d'être mal transcrits. |
 
-**Un document séparé, pas une troisième page.** Le rapport principal
-promet exactement deux pages et cette promesse porte : c'est ce qui le
-rend lisible d'une traite. La longueur de cette section est une
-propriété du call, pas d'une page, donc l'y intégrer reviendrait soit à
-casser la promesse, soit à supprimer des constats, et supprimer un
-constat en silence est la seule chose que ce projet ne fait pas. La page
-2 porte une ligne qui pointe vers le document joint.
+**Une troisième page, pas un document séparé.** Une première version
+livrait ça en PDF joint. Deux fichiers pour un trimestre, c'est deux
+choses à retrouver, et la seconde se perd : le budget de pages est passé
+de deux à trois pour faire de la place, plutôt que la section d'être
+rognée pour tenir.
+
+**Trois pages est désormais une cible avec un filet, pas une garantie**,
+et c'est un compromis assumé. La longueur de la page 2 est une propriété
+du call : une session qui esquive huit questions fait huit lignes.
+L'ancienne promesse des deux pages tenait parce que tout y était borné ;
+ça ne l'est plus. Mesuré : la charge d'un vrai run TSLA (5 esquives, 4
+concessions, 4 signaux) fait quatre pages au naturel et revient à trois
+une fois compactée, donc **la compaction est le chemin normal ici**, pas
+un cas d'urgence. Au delà d'environ huit esquives et six concessions,
+même la feuille la plus dense déborde et le rapport passe à quatre pages
+plutôt que de perdre une ligne. Un rapport un peu long vaut mieux qu'un
+rapport auquel manque la ligne qui comptait.
 
 **Jamais fatal.** Le rapport principal est déjà calculable quand cette
 passe démarre : un échec ici se dégrade en une ligne de log et les deux

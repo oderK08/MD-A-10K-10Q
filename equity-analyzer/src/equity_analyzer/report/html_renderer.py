@@ -535,14 +535,6 @@ def _render_tone(report: CallReport) -> str:
 
 def _render_provenance(report: CallReport) -> str:
     analysis = report.analysis
-    # Said on page 2 rather than left to be discovered in a folder: the
-    # companion holds what was dodged and what slipped, and a reader who
-    # does not know it exists will not go looking.
-    qa_pointer = (
-        " Le détail de la session questions et réponses (esquives, concessions, "
-        "signaux prospectifs) figure dans le document joint."
-        if report.has_qa_analysis else ""
-    )
     filing_line = ""
     if report.quarter_filing is not None:
         filing = report.quarter_filing
@@ -557,7 +549,7 @@ def _render_provenance(report: CallReport) -> str:
       Transcript : {_t(report.call.source)}, {report.call.word_count} mots.
       Lecture : {_t(getattr(analysis, "model", "n/a"))}.
       Chiffres : SEC EDGAR.{_t(filing_line)}
-      Les citations de la page 1 sont vérifiables mot pour mot dans le transcript en cache.{qa_pointer}
+      Les citations de la page 1 sont vérifiables mot pour mot dans le transcript en cache.
     </p>
     """
 
@@ -567,13 +559,31 @@ def _render_provenance(report: CallReport) -> str:
 
 def render_html(report: CallReport) -> str:
     """
-    The report: page 1 the reading of the call, page 2 the numbers.
+    One document, three pages, in the order a reader works through them.
 
-    Page 2 is deliberately in this order. The red flags come first
-    because they are the slowest moving thing on the page and set the
-    backdrop the quarter happened against; the tone follows because it
-    is measured on the very text page 1 quoted, so the reader meets it
-    with that text still in mind.
+      PAGE 1  the reading of the call
+      PAGE 2  the same call dissected: what was dodged, what was
+              conceded, what slipped out with forward value
+      PAGE 3  the numbers that do not come from the call at all
+
+    THE ORDER IS THE ARGUMENT. Pages 1 and 2 are both the quarter's news
+    and belong together, the second going back over the session the
+    first only skims. Page 3 is the slowest moving thing here, the
+    backdrop the quarter happened against, so it comes last rather than
+    interrupting the two halves of the call.
+
+    THREE PAGES IS NOW A TARGET WITH A NET, NOT A GUARANTEE, and that is
+    a deliberate trade. Page 2's length is a property of the call: a
+    session that dodged eight questions has eight rows. The old two page
+    promise held because everything on the page was bounded; this is
+    not, so `save_pdf(..., max_pages=3)` compacts the stylesheet until it
+    fits, and if even the tightest step overruns it returns that rather
+    than dropping a finding. A slightly long report beats a report
+    missing the row that mattered.
+
+    Page 2 disappears entirely when there is no Q&A to dissect, and the
+    document is two pages again. An empty page carrying six empty
+    headings would be worse than no page.
     """
     title = f"{_t(report.company_name)} · earnings call {_t(report.call.quarter)}"
     body = f"""
@@ -581,6 +591,7 @@ def render_html(report: CallReport) -> str:
   {_render_caveats(report)}
   {_render_expectations(report)}
   {_render_reading(report)}
+  {_render_qa_page(report)}
   <div class="page-break">
     {_render_red_flags(report)}
     {_render_tone(report)}
@@ -591,7 +602,7 @@ def render_html(report: CallReport) -> str:
 
 
 def _document(title: str, body: str) -> str:
-    """The shell both documents share: one stylesheet, one page footer."""
+    """The document shell: one stylesheet, one repeating page footer."""
     return f"""<!doctype html>
 <html>
 <head>
@@ -607,14 +618,12 @@ def _document(title: str, body: str) -> str:
 """
 
 
-# -- The companion document: the Q&A, laid out ---------------------------
+# -- Page 2: the Q&A, laid out -------------------------------------------
 #
-# A SECOND DOCUMENT RATHER THAN A THIRD PAGE. The main report promises
-# exactly two pages and that promise is load bearing: it is what makes it
-# readable in one sitting. This section's length is a property of the
-# call, not of a page, so folding it in would either break the promise or
-# force dropping findings, and dropping findings is the one thing this
-# project does not do quietly. Page 2 carries a line pointing here.
+# ONE DOCUMENT, by explicit user request after a first version shipped
+# this as a separate PDF. Two files for one quarter is two things to
+# find, and the second one gets lost. The page budget moved from two to
+# three to make room rather than the section being trimmed to fit.
 
 _SEVERITY_LABELS = {
     "high": "grave",
@@ -748,16 +757,15 @@ def _qa_period_check(report: CallReport, analysis) -> str:
     )
 
 
-def render_qa_html(report: CallReport, analysis) -> str:
+def _render_qa_page(report: CallReport) -> str:
     """
-    The Q&A companion: what was dodged, what was conceded, what slipped.
-
-    Uncapped on purpose. The main report is exactly two pages because a
-    reader reads it in one sitting; this one is a working document whose
-    length follows the session, and truncating it would mean dropping
-    findings rather than shortening prose.
+    Page 2: the session, laid out. Empty string when there is nothing to
+    lay out, so the document falls back to two pages rather than
+    carrying a page of empty headings.
     """
-    title = f"{_t(report.company_name)} · questions et réponses {_t(report.call.quarter)}"
+    analysis = report.qa_analysis
+    if analysis is None:
+        return ""
     hard = len(analysis.hard_dodges)
     lede = (
         "Aucune question esquivée, aucune concession, rien de prospectif hors "
@@ -767,31 +775,25 @@ def render_qa_html(report: CallReport, analysis) -> str:
         f"chiffrée refusée, {len(analysis.concessions)} concession(s), "
         f"{len(analysis.implicit_guidance)} signal(aux) prospectif(s)."
     )
-    body = f"""
-  {_render_header(report)}
-  <p class="kicker">Questions et réponses</p>
-  <p class="lede">{lede}</p>
-  {_qa_period_check(report, analysis)}
-  <h2>Les esquives</h2>
-  <p class="note">Gravité « grave » : une information chiffrée précise a été
-  demandée et refusée.</p>
-  {_qa_dodged(analysis)}
-  <h2>Ce qui a valeur prospective, hors communiqué</h2>
-  <p class="note">La partie la plus utile : ce qui engage l'avenir et ne figurait
-  pas dans le communiqué de résultats.</p>
-  {_qa_guidance(analysis)}
-  <h2>Les concessions</h2>
-  {_qa_concessions(analysis)}
-  {_qa_themes(analysis)}
-  {_qa_lists(analysis)}
-  <p class="footer">
-    Généré le {report.generated_at.date().isoformat()}.
-    Session lue par {_t(analysis.model)}, sur la seule moitié questions et
-    réponses du transcript ({_t(report.call.source)}).
-    Document d'accompagnement du rapport principal.
-  </p>
+    return f"""
+  <div class="page-break">
+    <p class="kicker">Questions et réponses</p>
+    <p class="lede">{lede}</p>
+    {_qa_period_check(report, analysis)}
+    <h2>Les esquives</h2>
+    <p class="note">Gravité « grave » : une information chiffrée précise a été
+    demandée et refusée.</p>
+    {_qa_dodged(analysis)}
+    <h2>Ce qui a valeur prospective, hors communiqué</h2>
+    <p class="note">La partie la plus utile : ce qui engage l'avenir et ne
+    figurait pas dans le communiqué de résultats.</p>
+    {_qa_guidance(analysis)}
+    <h2>Les concessions</h2>
+    {_qa_concessions(analysis)}
+    {_qa_themes(analysis)}
+    {_qa_lists(analysis)}
+  </div>
 """
-    return _document(title, body)
 
 
-__all__ = ["MAX_READING_WORDS", "render_html", "render_qa_html"]
+__all__ = ["MAX_READING_WORDS", "render_html"]
