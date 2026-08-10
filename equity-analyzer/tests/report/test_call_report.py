@@ -575,10 +575,10 @@ def _qa(**overrides):
     return QaAnalysis(**kwargs)
 
 
-def test_the_companion_lays_out_every_axis_of_the_session():
-    from equity_analyzer.report.html_renderer import render_qa_html
+def test_page_two_lays_out_every_axis_of_the_session():
+    import dataclasses
 
-    html = render_qa_html(build_report(), _qa())
+    html = render_html(dataclasses.replace(build_report(), qa_analysis=_qa()))
 
     assert "Jane Doe" in html and "le pourcentage exact" in html
     assert "hausse au T3" in html
@@ -588,10 +588,26 @@ def test_the_companion_lays_out_every_axis_of_the_session():
     assert "15% ou 50%, inaudible" in html
 
 
-def test_a_refused_figure_is_marked_grave_by_weight_not_colour():
-    from equity_analyzer.report.html_renderer import render_qa_html
+def test_the_three_pages_are_in_reading_order():
+    """
+    Pages 1 and 2 are both the quarter's news and belong together, the
+    second going back over the session the first only skims. The numbers
+    are the slowest moving thing here and come last rather than
+    interrupting the two halves of the call.
+    """
+    import dataclasses
 
-    html = render_qa_html(build_report(), _qa())
+    html = render_html(dataclasses.replace(build_report(), qa_analysis=_qa()))
+
+    assert html.index("Les declarations cles") < html.index("Questions et réponses")
+    assert html.index("Questions et réponses") < html.index("Red flags")
+    assert html.count('class="page-break"') == 2
+
+
+def test_a_refused_figure_is_marked_grave_by_weight_not_colour():
+    import dataclasses
+
+    html = render_html(dataclasses.replace(build_report(), qa_analysis=_qa()))
     assert "grave" in html
     for match in _HEX_COLOUR_RE.finditer(html):
         value = match.group(1)
@@ -604,47 +620,108 @@ def test_an_empty_session_reads_as_a_sentence_not_as_an_empty_form():
     A Q&A where nothing was dodged and nothing slipped is itself a fact,
     and it reads better as one sentence than as six empty headings.
     """
-    from equity_analyzer.report.html_renderer import render_qa_html
+    import dataclasses
 
-    html = render_qa_html(build_report(), _qa(
+    html = render_html(dataclasses.replace(build_report(), qa_analysis=_qa(
         dodged_questions=[], concessions=[], implicit_guidance=[],
         recurring_themes=[], tone_shift_markers=[],
-    ))
+    )))
     assert "Une session sans prise est elle aussi une information" in html
 
 
-def test_the_companion_disagreeing_about_the_period_says_so():
+def test_page_two_disappears_entirely_when_there_is_no_qa():
+    """
+    A page carrying six empty headings would be worse than no page. The
+    document falls back to two, and the break count says so.
+    """
+    html = render_html(build_report())
+
+    assert "Questions et réponses" not in html
+    assert html.count('class="page-break"') == 1
+    assert page_count(render_pdf(html)) == 2
+
+
+def test_page_two_disagreeing_about_the_period_says_so():
     """
     A third independent check on the pairing. It speaks up only when it
     disagrees: three sources agreeing is worth nothing to print.
     """
-    from equity_analyzer.report.html_renderer import render_qa_html
+    import dataclasses
 
-    quiet = render_qa_html(build_report(), _qa(declared_period="T1 2026"))
+    quiet = render_html(dataclasses.replace(
+        build_report(), qa_analysis=_qa(declared_period="T1 2026")))
     assert "Appariement à vérifier" not in quiet
 
-    loud = render_qa_html(build_report(), _qa(declared_period="Q4 2025"))
+    loud = render_html(dataclasses.replace(
+        build_report(), qa_analysis=_qa(declared_period="Q4 2025")))
     assert "Appariement à vérifier" in loud
 
 
-def test_the_companion_renders_to_a_real_pdf():
-    from equity_analyzer.report.html_renderer import render_qa_html
+def test_a_report_with_a_qa_page_is_three_pages():
+    import dataclasses
 
-    pdf = render_pdf(render_qa_html(build_report(), _qa()))
+    pdf = render_pdf(render_html(dataclasses.replace(build_report(), qa_analysis=_qa())))
     assert pdf[:5] == b"%PDF-"
-    assert page_count(pdf) >= 1
+    assert page_count(pdf) == 3
 
 
-def test_page_two_points_at_the_companion_only_when_there_is_one():
+def _qa_load(dodges, concessions, signals):
+    return _qa(
+        dodged_questions=[
+            {"analyst": f"Analyste {i} de Quelque Banque",
+             "question": "une question assez longue sur la marge et le calendrier produit",
+             "what_was_asked": "un pourcentage precis et une date ferme de production",
+             "what_was_given": "une reponse qualitative sur la diversification du carnet",
+             "severity": "high" if i % 2 else "medium"}
+            for i in range(dodges)
+        ],
+        concessions=[
+            {"topic": f"sujet {i}", "admission": "une concession formulee assez longuement",
+             "verbatim": "margins declined sequentially this quarter"}
+            for i in range(concessions)
+        ],
+        implicit_guidance=[
+            {"topic": f"theme {i}", "signal": "un signal prospectif detaille sur le trimestre",
+             "buried_in": "une reponse sur la tresorerie", "direction": "negative"}
+            for i in range(signals)
+        ],
+    )
+
+
+@needs_report_font
+def test_a_real_session_load_is_compacted_back_to_three_pages():
     """
-    A reader who does not know the companion exists will not go looking
-    for it in a folder.
+    Measured against the real TSLA run, which came back with 5 dodges, 4
+    concessions and 4 forward signals. At natural size that document is
+    four pages; the fitter brings it to three. So compaction is the
+    NORMAL path here, not an emergency one, which is the price of
+    folding the session in rather than shipping it separately.
     """
     import dataclasses
 
-    plain = render_html(build_report())
-    assert "document joint" not in plain
+    html = render_html(dataclasses.replace(build_report(), qa_analysis=_qa_load(5, 4, 4)))
 
-    with_qa = render_html(dataclasses.replace(build_report(), has_qa_analysis=True))
-    assert "document joint" in with_qa
-    assert page_count(render_pdf(with_qa)) == 2
+    assert page_count(render_pdf(html)) > 3, "le cas réel déborde bien au naturel"
+    assert page_count(render_pdf_fitted(html, max_pages=3)) == 3
+
+
+@needs_report_font
+def test_a_session_too_heavy_for_three_pages_grows_rather_than_losing_rows():
+    """
+    THE limit, stated rather than pretended away. Page 2's length is a
+    property of the call, so three pages is a target with a net and not
+    the guarantee two pages used to be. Past roughly eight dodges and
+    six concessions the tightest stylesheet still overruns, and the
+    fitter returns the longer render: a four page report beats one
+    missing the row that mattered.
+    """
+    import dataclasses
+
+    html = render_html(dataclasses.replace(build_report(), qa_analysis=_qa_load(8, 6, 6)))
+    fitted = render_pdf_fitted(html, max_pages=3)
+
+    assert page_count(fitted) == 4
+    assert page_count(fitted) < page_count(render_pdf(html)) + 1
+    # Nothing was dropped to get there.
+    assert "Analyste 7 de Quelque Banque" in html
+    assert "sujet 5" in html

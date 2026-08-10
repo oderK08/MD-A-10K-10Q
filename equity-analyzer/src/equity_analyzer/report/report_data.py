@@ -119,10 +119,11 @@ class CallReport:
     beneish_m: SectionResult = None
     piotroski_f: SectionResult = None
 
-    # Set by the caller when the companion document was produced, so
-    # page 2 can point at it. Not the analysis itself: this object is
-    # what the TWO PAGE report renders, and the companion has its own.
-    has_qa_analysis: bool = False
+    # Page 2, when there is one. Set by the caller after the second
+    # Claude pass, because that pass is optional: it costs a call, and a
+    # failure there must not cost the rest of the report. None means the
+    # document is two pages instead of three.
+    qa_analysis: object = None  # Optional[QaAnalysis]
 
     tone_prepared: SectionResult = None
     tone_qa: SectionResult = None
