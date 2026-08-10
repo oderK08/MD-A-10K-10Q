@@ -26,20 +26,33 @@ provider has published the call. The search walks back until it finds
 one and the report says how far back it had to go, rather than passing
 an older call off as the current one.
 
+WHAT THE READING IS MEASURED AGAINST, and it is two things rather than
+one. The EPS consensus says what the QUARTER was expected to earn. The
+previous quarter's quantified commitments say what the COMPANY said it
+would do. Both are needed, because a quarter can beat the consensus
+while quietly doubling its capex envelope, and until the second baseline
+existed the reading could report that envelope as a level but never as a
+change (see report/guidance_sheet.py, and the real MSFT report that
+quoted a raised capex twice without ever saying it had been raised).
+
 WHAT IT COSTS PER RUN
   SEC EDGAR      4 requests, free, no key. Rate limited client side.
-  Alpha Vantage  2 of the free tier's 25 daily requests (1 consensus,
-                 1 transcript; 2 to 4 more only if the newest quarters
-                 are not published yet). A transcript already fetched
-                 comes from the disk cache and costs nothing.
-  Anthropic      1 call, roughly 10,000 input tokens and 900 output.
+  Alpha Vantage  3 of the free tier's 25 daily requests (1 consensus,
+                 1 transcript, 1 for the previous quarter's call; 2 to 4
+                 more only if the newest quarters are not published
+                 yet). A transcript already fetched comes from the disk
+                 cache and costs nothing.
+  Anthropic      3 calls: the reading (roughly 10,000 input tokens and
+                 900 output), the Q&A pass, and the baseline extraction
+                 on a smaller budget. The last two are both optional and
+                 neither can stop the report.
 
 WHAT HAPPENS WHEN SOMETHING IS MISSING. Everything except the reading
-itself degrades to a printed reason: no consensus, no 10-K, no MD&A each
-show up on the page as a sentence explaining the gap. The reading is the
-exception, because page 1 IS the reading: if the transcript or the model
-cannot be had, this exits without writing a PDF rather than producing a
-document whose first page apologises.
+itself degrades to a printed reason: no consensus, no 10-K, no MD&A, no
+previous call each show up as a sentence explaining the gap. The reading
+is the exception, because page 1 IS the reading: if the transcript or
+the model cannot be had, this exits without writing a PDF rather than
+producing a document whose first page apologises.
 """
 
 from __future__ import annotations
@@ -80,6 +93,7 @@ from equity_analyzer.data_layer.transcript_period import (
     alpha_vantage_label,
     find_latest_available,
     next_label,
+    previous_label,
     verify_against_declared,
 )
 from equity_analyzer.data_layer.transcript_source import (
@@ -97,6 +111,7 @@ from equity_analyzer.report import (
     render_html,
     save_pdf,
 )
+from equity_analyzer.report.guidance_sheet import as_prompt_block, extract_guidance
 from equity_analyzer.sentiment import load_lm_dictionary
 
 TICKER = os.environ.get("TICKER", "").strip().upper()
@@ -255,6 +270,66 @@ def _fetch_transcript(ticker, cik, start_label, client):
     # asked Alpha Vantage for would be an assumption, so the label comes
     # back as the one EDGAR filed it under and `quarters_back` stays 0.
     return call, start_label, 0
+
+
+def _prior_guidance_block(ticker, cik, label, client, company_name):
+    """
+    What the company committed to one quarter ago, rendered for the
+    reading prompt. Never raises.
+
+    WHY THIS IS ALLOWED TO FAIL QUIETLY. It is a second reference point,
+    not the report. The quarter before the earliest one on file does not
+    exist, a small cap's previous call may never have been published,
+    and the daily provider budget can run out. In every one of those
+    cases the reading is still worth writing against the consensus
+    alone, so each failure becomes a printed reason plus a block that
+    tells the model IT HAS NO BASELINE, which is the part that matters:
+    an absent block would let it fill the gap from memory.
+
+    COST, stated plainly because it is charged on every run: one more
+    Alpha Vantage request out of the free tier's 25 (three total), and
+    one more Claude call, on a smaller budget than the reading's. The
+    disk cache absorbs the first of the two on a rerun.
+    """
+    previous = previous_label(label)
+    # BROAD ON PURPOSE, and this is the one place in the script where
+    # that is right. Everything below is a nicety: the report is fully
+    # computable without it. Catching only the transcript exceptions
+    # would leave a network error, a malformed cache entry or a provider
+    # returning something unexpected free to abort a run that was one
+    # step from writing a PDF, and paying for a fetched transcript to
+    # then throw the report away is the worst outcome available here.
+    try:
+        source = CachedTranscriptSource(
+            ChainedSource([LocalTextSource(CACHE_DIR), alpha_vantage_source()]),
+            TranscriptCache(CACHE_DIR),
+        )
+        prior_call = source.fetch(ticker, cik, client, quarter=previous)
+    except Exception as exc:  # noqa: BLE001 -- see above
+        _warn(f"Pas de call {previous} : la lecture n'aura pas de base de "
+              f"comparaison sur la guidance ({exc})")
+        return as_prompt_block(None, reason=f"call {previous} indisponible")
+
+    try:
+        sheet = extract_guidance(
+            ticker, previous, prior_call.full_text,
+            api_key=ANTHROPIC_API_KEY,
+            company_name=company_name,
+            verbatim=prior_call.verbatim,
+            **({"model": ANTHROPIC_MODEL} if ANTHROPIC_MODEL else {}),
+        )
+    except Exception as exc:  # noqa: BLE001 -- see above
+        _warn(f"Engagements de {previous} non extraits : {exc}")
+        return as_prompt_block(None, reason=f"extraction de {previous} échouée")
+
+    if sheet.is_empty:
+        _warn(f"Aucun engagement chiffré trouvé dans le call {previous} : "
+              f"rien à comparer.")
+        return as_prompt_block(None, reason=f"aucun engagement chiffré en {previous}")
+
+    _ok(f"Base de comparaison : {len(sheet.commitments)} engagement(s) chiffré(s) "
+        f"pris en {previous}")
+    return as_prompt_block(sheet)
 
 
 def main() -> int:
@@ -470,6 +545,16 @@ def main() -> int:
             _warn(f"Lecture de la Q&A échouée, la lecture du call gardera "
                   f"ses esquives : {exc}")
 
+    # -- The second baseline: what was promised a quarter ago --
+    #
+    # The consensus says what the QUARTER was expected to earn. It says
+    # nothing about what the COMPANY said it would do, so until now a
+    # capex envelope, a margin target or a revenue guide arrived with no
+    # reference point and the reading could report a level but never a
+    # change. Found on a real MSFT report, which quoted the capex twice
+    # and never said it had moved.
+    prior_guidance = _prior_guidance_block(TICKER, cik, label, client, company_name)
+
     # -- The reading --
     print(f"  ...   Lecture du call par Claude ({ANTHROPIC_MODEL or 'modèle par défaut'})")
     try:
@@ -481,6 +566,7 @@ def main() -> int:
             history=history or (),
             verbatim=call.verbatim,
             qa_page=qa_analysis is not None,
+            prior_guidance=prior_guidance,
             **({"model": ANTHROPIC_MODEL} if ANTHROPIC_MODEL else {}),
         )
     except ClaudeError as exc:

@@ -4,7 +4,7 @@ Un ticker en entrée, **un** PDF de trois pages en sortie.
 
 | | Contenu | D'où ça vient |
 |---|---|---|
-| **Page 1** | La lecture du dernier earnings call par Claude, écrite **contre le consensus** sur lequel le trimestre était attendu | transcript Alpha Vantage + consensus BPA + API Claude |
+| **Page 1** | La lecture du dernier earnings call par Claude, écrite **contre le consensus** sur lequel le trimestre était attendu **et contre ce que la direction avait promis au trimestre précédent** | transcript Alpha Vantage + consensus BPA + engagements du trimestre précédent + API Claude |
 | **Page 2** | Le même call disséqué : esquives, concessions, signaux prospectifs hors communiqué | seconde passe Claude sur la moitié Q&A |
 | **Page 3** | Les red flags annuels (Altman, Beneish, Piotroski) et la tonalité Loughran-McDonald | SEC EDGAR (XBRL + 10-Q) |
 
@@ -41,6 +41,40 @@ trimestre lu, **plus le palmarès des trimestres précédents**, partent donc
 dans le prompt avec le transcript. Une société qui bat de deux centimes pour
 la huitième fois d'affilée a **tenu** les attentes, elle ne les a pas
 dépassées, et sans le palmarès le modèle ne peut pas faire la différence.
+
+**Deux repères, pas un.** Le consensus dit ce que le **trimestre** était
+censé gagner. Il ne dit rien de ce que la **société** avait promis de
+faire. Tant qu'il était seul, tout le reste du discours de la direction,
+capex, marge visée, guidance de revenu, calendrier produit, arrivait sans
+point de comparaison : le modèle pouvait rapporter un **niveau**, jamais
+un **changement**. Trouvé sur un vrai rapport MSFT, qui citait deux fois
+le capex et écrivait « désormais ajusté à *approximately $175 billion* »
+sans jamais dire ajusté depuis quoi. Un programme d'investissement relevé
+est souvent ce qu'un call contient de plus lourd, et il atterrissait comme
+un fait parmi d'autres.
+
+Le call du trimestre précédent est donc relu par une passe dédiée qui en
+extrait les **engagements chiffrés** (métrique, valeur telle qu'annoncée,
+période, citation), et cette liste part dans le prompt de lecture comme
+seconde base de comparaison. Une passe séparée plutôt que le vieux
+transcript recollé au prompt, pour deux raisons : envoyer huit mille mots
+pour livrer une poignée de chiffres est la mauvaise forme, et surtout
+extraire est un **travail d'une autre nature** que lire, avec une seule
+bonne réponse, vérifiable dans le texte et sans jugement. La lecture
+reçoit des faits, pas une botte de foin.
+
+Cette passe n'interprète rien et ne classe rien : décider si un
+changement compte se fait un étage plus haut, là où le trimestre courant
+est aussi sous les yeux. Et quand il n'y a pas de base de comparaison
+(pas de call précédent, quota épuisé, société qui n'a jamais chiffré
+d'engagement), le bloc **le dit au modèle** au lieu de disparaître. C'est
+le point le plus important du dispositif : un modèle sans repère ne
+conclut pas que le repère est inconnu, il le remplit de mémoire, et
+« en hausse par rapport au trimestre précédent » écrit de mémoire est
+indistinguable sur la page de la même phrase écrite d'après le texte.
+
+**Coût** : un appel Alpha Vantage de plus (3 sur les 25 quotidiens) et un
+appel Claude de plus, sur un budget plus petit que celui de la lecture.
 
 **Ce qui manque est écrit, jamais laissé en blanc.** Pas de consensus, pas
 de 10-K, pas de MD&A : chaque absence apparaît sur la page sous forme d'une
