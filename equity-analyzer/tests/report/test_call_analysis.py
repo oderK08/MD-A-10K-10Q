@@ -196,7 +196,7 @@ def test_a_successful_call_returns_the_reading_with_its_provenance(monkeypatch):
 
     monkeypatch.setattr(
         claude_client.requests, "post",
-        lambda *a, **k: _Response(payload={"content": [{"text": "## Verdict\nPlutot bullish."}]}),
+        lambda *a, **k: _Response(payload={"content": [{"type": "text", "text": "## Verdict\nPlutot bullish."}]}),
     )
     analysis = analyse_call(
         "AAOI", "2026Q1", TRANSCRIPT,
@@ -214,7 +214,7 @@ def test_a_reading_written_without_a_consensus_says_so_on_the_object(monkeypatch
 
     monkeypatch.setattr(
         claude_client.requests, "post",
-        lambda *a, **k: _Response(payload={"content": [{"text": "Neutre."}]}),
+        lambda *a, **k: _Response(payload={"content": [{"type": "text", "text": "Neutre."}]}),
     )
     analysis = analyse_call("AAOI", "2026Q1", TRANSCRIPT, api_key="sk-test")
     assert analysis.had_expectations is False
