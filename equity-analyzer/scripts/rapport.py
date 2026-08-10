@@ -106,8 +106,22 @@ ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "").strip()
 ALPHAVANTAGE_API_KEY = os.environ.get("ALPHAVANTAGE_API_KEY", "").strip()
 
 # One document. Page 1 the reading, page 2 the Q&A dissected, page 3 the
-# numbers. Two when there is no Q&A to dissect.
-MAX_PAGES = 3
+# numbers.
+#
+# THE BUDGET FOLLOWS THE DOCUMENT rather than being one number, and
+# getting that wrong was a real regression. A report with no Q&A page has
+# two pages of content, and one tight case overflows at natural size: a
+# stale call AND a period mismatch warning together cost page 1 around
+# sixty words of room. The fitter used to absorb that because the budget
+# was two. Handed a flat budget of three it would see nothing to fix and
+# hand back a document whose reading spills onto a sheet of its own, with
+# the numbers pushed to a third.
+#
+# So a document without a Q&A page is still held to exactly two, which is
+# what makes "two pages guaranteed, a third bounded" true rather than
+# aspirational.
+MAX_PAGES_WITH_QA = 3
+MAX_PAGES_WITHOUT_QA = 2
 
 ROOT = Path(__file__).parent.parent
 CACHE_DIR = ROOT / "transcripts"
@@ -501,12 +515,14 @@ def main() -> int:
 
     REPORTS_DIR.mkdir(exist_ok=True)
     output = REPORTS_DIR / f"{TICKER}.pdf"
-    # Three pages, compacted to fit. A target with a net rather than a
-    # guarantee: page 2's length follows the session, so the stylesheet
-    # tightens until it fits and, if even the tightest step overruns,
-    # the longer render is kept. Never a dropped finding.
-    pages = save_pdf(render_html(report), output, max_pages=MAX_PAGES)
-    # The count is the one the PDF actually has, not MAX_PAGES: the
+    # Compacted to fit the budget this document actually has. With a Q&A
+    # page that is a target with a net rather than a guarantee, because
+    # page 2's length follows the session: the stylesheet tightens until
+    # it fits and, if even the tightest step overruns, the longer render
+    # is kept. Never a dropped finding.
+    budget = MAX_PAGES_WITH_QA if qa_analysis is not None else MAX_PAGES_WITHOUT_QA
+    pages = save_pdf(render_html(report), output, max_pages=budget)
+    # The count is the one the PDF actually has, not the budget: the
     # fitter keeps the longest render rather than losing a row, so a
     # heavy session can legitimately come out at four and the log has to
     # say four.
