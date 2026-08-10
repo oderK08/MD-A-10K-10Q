@@ -123,10 +123,20 @@ class GuidanceSheet:
     quarter: str
     model: str
     commitments: list = field(default_factory=list)
+    # How many quarters before the call being read this baseline is. 1
+    # is the normal case, the quarter immediately before. Anything above
+    # 1 means a call in between could not be had, and it CHANGES WHAT A
+    # DIFFERENCE MEANS: see as_prompt_block.
+    quarters_before: int = 1
 
     @property
     def is_empty(self) -> bool:
         return not self.commitments
+
+    @property
+    def is_adjacent(self) -> bool:
+        """True when this is the quarter immediately before the one read."""
+        return self.quarters_before <= 1
 
 
 _FENCE_RE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE)
@@ -199,6 +209,7 @@ def extract_guidance(
     api_key: str,
     company_name: Optional[str] = None,
     verbatim: bool = True,
+    quarters_before: int = 1,
     model: str = DEFAULT_MODEL,
     max_tokens: int = MAX_TOKENS,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
@@ -226,6 +237,7 @@ def extract_guidance(
         quarter=quarter,
         model=model,
         commitments=_commitments(payload),
+        quarters_before=quarters_before,
     )
 
 
@@ -251,10 +263,18 @@ def as_prompt_block(sheet: Optional[GuidanceSheet], reason: str = "") -> str:
             "au trimestre precedent : tu n'as pas le chiffre precedent."
         )
 
-    lines = [
-        f"ENGAGEMENTS CHIFFRES PRIS AU TRIMESTRE PRECEDENT ({sheet.quarter}), "
-        "extraits de ce call la :",
-    ]
+    if sheet.is_adjacent:
+        header = (
+            f"ENGAGEMENTS CHIFFRES PRIS AU TRIMESTRE PRECEDENT ({sheet.quarter}), "
+            "extraits de ce call la :"
+        )
+    else:
+        header = (
+            f"ENGAGEMENTS CHIFFRES PRIS IL Y A {sheet.quarters_before} TRIMESTRES "
+            f"({sheet.quarter}), extraits de ce call la :"
+        )
+
+    lines = [header]
     for item in sheet.commitments:
         period = f" [{item['period']}]" if item["period"] else ""
         lines.append(f"  {item['metric']}{period} : {item['value']}")
@@ -266,6 +286,21 @@ def as_prompt_block(sheet: Optional[GuidanceSheet], reason: str = "") -> str:
         "brievement, voire pas du tout. Cette liste est une base de comparaison, "
         "pas une matiere a analyser : ne commente pas le trimestre precedent."
     )
+    if not sheet.is_adjacent:
+        # THE GUARD THAT MAKES WALKING BACK HONEST. Between this
+        # baseline and the call being read there are calls nobody could
+        # get. A figure that moved in one of them and was merely
+        # restated today would look like today's news, which is a wrong
+        # answer stated confidently, and that is worse than no baseline.
+        lines.append(
+            f"ATTENTION : ce ne sont PAS les engagements du trimestre precedent. "
+            f"{sheet.quarters_before - 1} call(s) n'ont pas pu etre recuperes entre "
+            f"les deux. Un ecart avec cette liste s'est donc produit QUELQUE PART "
+            f"sur {sheet.quarters_before} trimestres, et pas forcement dans le call "
+            f"que tu lis. Ne presente jamais une difference comme l'annonce du jour "
+            f"si la direction ne la presente pas elle meme comme un changement : "
+            f"dis que la comparaison porte sur {sheet.quarters_before} trimestres."
+        )
     return "\n".join(lines)
 
 

@@ -38,10 +38,11 @@ quoted a raised capex twice without ever saying it had been raised).
 WHAT IT COSTS PER RUN
   SEC EDGAR      4 requests, free, no key. Rate limited client side.
   Alpha Vantage  3 of the free tier's 25 daily requests (1 consensus,
-                 1 transcript, 1 for the previous quarter's call; 2 to 4
-                 more only if the newest quarters are not published
-                 yet). A transcript already fetched comes from the disk
-                 cache and costs nothing.
+                 1 transcript, 1 for the previous quarter's call; up to
+                 2 more if that previous call is missing and the search
+                 steps back, and 2 to 4 more only if the newest quarters
+                 are not published yet). A transcript already fetched
+                 comes from the disk cache and costs nothing.
   Anthropic      3 calls: the reading (roughly 10,000 input tokens and
                  900 output), the Q&A pass, and the baseline extraction
                  on a smaller budget. The last two are both optional and
@@ -272,6 +273,55 @@ def _fetch_transcript(ticker, cik, start_label, client):
     return call, start_label, 0
 
 
+# How far back the baseline search may walk. Deliberately shorter than
+# the four quarters the main transcript search allows, for two reasons
+# that point the same way.
+#
+# EACH STEP COSTS A PROVIDER REQUEST out of a daily budget of 25 that
+# the report's own transcript and the consensus also draw on. Spending
+# four of them on a nicety, in a run that has already fetched what it
+# needs, is the wrong trade.
+#
+# AND A BASELINE DECAYS. Comparing against two quarters ago still says
+# something useful, provided the prompt says so. Against a year ago the
+# question "did this change today" has essentially no relationship to
+# the answer, and a stale comparison presented confidently is worse than
+# an absent one.
+MAX_BASELINE_QUARTERS_BACK = 3
+
+
+def _find_prior_call(source, ticker, cik, label, client):
+    """
+    The most recent call BEFORE the one being read, and how many
+    quarters back it turned out to be.
+
+    Walking back rather than giving up after one miss, because a single
+    quarter the provider never published would otherwise cost the
+    baseline entirely. Walking back only a little, and always returning
+    the distance, because the distance changes what a difference means
+    (see guidance_sheet.as_prompt_block).
+
+    A REFUSAL STOPS THE WALK IMMEDIATELY, same as the main search:
+    quota exhaustion applies to every subsequent request too, so
+    continuing would spend the rest of the day's budget collecting the
+    same error again.
+    """
+    quarter = previous_label(label)
+    misses = []
+    for attempt in range(MAX_BASELINE_QUARTERS_BACK):
+        try:
+            return source.fetch(ticker, cik, client, quarter=quarter), quarter, attempt + 1
+        except TranscriptRefused:
+            raise
+        except TranscriptUnavailable as exc:
+            misses.append(f"{quarter} ({exc})")
+            quarter = previous_label(quarter)
+    raise TranscriptUnavailable(
+        f"aucun call sur les {MAX_BASELINE_QUARTERS_BACK} trimestres précédant "
+        f"{label} : " + " ; ".join(misses)
+    )
+
+
 def _prior_guidance_block(ticker, cik, label, client, company_name):
     """
     What the company committed to one quarter ago, rendered for the
@@ -291,7 +341,6 @@ def _prior_guidance_block(ticker, cik, label, client, company_name):
     one more Claude call, on a smaller budget than the reading's. The
     disk cache absorbs the first of the two on a rerun.
     """
-    previous = previous_label(label)
     # BROAD ON PURPOSE, and this is the one place in the script where
     # that is right. Everything below is a nicety: the report is fully
     # computable without it. Catching only the transcript exceptions
@@ -304,11 +353,16 @@ def _prior_guidance_block(ticker, cik, label, client, company_name):
             ChainedSource([LocalTextSource(CACHE_DIR), alpha_vantage_source()]),
             TranscriptCache(CACHE_DIR),
         )
-        prior_call = source.fetch(ticker, cik, client, quarter=previous)
+        prior_call, previous, back = _find_prior_call(source, ticker, cik, label, client)
     except Exception as exc:  # noqa: BLE001 -- see above
-        _warn(f"Pas de call {previous} : la lecture n'aura pas de base de "
-              f"comparaison sur la guidance ({exc})")
-        return as_prompt_block(None, reason=f"call {previous} indisponible")
+        _warn(f"Aucun call antérieur récupérable : la lecture n'aura pas de base "
+              f"de comparaison sur la guidance ({exc})")
+        return as_prompt_block(None, reason="aucun call antérieur disponible")
+
+    if back > 1:
+        _warn(f"Le call {previous_label(label)} n'est pas disponible : base de "
+              f"comparaison prise {back} trimestres en arrière ({previous}). "
+              f"Un écart portera sur {back} trimestres, pas sur celui-ci.")
 
     try:
         sheet = extract_guidance(
@@ -316,6 +370,7 @@ def _prior_guidance_block(ticker, cik, label, client, company_name):
             api_key=ANTHROPIC_API_KEY,
             company_name=company_name,
             verbatim=prior_call.verbatim,
+            quarters_before=back,
             **({"model": ANTHROPIC_MODEL} if ANTHROPIC_MODEL else {}),
         )
     except Exception as exc:  # noqa: BLE001 -- see above
