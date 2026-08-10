@@ -99,7 +99,10 @@ def make_transcript(
     prepared: str = "Revenue grew strongly this quarter and margins improved.",
     qa: str = "Analyst question about pricing. Management gave a vague answer.",
     source: str = "Alpha Vantage",
-    call_date: date = date(2026, 2, 3),
+    # None by default because that is what production looks like: Alpha
+    # Vantage stamps a transcript with its fiscal label and no date, so a
+    # fixture that carries one hides the case every real run hits.
+    call_date: date = None,
     fiscal_period: str = "2026Q1",
 ):
     from equity_analyzer.data_layer.transcript_source import CallTranscript
