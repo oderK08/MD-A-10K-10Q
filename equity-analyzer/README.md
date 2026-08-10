@@ -117,6 +117,31 @@ transcrire le webcast soi même : une heure d'anglais des affaires
 scripté est largement à la portée d'un modèle de la famille Whisper,
 pour quelques centimes.
 
+### Sans terminal, depuis github.com
+
+C'est la voie normale. Sur github.com, **Add file → Create new file**,
+chemin :
+
+```
+equity-analyzer/transcripts/UBER_2026Q2.txt
+```
+
+Colle le texte produit par Whisper, committe, relance le workflow. Le
+fichier est lu **avant** le fournisseur, donc le run ne coûte aucun
+quota.
+
+Le nom porte toute la métadonnée. `2026Q2` est le repère **fiscal** de
+la société, celui qu'affiche le rapport, pas un trimestre civil : le
+log de chaque run imprime le fichier attendu (`dépôt local attendu :
+transcripts/UBER_2026Q2.txt`), et le message d'échec le redonne quand
+aucun transcript n'a pu être récupéré. Nommer le fichier d'après le
+trimestre le fait aussi **expirer tout seul** : au trimestre suivant le
+pipeline résout `2026Q3`, aucun fichier ne correspond, et le fournisseur
+reprend la main. Un fichier appelé `UBER.txt` aurait silencieusement
+écrasé tous les runs futurs avec un call périmé.
+
+### Avec un terminal
+
 ```bash
 TICKER=UBER QUARTER=2026Q2 SOURCE_FILE=uber-q2.txt \
     SOURCE="Whisper large-v3" CALL_DATE=2026-08-05 \
@@ -124,19 +149,20 @@ TICKER=UBER QUARTER=2026Q2 SOURCE_FILE=uber-q2.txt \
 # -> transcripts/UBER_2026Q2.json
 ```
 
-Committe le fichier, relance le workflow sur ce ticker. **Il n'y a pas
-de chemin de code particulier** : le cache est déjà la première chose que
-la source consulte, donc un fichier présent dans `transcripts/` est lu
-avant tout appel et le run ne coûte aucun quota fournisseur. Le dossier
-est suivi par Git exprès, ce qui permet aussi à un lecteur d'ouvrir le
-texte pour vérifier une citation du rapport.
+Même résultat, en JSON plutôt qu'en texte, ce qui permet de conserver la
+date du call et un libellé de source précis.
 
-`QUARTER` est le repère **fiscal** de la société, celui qu'affiche le
-rapport (`2026Q2`), pas un trimestre civil. Le script refuse un autre
-format, et refuse un fichier de moins de 1500 mots : un vrai call en
-fait 6 000 à 12 000, et en dessous c'est un fichier tronqué, un résumé
+Les deux routes refusent un fichier de moins de 1500 mots : un vrai call
+en fait 6 000 à 12 000, et en dessous c'est un fichier tronqué, un résumé
 ou le mauvais document. Mieux vaut refuser là qu'après que le modèle
 l'ait lu.
+
+**L'appariement reste vérifié.** Le trimestre dans le nom du fichier est
+une affirmation de celui qui l'a nommé, et une erreur attacherait une
+vraie lecture aux mauvais trois mois. `verify_against_declared` compare
+ce repère à la période que la société **annonce à voix haute** dans
+l'ouverture du call, donc un écart apparaît sur le rapport au lieu de
+passer.
 
 **Une transcription automatique n'est pas un verbatim.** C'est la seule
 chose qui change vraiment, et elle est traitée comme telle. Toute la
