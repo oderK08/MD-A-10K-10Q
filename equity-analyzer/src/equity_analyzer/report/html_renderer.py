@@ -249,6 +249,18 @@ def _render_expectations(report: CallReport) -> str:
     surprise = (
         f"{expectation.surprise_pct:+.1f}%" if expectation.surprise_pct is not None else "n/a"
     )
+    # An ecart this wide is not a surprise, it is two numbers struck on
+    # different bases (see earnings_expectations.IMPLAUSIBLE_SURPRISE_PCT).
+    # Printed as a caveat rather than swallowed: the figures are real and
+    # worth showing, it is the COMPARISON that is not.
+    doubt = ""
+    if not expectation.comparable:
+        doubt = (
+            '<p class="note"><span class="flag-on">Comparaison non exploitable</span> : '
+            "un écart de cette ampleur indique deux bases différentes. Le BPA publié "
+            "est le chiffre GAAP, un consensus d'analystes est établi sur une base "
+            "ajustée. Les deux chiffres sont exacts, leur écart ne dit rien du trimestre.</p>"
+        )
     return f"""
     <p class="kicker">Ce qui était attendu</p>
     <table>
@@ -265,6 +277,7 @@ def _render_expectations(report: CallReport) -> str:
         <td><span class="flag-on">{_t(expectation.verdict)}</span></td>
       </tr>
     </table>
+    {doubt}
     {history_html}
     """
 

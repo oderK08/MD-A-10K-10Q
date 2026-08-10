@@ -444,3 +444,24 @@ def test_the_mdna_label_follows_the_form_the_quarter_was_reported_in():
     annual = render_html(build_report(quarter_filing=annual_quarter))
     assert "MD&amp;A du 10-K (Item 7)" in annual
     assert "MD&amp;A du 10-Q" not in annual
+
+
+def test_an_implausible_consensus_gap_is_qualified_on_the_page():
+    """
+    The figures stay, the verdict does not. A reader who sees "en
+    dessous" next to a miss of 82% will act on a comparison between two
+    different accounting bases.
+    """
+    html = render_html(build_report(expectation=make_expectation(
+        estimated_eps=0.71, reported_eps=0.13, surprise=-0.58, surprise_pct=-81.7,
+    )))
+
+    assert "Comparaison non exploitable" in html
+    assert "0.71" in html and "0.13" in html
+    assert "en dessous" not in html
+
+
+def test_an_ordinary_gap_still_reads_as_a_plain_verdict():
+    html = render_html(build_report())
+    assert "Comparaison non exploitable" not in html
+    assert "au-dessus" in html
