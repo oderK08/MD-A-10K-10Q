@@ -568,7 +568,6 @@ def _qa(**overrides):
                             "buried_in": "reponse tresorerie", "direction": "negative"}],
         recurring_themes=[{"theme": "concurrence", "analyst_count": 3,
                            "summary": "trois analystes"}],
-        tone_shift_markers=["we are being careful here"],
         uncertain_figures=["15% ou 50%, inaudible"],
     )
     kwargs.update(overrides)
@@ -584,8 +583,20 @@ def test_page_two_lays_out_every_axis_of_the_session():
     assert "hausse au T3" in html
     assert "pression admise" in html
     assert "trois analystes" in html
-    assert "we are being careful here" in html
     assert "15% ou 50%, inaudible" in html
+
+
+def test_the_notable_wordings_section_is_gone_from_the_page():
+    """
+    Removed on request. Asserted as an absence rather than just deleted
+    from the test above, because "we stopped checking for it" and "it is
+    not there" are different claims, and only the second one survives
+    someone re-adding the section by accident.
+    """
+    import dataclasses
+
+    html = render_html(dataclasses.replace(build_report(), qa_analysis=_qa()))
+    assert "Formulations notables" not in html
 
 
 def test_the_three_pages_are_in_reading_order():
@@ -624,7 +635,7 @@ def test_an_empty_session_reads_as_a_sentence_not_as_an_empty_form():
 
     html = render_html(dataclasses.replace(build_report(), qa_analysis=_qa(
         dodged_questions=[], concessions=[], implicit_guidance=[],
-        recurring_themes=[], tone_shift_markers=[],
+        recurring_themes=[],
     )))
     assert "Une session sans prise est elle aussi une information" in html
 
@@ -713,10 +724,6 @@ def _qa_load(dodges, concessions, signals):
                         "obtenir le chiffre demande"}
             for i in range(3)
         ],
-        tone_shift_markers=[
-            "we are being opportunistic in securing certain debt facilities",
-            "as previously guided, our free cash flow ended up being negative",
-        ],
         uncertain_figures=[
             "16.3% de marge, peut etre mal transcrit",
             "30 milliards de lignes de credit, a verifier",
@@ -727,10 +734,11 @@ def _qa_load(dodges, concessions, signals):
 @needs_report_font
 def test_a_full_session_is_compacted_back_to_three_pages():
     """
-    A complete session, every axis populated: four dodges, four
-    concessions, four forward signals, plus recurring themes, tone
-    markers and uncertain figures. At natural size that is four pages
-    and the fitter brings it back to three.
+    A complete session, every axis populated: five dodges, four
+    concessions, five forward signals, plus recurring themes and
+    uncertain figures. Fourteen findings, which is the most that fits.
+    At natural size that is four pages and the fitter brings it back to
+    three.
 
     So compaction is the NORMAL path here, not an emergency one. That is
     the price of folding the session into the document rather than
@@ -739,7 +747,7 @@ def test_a_full_session_is_compacted_back_to_three_pages():
     """
     import dataclasses
 
-    html = render_html(dataclasses.replace(build_report(), qa_analysis=_qa_load(4, 4, 4)))
+    html = render_html(dataclasses.replace(build_report(), qa_analysis=_qa_load(5, 4, 5)))
 
     assert page_count(render_pdf(html)) > 3, "ce cas déborde bien au naturel"
     assert page_count(render_pdf_fitted(html, max_pages=3)) == 3
@@ -749,21 +757,39 @@ def test_a_full_session_is_compacted_back_to_three_pages():
 def test_a_session_too_heavy_for_three_pages_grows_rather_than_losing_rows():
     """
     THE limit, stated rather than pretended away, and the margin is
-    thinner than it looks: thirteen findings still fit, fourteen do not.
+    thinner than it looks: fourteen findings still fit, fifteen do not.
     Page 2's length is a property of the call, so three pages is a
     target with a net and not the guarantee two pages used to be.
 
-    The first real TSLA run of this document landed on the wrong side of
-    that line, at four pages, and said so because the count is measured.
-    A four page report beats one missing the row that mattered.
+    Two real TSLA runs landed on the wrong side of that line, at four
+    pages, and said so because the count is measured. Dropping the
+    notable wordings section moved the boundary by one finding, which is
+    how thin it is. A four page report beats one missing the row that
+    mattered.
+    """
+    import dataclasses
+
+    # One finding past the limit. The ladder cannot recover this one, so
+    # the report grows rather than losing a row.
+    html = render_html(dataclasses.replace(build_report(), qa_analysis=_qa_load(5, 5, 5)))
+    assert page_count(render_pdf_fitted(html, max_pages=3)) == 4
+    # Nothing was dropped to get there.
+    assert "Analyste 4, Quelque Banque d'Investissement" in html
+    assert "Sujet 4 de la concession" in html
+
+
+@needs_report_font
+def test_past_the_limit_compaction_still_saves_a_page_rather_than_giving_up():
+    """
+    The fitter is not switched off once the budget is unreachable. A
+    session well past the limit renders at five pages and still comes
+    back to four, so overrunning costs one sheet and not two.
     """
     import dataclasses
 
     html = render_html(dataclasses.replace(build_report(), qa_analysis=_qa_load(8, 6, 6)))
-    fitted = render_pdf_fitted(html, max_pages=3)
 
-    assert page_count(fitted) == 4
-    assert page_count(fitted) < page_count(render_pdf(html))
-    # Nothing was dropped to get there.
+    assert page_count(render_pdf(html)) == 5
+    assert page_count(render_pdf_fitted(html, max_pages=3)) == 4
     assert "Analyste 7, Quelque Banque d'Investissement" in html
     assert "Sujet 5 de la concession" in html

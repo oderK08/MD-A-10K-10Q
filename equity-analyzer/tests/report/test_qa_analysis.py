@@ -16,6 +16,7 @@ import pytest
 from equity_analyzer.report import claude_client
 from equity_analyzer.report.claude_client import ClaudeError
 from equity_analyzer.report.qa_analysis import (
+    QaAnalysis,
     analyse_qa,
     build_prompt,
     parse_response,
@@ -36,6 +37,8 @@ _ANSWER = {
     "implicit_guidance": [{"topic": "capex", "signal": "hausse au T3",
                            "buried_in": "reponse sur la tresorerie", "direction": "negative"}],
     "recurring_themes": [{"theme": "concurrence", "analyst_count": 3, "summary": "trois fois"}],
+    # Still sent by a model that has seen an older prompt, and dropped
+    # on the way in rather than carried as a field nothing renders.
     "tone_shift_markers": ["we are being careful here"],
     "uncertain_figures": ["15% ou 50%, inaudible"],
 }
@@ -105,8 +108,20 @@ def test_a_clean_json_answer_is_parsed(monkeypatch):
     assert len(result.dodged_questions) == 2
     assert len(result.hard_dodges) == 1
     assert result.implicit_guidance[0]["direction"] == "negative"
-    assert result.tone_shift_markers == ["we are being careful here"]
+    assert result.uncertain_figures == ["15% ou 50%, inaudible"]
     assert result.is_empty is False
+
+
+def test_a_key_the_report_no_longer_renders_is_ignored_rather_than_stored():
+    """
+    "Formulations notables" was dropped from the document, so the schema
+    stopped asking for it. A model can still return it: from an older
+    prompt, or simply because it felt like it. That key must not become
+    an attribute nobody reads, which is how a removed section grows back
+    by accident.
+    """
+    assert not hasattr(QaAnalysis(ticker="X", quarter="2026Q1", model="m"),
+                       "tone_shift_markers")
 
 
 def test_a_fenced_answer_is_recovered(monkeypatch):
