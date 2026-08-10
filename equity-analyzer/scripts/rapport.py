@@ -64,6 +64,7 @@ from equity_analyzer.data_layer.earnings_expectations import (
     ExpectationsUnavailable,
     fetch_earnings_expectations,
 )
+from equity_analyzer.data_layer.local_text_source import LocalTextSource, expected_filename
 from equity_analyzer.data_layer.transcript_cache import CachedTranscriptSource, TranscriptCache
 from equity_analyzer.data_layer.earnings_release import (
     announces_a_newer_quarter,
@@ -77,6 +78,7 @@ from equity_analyzer.data_layer.transcript_period import (
     verify_against_declared,
 )
 from equity_analyzer.data_layer.transcript_source import (
+    ChainedSource,
     EdgarExhibitSource,
     TranscriptRefused,
     TranscriptUnavailable,
@@ -153,8 +155,15 @@ def _build_filing(client, cik, ref, ticker, company_name, facts, with_text: bool
 
 def _fetch_transcript(ticker, cik, start_label, client):
     """
-    The most recent published call, from Alpha Vantage, falling back to
-    EDGAR when the provider will not answer.
+    The most recent published call, in order of preference: a transcript
+    committed to the repository, then Alpha Vantage, then the earnings
+    8-K on EDGAR.
+
+    THE LOCAL FILE COMES FIRST because it is free and deliberate. Alpha
+    Vantage covers small caps badly and publishes the newest quarter
+    late, which bites hardest during earnings season, so the escape
+    hatch is to transcribe the webcast yourself and commit the text. It
+    needs no terminal: create the file on github.com and relaunch.
 
     A REFUSAL IS RETRIED ONCE BEFORE GIVING UP ON THE PROVIDER. Alpha
     Vantage answers a burst limit ("please consider spreading out your
@@ -177,9 +186,18 @@ def _fetch_transcript(ticker, cik, start_label, client):
 
     Returns (transcript, label, quarters_back).
     """
-    source = CachedTranscriptSource(alpha_vantage_source(), TranscriptCache(CACHE_DIR))
+    # A transcript committed to the repository is consulted BEFORE the
+    # provider: it is free, and it is there because someone put it there
+    # on purpose. Named after the fiscal quarter so it expires by itself
+    # (see data_layer/local_text_source.py).
+    local = LocalTextSource(CACHE_DIR)
+    print(f"         (dépôt local attendu : transcripts/{expected_filename(ticker, start_label)})")
 
-    if ALPHAVANTAGE_API_KEY:
+    source = CachedTranscriptSource(
+        ChainedSource([local, alpha_vantage_source()]), TranscriptCache(CACHE_DIR)
+    )
+
+    if ALPHAVANTAGE_API_KEY or (CACHE_DIR / expected_filename(ticker, start_label)).is_file():
         # No explicit pause between attempts: every request through this
         # source already goes through the shared provider throttle (see
         # data_layer/alpha_vantage.py), so spacing them here as well
@@ -204,7 +222,8 @@ def _fetch_transcript(ticker, cik, start_label, client):
             break
         _warn("Repli sur le 8-K de résultats déposé chez SEC.")
     else:
-        _warn("ALPHAVANTAGE_API_KEY absent : seul le repli SEC 8-K est disponible.")
+        _warn("ALPHAVANTAGE_API_KEY absent et aucun transcript déposé : "
+              "seul le repli SEC 8-K est disponible.")
 
     call = EdgarExhibitSource().fetch(ticker, cik, client)
     # The exhibit route has no quarter parameter: it returns whatever the
@@ -322,6 +341,13 @@ def main() -> int:
         call, label, quarters_back = _fetch_transcript(TICKER, cik, start_label, client)
     except TranscriptUnavailable as exc:
         _fail(f"Aucun transcript récupérable : {exc}")
+        print()
+        print("        Tu peux en déposer un toi même, sans terminal : transcris le")
+        print("        webcast (Whisper), puis sur github.com fais Add file → Create")
+        print("        new file et colle le texte dans :")
+        print(f"            equity-analyzer/transcripts/{expected_filename(TICKER, start_label)}")
+        print("        Relance ensuite le workflow : ce fichier est lu avant le")
+        print("        fournisseur et ne coûte aucun quota.")
         return 2
 
     # STALENESS IS MEASURED AGAINST THE NEWEST FILED QUARTER, not against

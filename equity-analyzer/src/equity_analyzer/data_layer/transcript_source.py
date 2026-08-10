@@ -379,6 +379,50 @@ class HttpTranscriptSource(TranscriptSource):
         )
 
 
+@dataclass
+class ChainedSource(TranscriptSource):
+    """
+    Several sources, tried in order, first answer wins.
+
+    Exists so that a transcript committed to the repository is consulted
+    BEFORE the paid provider, without either of them knowing about the
+    other. The local file is free and is there because someone put it
+    there deliberately, so trying it first costs nothing and saves a
+    request; the provider stays the default for everything else.
+
+    A REFUSAL STILL PROPAGATES AS A REFUSAL. Quota exhaustion means every
+    later request in the run fails too, and the caller uses that to stop
+    walking back through quarters instead of burning the day's budget on
+    four more copies of the same error. Flattening it into a plain
+    absence here would throw that signal away.
+    """
+
+    sources: list
+    name: str = "sources chaînées"
+
+    def fetch(self, ticker: str, cik: str, client=None, quarter: Optional[str] = None) -> CallTranscript:
+        reasons = []
+        refused = False
+        for source in self.sources:
+            try:
+                return source.fetch(ticker, cik, client, quarter=quarter)
+            except TranscriptRefused as exc:
+                refused = True
+                reasons.append(f"{source.name} : {exc}")
+            except TranscriptUnavailable as exc:
+                reasons.append(f"{source.name} : {exc}")
+            except TypeError:
+                # Sources predating the `quarter` argument.
+                try:
+                    return source.fetch(ticker, cik, client)
+                except TranscriptUnavailable as exc:
+                    reasons.append(f"{source.name} : {exc}")
+        detail = " ; ".join(reasons) or "aucune source configurée"
+        if refused:
+            raise TranscriptRefused(detail)
+        raise TranscriptUnavailable(detail)
+
+
 def _join_turns(turns: list, config) -> str:
     """
     Flattens a list of speaker turns into text, keeping the speaker on
@@ -465,6 +509,7 @@ def _parse_date(value) -> Optional[date]:
 
 __all__ = [
     "CallTranscript",
+    "ChainedSource",
     "EdgarExhibitSource",
     "alpha_vantage_source",
     "HttpTranscriptSource",
