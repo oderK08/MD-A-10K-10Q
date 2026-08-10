@@ -93,7 +93,7 @@ def call_claude(
     api_key: str,
     system_prompt: str,
     model: str = DEFAULT_MODEL,
-    max_tokens: int = 2000,
+    max_tokens: int = 8000,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
 ) -> str:
     """

@@ -56,7 +56,22 @@ from .claude_client import (
 # context, so the transcript goes in whole. Excerpting it would mean
 # choosing what matters before the model has read it, which is the
 # judgement being delegated.
-MAX_TOKENS = 2000
+#
+# THE CEILING COVERS THINKING PLUS RESPONSE, not the response alone, and
+# that is what killed two real runs. Claude 5 family models emit a
+# thinking block before writing, those tokens count against
+# `max_tokens`, and on an eight thousand word call the thinking alone
+# can exhaust a budget sized for the answer. The TSLA run came back with
+# `stop_reason: max_tokens` and a single `thinking` block: the model had
+# reasoned until the budget ran out without ever writing a line, after
+# the transcript had been fetched and paid for.
+#
+# Raising the ceiling costs nothing. Billing is on tokens ACTUALLY
+# produced, not on the ceiling, and the thinking happens either way: a
+# generous ceiling only leaves room to write down what it prepared.
+# The reading itself is 400 to 540 words, so roughly 900 tokens. The
+# rest of this budget is headroom for the thinking that precedes it.
+MAX_TOKENS = 8000
 
 # Measured against the real page, then given room. The page holds 610
 # words (report.html_renderer.MAX_READING_WORDS); asking for up to 600

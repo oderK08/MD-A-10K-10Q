@@ -190,3 +190,21 @@ def test_a_network_failure_is_an_error_with_its_cause(monkeypatch):
     with pytest.raises(ClaudeError) as exc:
         call_claude("p", api_key="k", system_prompt="s")
     assert "connection reset" in str(exc.value)
+
+
+def test_the_token_budget_leaves_room_for_thinking_and_the_answer():
+    """
+    Regression on two real failures. Claude 5 family models emit a
+    thinking block before writing and those tokens count against
+    max_tokens, so a budget sized for the answer alone lets the model
+    reason until the ceiling and return `stop_reason: max_tokens` with
+    no text at all, after the transcript is already paid for.
+
+    The readings are 400 to 540 words (roughly 900 tokens) and the Q&A
+    answer is a JSON list; both ceilings must sit far above that.
+    """
+    from equity_analyzer.report.call_analysis import MAX_TOKENS as READING_TOKENS
+    from equity_analyzer.report.qa_analysis import MAX_TOKENS as QA_TOKENS
+
+    assert READING_TOKENS >= 6000
+    assert QA_TOKENS >= READING_TOKENS
