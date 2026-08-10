@@ -7,6 +7,9 @@ Un ticker en entrée, un PDF de **deux pages** en sortie.
 | **Page 1** | La lecture du dernier earnings call par Claude, écrite **contre le consensus** sur lequel le trimestre était attendu | transcript Alpha Vantage + consensus BPA + API Claude |
 | **Page 2** | Les red flags annuels (Altman, Beneish, Piotroski) et la tonalité Loughran-McDonald | SEC EDGAR (XBRL + 10-Q) |
 
+Plus un document joint, `<TICKER>_qa.pdf` : la session questions-réponses
+disséquée (voir plus bas).
+
 ```bash
 TICKER=AAOI ANTHROPIC_API_KEY=... ALPHAVANTAGE_API_KEY=... python scripts/rapport.py
 # -> rapports/AAOI.pdf
@@ -44,6 +47,52 @@ signaler ».
 lecture. Un rapport dont la page 1 se dégrade en excuse, composée dans la
 même typo qu'une vraie analyse, est pire que pas de rapport : le script
 s'arrête sans écrire de PDF.
+
+## Le document joint : la Q&A
+
+Le transcript arrive déjà coupé en deux, parce que les remarques
+préparées et la Q&A sont deux actes différents. Les premières sont
+écrites, relues par les juristes et répétées : elles disent ce que la
+direction a **choisi** de dire. La Q&A est le seul endroit où on lui
+pose des questions qu'elle n'a pas choisies. Ce qui s'y esquive, et ce
+qui s'y échappe, n'est ni dans le communiqué ni ailleurs.
+
+Une seconde passe la lit seule et rend du **JSON**, pas de la prose. La
+page 1 est en prose parce qu'on la lit ; ici, « quel analyste a demandé
+quoi, ce qui a réellement été rendu, quelle est la gravité de l'écart »
+a une forme de tableau, et un modèle à qui on demande de la prose
+l'aplatit en un paragraphe qui se lit bien et ne se parcourt pas. Le
+document joint le remet en forme :
+
+| Section | Ce qu'elle contient |
+|---|---|
+| **Les esquives** | Analyste, question, ce qui était demandé, ce qui a été rendu, gravité. « Grave » = une information chiffrée précise demandée et refusée. |
+| **Valeur prospective hors communiqué** | La partie la plus utile : ce qui engage l'avenir et ne figurait pas dans le communiqué, avec le contexte où c'était glissé. |
+| **Les concessions** | Ce que la direction admet, citation courte à l'appui. |
+| **Thèmes récurrents** | Combien d'analystes sont revenus dessus. Une mesure de ce que le marché n'a pas compris, ou n'a pas cru. |
+| **Formulations notables** | Les marqueurs de changement de ton, verbatim. |
+| **Chiffres à vérifier** | Ceux que le modèle soupçonne d'être mal transcrits. |
+
+**Un document séparé, pas une troisième page.** Le rapport principal
+promet exactement deux pages et cette promesse porte : c'est ce qui le
+rend lisible d'une traite. La longueur de cette section est une
+propriété du call, pas d'une page, donc l'y intégrer reviendrait soit à
+casser la promesse, soit à supprimer des constats, et supprimer un
+constat en silence est la seule chose que ce projet ne fait pas. La page
+2 porte une ligne qui pointe vers le document joint.
+
+**Jamais fatal.** Le rapport principal est déjà calculable quand cette
+passe démarre : un échec ici se dégrade en une ligne de log et les deux
+pages sortent quand même.
+
+**Trois vérifications indépendantes du trimestre.** EDGAR dit lequel
+c'est, `verify_against_declared` lit l'ouverture du call, et cette passe
+rend la période que le modèle croit avoir lue. La troisième ne prime
+jamais sur les deux autres : elle ne parle que si elle est en désaccord,
+parce que trois sources d'accord ne valent pas la peine d'être
+imprimées et deux en désaccord valent beaucoup.
+
+**Coût** : un second appel Claude, du même ordre que le premier.
 
 ## Ce qui est garanti dans le document
 

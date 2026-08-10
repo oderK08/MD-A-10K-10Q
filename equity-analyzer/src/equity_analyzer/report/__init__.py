@@ -8,15 +8,18 @@ tone of the call and of the quarter's MD&A.
 """
 
 from .call_analysis import CallAnalysis, analyse_call, build_prompt
+from .qa_analysis import QaAnalysis, analyse_qa
 from .claude_client import ClaudeError, DEFAULT_MODEL, call_claude
 from .errors import PdfRenderError, ReportError
-from .html_renderer import MAX_READING_WORDS, render_html
+from .html_renderer import MAX_READING_WORDS, render_html, render_qa_html
 from .markdown import markdown_to_html, truncate_words
 from .pdf_renderer import page_count, render_pdf, render_pdf_fitted, save_pdf
 from .report_data import CallInfo, CallReport, SectionResult, build_call_report
 
 __all__ = [
     "CallAnalysis",
+    "QaAnalysis",
+    "analyse_qa",
     "CallInfo",
     "CallReport",
     "ClaudeError",
@@ -32,6 +35,7 @@ __all__ = [
     "markdown_to_html",
     "page_count",
     "render_html",
+    "render_qa_html",
     "render_pdf",
     "render_pdf_fitted",
     "save_pdf",

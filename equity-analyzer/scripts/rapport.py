@@ -40,6 +40,7 @@ two page document whose first page apologises.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import sys
 import time
@@ -87,8 +88,10 @@ from equity_analyzer.data_layer.transcript_source import (
 from equity_analyzer.report import (
     ClaudeError,
     analyse_call,
+    analyse_qa,
     build_call_report,
     render_html,
+    render_qa_html,
     save_pdf,
 )
 from equity_analyzer.sentiment import load_lm_dictionary
@@ -443,10 +446,49 @@ def main() -> int:
         source_filing_url=filing_index_url(cik, quarter_filing.accession_number),
     )
 
+    # -- The Q&A companion --
+    #
+    # SECOND CALL, AND DELIBERATELY OPTIONAL. The two page report is the
+    # deliverable and it is already computable at this point; this reads
+    # the half of the transcript that page 1 only skims, and a failure
+    # here must not cost the report. So it runs before rendering only to
+    # set the pointer on page 2, and every failure downgrades to a
+    # printed reason.
+    qa_analysis = None
+    if not (call.qa or "").strip():
+        _warn("Session questions-réponses non isolée dans ce transcript : "
+              "pas de document compagnon.")
+    else:
+        try:
+            qa_analysis = analyse_qa(
+                TICKER, label, call.qa,
+                api_key=ANTHROPIC_API_KEY,
+                company_name=company_name,
+                verbatim=call.verbatim,
+                **({"model": ANTHROPIC_MODEL} if ANTHROPIC_MODEL else {}),
+            )
+            _ok(
+                f"Q&A lue : {len(qa_analysis.dodged_questions)} esquive(s) dont "
+                f"{len(qa_analysis.hard_dodges)} grave(s), "
+                f"{len(qa_analysis.concessions)} concession(s), "
+                f"{len(qa_analysis.implicit_guidance)} signal(aux) prospectif(s)"
+            )
+        except ClaudeError as exc:
+            _warn(f"Lecture de la Q&A échouée, rapport principal inchangé : {exc}")
+
+    report = dataclasses.replace(report, has_qa_analysis=qa_analysis is not None)
+
     REPORTS_DIR.mkdir(exist_ok=True)
     output = REPORTS_DIR / f"{TICKER}.pdf"
     save_pdf(render_html(report), output, max_pages=2)
     _ok(f"Rapport écrit : {output.relative_to(ROOT)}")
+
+    if qa_analysis is not None:
+        qa_output = REPORTS_DIR / f"{TICKER}_qa.pdf"
+        # Uncapped: its length follows the session, and capping it would
+        # mean dropping findings rather than shortening prose.
+        save_pdf(render_qa_html(report, qa_analysis), qa_output)
+        _ok(f"Document Q&A écrit : {qa_output.relative_to(ROOT)}")
 
     print()
     print("=" * 70)

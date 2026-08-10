@@ -544,3 +544,107 @@ def test_a_provider_transcript_carries_no_such_warning():
     being read on the report where it matters.
     """
     assert "transcription automatique" not in render_html(build_report())
+
+
+# -- The Q&A companion document -----------------------------------------
+
+
+def _qa(**overrides):
+    from equity_analyzer.report.qa_analysis import QaAnalysis
+
+    kwargs = dict(
+        ticker="TEST", quarter="2026Q1", model="claude-sonnet-5",
+        dodged_questions=[
+            {"analyst": "Jane Doe", "question": "part du plus gros client",
+             "what_was_asked": "le pourcentage exact",
+             "what_was_given": "diversification", "severity": "high"},
+            {"analyst": "John Roe", "question": "calendrier",
+             "what_was_asked": "une date", "what_was_given": "bientot",
+             "severity": "low"},
+        ],
+        concessions=[{"topic": "marge", "admission": "pression admise",
+                      "verbatim": "margins declined"}],
+        implicit_guidance=[{"topic": "capex", "signal": "hausse au T3",
+                            "buried_in": "reponse tresorerie", "direction": "negative"}],
+        recurring_themes=[{"theme": "concurrence", "analyst_count": 3,
+                           "summary": "trois analystes"}],
+        tone_shift_markers=["we are being careful here"],
+        uncertain_figures=["15% ou 50%, inaudible"],
+    )
+    kwargs.update(overrides)
+    return QaAnalysis(**kwargs)
+
+
+def test_the_companion_lays_out_every_axis_of_the_session():
+    from equity_analyzer.report.html_renderer import render_qa_html
+
+    html = render_qa_html(build_report(), _qa())
+
+    assert "Jane Doe" in html and "le pourcentage exact" in html
+    assert "hausse au T3" in html
+    assert "pression admise" in html
+    assert "trois analystes" in html
+    assert "we are being careful here" in html
+    assert "15% ou 50%, inaudible" in html
+
+
+def test_a_refused_figure_is_marked_grave_by_weight_not_colour():
+    from equity_analyzer.report.html_renderer import render_qa_html
+
+    html = render_qa_html(build_report(), _qa())
+    assert "grave" in html
+    for match in _HEX_COLOUR_RE.finditer(html):
+        value = match.group(1)
+        channels = [c * 2 for c in value] if len(value) == 3 else [value[i:i + 2] for i in (0, 2, 4)]
+        assert len(set(c.lower() for c in channels)) == 1
+
+
+def test_an_empty_session_reads_as_a_sentence_not_as_an_empty_form():
+    """
+    A Q&A where nothing was dodged and nothing slipped is itself a fact,
+    and it reads better as one sentence than as six empty headings.
+    """
+    from equity_analyzer.report.html_renderer import render_qa_html
+
+    html = render_qa_html(build_report(), _qa(
+        dodged_questions=[], concessions=[], implicit_guidance=[],
+        recurring_themes=[], tone_shift_markers=[],
+    ))
+    assert "Une session sans prise est elle aussi une information" in html
+
+
+def test_the_companion_disagreeing_about_the_period_says_so():
+    """
+    A third independent check on the pairing. It speaks up only when it
+    disagrees: three sources agreeing is worth nothing to print.
+    """
+    from equity_analyzer.report.html_renderer import render_qa_html
+
+    quiet = render_qa_html(build_report(), _qa(declared_period="T1 2026"))
+    assert "Appariement à vérifier" not in quiet
+
+    loud = render_qa_html(build_report(), _qa(declared_period="Q4 2025"))
+    assert "Appariement à vérifier" in loud
+
+
+def test_the_companion_renders_to_a_real_pdf():
+    from equity_analyzer.report.html_renderer import render_qa_html
+
+    pdf = render_pdf(render_qa_html(build_report(), _qa()))
+    assert pdf[:5] == b"%PDF-"
+    assert page_count(pdf) >= 1
+
+
+def test_page_two_points_at_the_companion_only_when_there_is_one():
+    """
+    A reader who does not know the companion exists will not go looking
+    for it in a folder.
+    """
+    import dataclasses
+
+    plain = render_html(build_report())
+    assert "document joint" not in plain
+
+    with_qa = render_html(dataclasses.replace(build_report(), has_qa_analysis=True))
+    assert "document joint" in with_qa
+    assert page_count(render_pdf(with_qa)) == 2
