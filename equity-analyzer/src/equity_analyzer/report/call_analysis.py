@@ -82,7 +82,41 @@ MAX_TOKENS = 8000
 TARGET_WORDS_LOW = 400
 TARGET_WORDS_HIGH = 540
 
-_SYSTEM_PROMPT = f"""Tu es un analyste equity chevronne. Tu viens de lire le transcript integral d'un earnings call et tu dois en rendre compte a un gerant qui n'a pas eu le temps de l'ecouter et qui doit decider s'il bouge sa ligne.
+# WHY THIS SECTION IS CONDITIONAL. Page 2 inventories the dodges
+# properly: analyst, what was asked, what came back, how bad the gap is.
+# When it is there, asking page 1 for the same thing in prose spends
+# roughly a fifth of a hard capped page saying twice what the reader is
+# about to read laid out. The real TSLA run showed exactly that: the
+# Colin Langan question on a SpaceX merger appeared as a paragraph on
+# page 1 and as a row on page 2.
+#
+# So the section is dropped when page 2 will carry it, and the freed
+# words go where the prompt already says the value is, the datable
+# commitments. It is KEPT when there is no Q&A page, because then
+# nothing else in the document would mention a dodge at all.
+_DODGES_SECTION = """
+## Les esquives
+Les questions d'analystes ou la reponse ne repond pas. C'est souvent l'endroit le plus informatif d'un call. Cite la question, puis la reponse, puis dis en une phrase ce qui manque. S'il n'y a pas d'esquive nette, ecris le en une ligne et passe.
+"""
+
+_DODGES_ELSEWHERE = """
+Ne consacre AUCUNE section aux questions esquivees : une analyse separee de la session questions-reponses est jointe au meme document et les recense une par une. Repeter ici ce qu'elle detaille couterait la place des engagements chiffres, qui n'apparaissent qu'ici. Si une esquive change ton verdict, une incise d'une ligne suffit.
+"""
+
+
+def system_prompt(qa_page: bool = False) -> str:
+    """
+    Page 1's instructions, which depend on whether page 2 exists.
+
+    `qa_page` says the Q&A pass succeeded and its findings will be
+    rendered. See `_DODGES_SECTION`.
+    """
+    sections = "quatre" if qa_page else "cinq"
+    dodges = _DODGES_ELSEWHERE if qa_page else _DODGES_SECTION
+    return _SYSTEM_PROMPT_TEMPLATE.format(sections=sections, dodges=dodges)
+
+
+_SYSTEM_PROMPT_TEMPLATE = f"""Tu es un analyste equity chevronne. Tu viens de lire le transcript integral d'un earnings call et tu dois en rendre compte a un gerant qui n'a pas eu le temps de l'ecouter et qui doit decider s'il bouge sa ligne.
 
 REGLES ABSOLUES
 
@@ -100,7 +134,7 @@ REGLES ABSOLUES
 
 7. Tu n'utilises jamais le tiret cadratin ni le tiret demi cadratin comme ponctuation. Virgule, deux points ou parenthese. Les traits d'union a l'interieur d'un mot ou d'un nom propre sont normaux et ne sont pas concernes.
 
-CE QUE TU PRODUIS, exactement ces cinq sections, dans cet ordre, en markdown avec des titres de niveau 2 (##)
+CE QUE TU PRODUIS, exactement ces {{sections}} sections, dans cet ordre, en markdown avec des titres de niveau 2 (##)
 
 ## Verdict
 Une a deux phrases. Commence par "Plutot bullish", "Plutot bearish", "Mitige" ou "Neutre", suivi de la raison principale. C'est la premiere chose que le lecteur voit, ne la noie pas.
@@ -111,9 +145,7 @@ Le trimestre a-t-il battu, manque ou tenu le consensus, et surtout : qu'est-ce q
 ## Les declarations cles
 Les engagements chiffres et datables : guidance, marges visees, capex, calendrier produit, prix. Citation exacte a chaque fois, puis en une phrase ce que ca implique. C'est le coeur de ton analyse, donne lui le plus de place.
 
-## Les esquives
-Les questions d'analystes ou la reponse ne repond pas. C'est souvent l'endroit le plus informatif d'un call. Cite la question, puis la reponse, puis dis en une phrase ce qui manque. S'il n'y a pas d'esquive nette, ecris le en une ligne et passe.
-
+{{dodges}}
 ## A surveiller
 Deux a quatre points precis qui trancheront au prochain trimestre. Formule les comme des questions verifiables, pas comme des generalites.
 
@@ -250,12 +282,18 @@ def analyse_call(
     expectation=None,
     history=(),
     verbatim: bool = True,
+    qa_page: bool = False,
     model: str = DEFAULT_MODEL,
     max_tokens: int = MAX_TOKENS,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
 ) -> CallAnalysis:
     """
     Sends the call to Claude and returns its reading.
+
+    `qa_page` says the document will carry the Q&A page, which changes
+    what this reading is asked for: see `_DODGES_SECTION`. It has to be
+    known BEFORE this call, which is why the caller runs the Q&A pass
+    first even though this one is the report's spine.
 
     Raises rather than returning a placeholder when the call cannot be
     made: page 1 of this report IS the reading, so a report whose page 1
@@ -271,7 +309,7 @@ def analyse_call(
             verbatim=verbatim,
         ),
         api_key=api_key,
-        system_prompt=_SYSTEM_PROMPT,
+        system_prompt=system_prompt(qa_page),
         model=model,
         max_tokens=max_tokens,
         timeout_seconds=timeout_seconds,
@@ -294,4 +332,5 @@ __all__ = [
     "analyse_call",
     "build_prompt",
     "expectations_block",
+    "system_prompt",
 ]

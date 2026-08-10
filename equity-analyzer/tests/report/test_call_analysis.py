@@ -21,10 +21,10 @@ from equity_analyzer.report import call_analysis
 from equity_analyzer.report.call_analysis import (
     TARGET_WORDS_HIGH,
     TARGET_WORDS_LOW,
-    _SYSTEM_PROMPT,
     analyse_call,
     build_prompt,
     expectations_block,
+    system_prompt,
 )
 from equity_analyzer.report.claude_client import ClaudeError
 
@@ -112,70 +112,114 @@ def test_a_quarter_with_no_published_estimate_does_not_print_a_fake_one():
 
 
 # -- What the prompt is required to say --------------------------------
+#
+# The prompt now has two shapes, one for a document with a Q&A page and
+# one for a document without. Everything below that is a STANDING RULE
+# is asserted on both: only the dodges section is allowed to differ, and
+# a future edit that drops "no external facts" from one variant while
+# leaving it in the other has to fail here.
+
+BOTH_PROMPTS = pytest.mark.parametrize(
+    "prompt",
+    [system_prompt(qa_page=False), system_prompt(qa_page=True)],
+    ids=["sans page Q&A", "avec page Q&A"],
+)
 
 
-def test_system_prompt_requires_verbatim_quotes():
-    assert "mot pour mot" in _SYSTEM_PROMPT
-    assert "guillemets" in _SYSTEM_PROMPT
+@BOTH_PROMPTS
+def test_system_prompt_requires_verbatim_quotes(prompt):
+    assert "mot pour mot" in prompt
+    assert "guillemets" in prompt
 
 
-def test_system_prompt_requires_separating_what_was_said_from_what_is_inferred():
-    assert "DIT" in _SYSTEM_PROMPT and "DEDUIS" in _SYSTEM_PROMPT
+@BOTH_PROMPTS
+def test_system_prompt_requires_separating_what_was_said_from_what_is_inferred(prompt):
+    assert "DIT" in prompt and "DEDUIS" in prompt
 
 
-def test_system_prompt_requires_reading_the_call_against_expectations():
-    assert "CONTRE LES ATTENTES" in _SYSTEM_PROMPT
-    assert "consensus" in _SYSTEM_PROMPT
+@BOTH_PROMPTS
+def test_system_prompt_requires_reading_the_call_against_expectations(prompt):
+    assert "CONTRE LES ATTENTES" in prompt
+    assert "consensus" in prompt
 
 
-def test_system_prompt_forbids_inventing_a_consensus_it_was_not_given():
-    assert "n'inventes surtout pas un chiffre attendu" in _SYSTEM_PROMPT
+@BOTH_PROMPTS
+def test_system_prompt_forbids_inventing_a_consensus_it_was_not_given(prompt):
+    assert "n'inventes surtout pas un chiffre attendu" in prompt
 
 
-def test_system_prompt_forbids_external_knowledge_and_buy_sell_advice():
+@BOTH_PROMPTS
+def test_system_prompt_forbids_external_knowledge_and_buy_sell_advice(prompt):
     """
     Deliberately one assertion pair in its own test: these two limits
     were reconfirmed at the same moment the prompt was allowed to take a
     directional view, and relaxing the directional rule must never carry
     these away with it.
     """
-    assert "AUCUN fait exterieur" in _SYSTEM_PROMPT
-    assert "recommandation d'achat" in _SYSTEM_PROMPT
+    assert "AUCUN fait exterieur" in prompt
+    assert "recommandation d'achat" in prompt
 
 
-def test_system_prompt_forbids_dashes_in_the_answer():
+@BOTH_PROMPTS
+def test_system_prompt_forbids_dashes_in_the_answer(prompt):
     """
     Em dashes used as punctuation are a tell of generated text, banned
     on both sides: from the report template and from the answer.
     """
-    assert "tiret cadratin" in _SYSTEM_PROMPT
+    assert "tiret cadratin" in prompt
 
 
-def test_system_prompt_asks_for_the_five_sections_the_report_renders():
+@BOTH_PROMPTS
+def test_system_prompt_always_asks_for_the_sections_page_one_renders(prompt):
     for heading in (
         "## Verdict",
         "## Face aux attentes",
         "## Les declarations cles",
-        "## Les esquives",
         "## A surveiller",
     ):
-        assert heading in _SYSTEM_PROMPT
+        assert heading in prompt
 
 
-def test_system_prompt_states_the_length_budget():
+def test_without_a_qa_page_the_reading_still_carries_the_dodges():
+    """
+    The dodges are the most informative part of a call. Moving them to
+    page 2 is only acceptable because page 2 exists; when it does not,
+    dropping them here would delete them from the document entirely.
+    """
+    prompt = system_prompt(qa_page=False)
+    assert "## Les esquives" in prompt
+    assert "cinq sections" in prompt
+
+
+def test_with_a_qa_page_the_reading_is_told_not_to_repeat_the_dodges():
+    """
+    Measured on a real TSLA run: the same dodged question was printed as
+    a paragraph on page 1 and as a row on page 2. Page 1 is hard capped,
+    so that duplication is paid for by the datable commitments, which
+    appear nowhere else.
+    """
+    prompt = system_prompt(qa_page=True)
+    assert "## Les esquives" not in prompt
+    assert "AUCUNE section" in prompt
+    assert "quatre sections" in prompt
+
+
+@BOTH_PROMPTS
+def test_system_prompt_states_the_length_budget(prompt):
     """
     Page 1 holds one page and no more. Asking for the right length up
     front is how the truncation safety net stays a safety net.
     """
-    assert str(TARGET_WORDS_LOW) in _SYSTEM_PROMPT
-    assert str(TARGET_WORDS_HIGH) in _SYSTEM_PROMPT
+    assert str(TARGET_WORDS_LOW) in prompt
+    assert str(TARGET_WORDS_HIGH) in prompt
     assert TARGET_WORDS_LOW < TARGET_WORDS_HIGH
 
 
-def test_the_prompt_itself_contains_no_em_dash():
+@BOTH_PROMPTS
+def test_the_prompt_itself_contains_no_em_dash(prompt):
     """A prompt that bans em dashes while using them teaches the opposite."""
-    assert "—" not in _SYSTEM_PROMPT
-    assert "–" not in _SYSTEM_PROMPT
+    assert "—" not in prompt
+    assert "–" not in prompt
 
 
 # -- Calling it ---------------------------------------------------------
@@ -218,6 +262,29 @@ def test_a_reading_written_without_a_consensus_says_so_on_the_object(monkeypatch
     )
     analysis = analyse_call("AAOI", "2026Q1", TRANSCRIPT, api_key="sk-test")
     assert analysis.had_expectations is False
+
+
+def test_the_qa_page_flag_reaches_the_system_prompt_actually_sent(monkeypatch):
+    """
+    The variant is chosen inside `analyse_call`, so asserting on
+    `system_prompt()` alone would not catch a caller wired to the wrong
+    one. This reads the body of the request that went out.
+    """
+    from equity_analyzer.report import claude_client
+
+    sent = {}
+
+    def _capture(*a, **k):
+        sent["system"] = k["json"]["system"]
+        return _Response(payload={"content": [{"type": "text", "text": "Neutre."}]})
+
+    monkeypatch.setattr(claude_client.requests, "post", _capture)
+
+    analyse_call("AAOI", "2026Q1", TRANSCRIPT, api_key="sk-test", qa_page=True)
+    assert "## Les esquives" not in sent["system"]
+
+    analyse_call("AAOI", "2026Q1", TRANSCRIPT, api_key="sk-test", qa_page=False)
+    assert "## Les esquives" in sent["system"]
 
 
 def test_an_empty_transcript_never_reaches_the_api():

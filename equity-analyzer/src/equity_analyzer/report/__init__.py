@@ -1,10 +1,16 @@
 """
-The report: one ticker in, one two-page PDF out.
+The report: one ticker in, one PDF out.
 
 Page 1 is Claude's reading of the latest earnings call, written against
-the consensus the quarter was measured on. Page 2 is the numbers that do
+the consensus the quarter was measured on. Page 2 is the same call taken
+apart: what was dodged, what was conceded, what carried forward looking
+value and was not in the press release. Page 3 is the numbers that do
 not come from the call: the annual red flags and the Loughran-McDonald
 tone of the call and of the quarter's MD&A.
+
+Page 2 is dropped entirely when the transcript has no Q&A half to read,
+because a page of empty headings is worse than no page, so a report
+without one is exactly two pages.
 """
 
 from .call_analysis import CallAnalysis, analyse_call, build_prompt

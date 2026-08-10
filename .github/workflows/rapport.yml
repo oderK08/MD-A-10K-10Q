@@ -1,9 +1,13 @@
-name: Rapport (un ticker, 2 pages)
+name: Rapport (un ticker)
 
-# Tu mets un ticker, tu obtiens un PDF de deux pages :
+# Tu mets un ticker, tu obtiens un seul PDF :
 #   page 1  la lecture du dernier earnings call par Claude, écrite contre
 #           le consensus sur lequel le trimestre était attendu
-#   page 2  les red flags annuels et la tonalité
+#   page 2  la session questions-réponses disséquée : esquives,
+#           concessions, signaux prospectifs hors communiqué. Absente
+#           quand le transcript n'isole pas de Q&A, auquel cas le
+#           document fait deux pages.
+#   page 3  les red flags annuels et la tonalité
 #
 # Le trimestre n'est pas à saisir. EDGAR sait quel trimestre la société
 # vient de déposer et sous quel repère fiscal elle le désigne, et c'est

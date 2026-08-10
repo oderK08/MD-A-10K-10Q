@@ -1,9 +1,13 @@
 """
-One ticker in, one two-page PDF out.
+One ticker in, one PDF out.
 
   PAGE 1  Claude's reading of the latest earnings call, written against
           the consensus that quarter was measured on.
-  PAGE 2  The numbers that do not come from the call: the annual red
+  PAGE 2  The same call taken apart: what was dodged, what was conceded,
+          what carried forward looking value and was not in the press
+          release. Dropped when the transcript isolates no Q&A, so a
+          report without one is two pages rather than three.
+  PAGE 3  The numbers that do not come from the call: the annual red
           flags (Altman, Beneish, Piotroski) and the Loughran-McDonald
           tone of the call and of the quarter's MD&A.
 
@@ -35,7 +39,7 @@ itself degrades to a printed reason: no consensus, no 10-K, no MD&A each
 show up on the page as a sentence explaining the gap. The reading is the
 exception, because page 1 IS the reading: if the transcript or the model
 cannot be had, this exits without writing a PDF rather than producing a
-two page document whose first page apologises.
+document whose first page apologises.
 """
 
 from __future__ import annotations
@@ -409,6 +413,49 @@ def main() -> int:
         expectations_reason = str(exc)
         _warn(f"Consensus indisponible : {exc}")
 
+    # -- The Q&A pass, which runs FIRST --
+    #
+    # OPTIONAL BUT FIRST, and the order is the point. It becomes page 2,
+    # and whether page 2 exists changes what page 1 is asked for: with an
+    # inventory of the dodges on the next sheet, the reading is told not
+    # to spend a fifth of a hard capped page repeating them in prose (see
+    # call_analysis._DODGES_SECTION). That instruction has to be settled
+    # before the reading is written, and the only honest way to know is
+    # to have already run this.
+    #
+    # THE COST OF BEING WRONG THE OTHER WAY was measured on a real TSLA
+    # run: the same dodged question appeared as a paragraph on page 1 and
+    # as a row on page 2.
+    #
+    # A failure here is still not fatal. It downgrades to a printed
+    # reason, page 1 is then written WITH its dodges section, and the
+    # document comes out two pages instead of three: the reader loses the
+    # inventory, never the finding. Running this first costs one wasted
+    # call only when the reading afterwards fails, which aborts the run
+    # anyway.
+    qa_analysis = None
+    if not (call.qa or "").strip():
+        _warn("Session questions-réponses non isolée dans ce transcript : "
+              "pas de page 2, les esquives restent dans la lecture.")
+    else:
+        try:
+            qa_analysis = analyse_qa(
+                TICKER, label, call.qa,
+                api_key=ANTHROPIC_API_KEY,
+                company_name=company_name,
+                verbatim=call.verbatim,
+                **({"model": ANTHROPIC_MODEL} if ANTHROPIC_MODEL else {}),
+            )
+            _ok(
+                f"Q&A lue : {len(qa_analysis.dodged_questions)} esquive(s) dont "
+                f"{len(qa_analysis.hard_dodges)} grave(s), "
+                f"{len(qa_analysis.concessions)} concession(s), "
+                f"{len(qa_analysis.implicit_guidance)} signal(aux) prospectif(s)"
+            )
+        except ClaudeError as exc:
+            _warn(f"Lecture de la Q&A échouée, la lecture du call gardera "
+                  f"ses esquives : {exc}")
+
     # -- The reading --
     print(f"  ...   Lecture du call par Claude ({ANTHROPIC_MODEL or 'modèle par défaut'})")
     try:
@@ -419,6 +466,7 @@ def main() -> int:
             expectation=expectation,
             history=history or (),
             verbatim=call.verbatim,
+            qa_page=qa_analysis is not None,
             **({"model": ANTHROPIC_MODEL} if ANTHROPIC_MODEL else {}),
         )
     except ClaudeError as exc:
@@ -449,35 +497,6 @@ def main() -> int:
         source_filing_url=filing_index_url(cik, quarter_filing.accession_number),
     )
 
-    # -- The Q&A companion --
-    #
-    # SECOND CALL, AND DELIBERATELY OPTIONAL. It becomes page 2, but the
-    # rest of the report is already computable at this point and a
-    # failure here must not cost it: every failure downgrades to a
-    # printed reason and the document comes out two pages instead of
-    # three.
-    qa_analysis = None
-    if not (call.qa or "").strip():
-        _warn("Session questions-réponses non isolée dans ce transcript : "
-              "pas de document compagnon.")
-    else:
-        try:
-            qa_analysis = analyse_qa(
-                TICKER, label, call.qa,
-                api_key=ANTHROPIC_API_KEY,
-                company_name=company_name,
-                verbatim=call.verbatim,
-                **({"model": ANTHROPIC_MODEL} if ANTHROPIC_MODEL else {}),
-            )
-            _ok(
-                f"Q&A lue : {len(qa_analysis.dodged_questions)} esquive(s) dont "
-                f"{len(qa_analysis.hard_dodges)} grave(s), "
-                f"{len(qa_analysis.concessions)} concession(s), "
-                f"{len(qa_analysis.implicit_guidance)} signal(aux) prospectif(s)"
-            )
-        except ClaudeError as exc:
-            _warn(f"Lecture de la Q&A échouée, rapport principal inchangé : {exc}")
-
     report = dataclasses.replace(report, qa_analysis=qa_analysis)
 
     REPORTS_DIR.mkdir(exist_ok=True)
@@ -486,10 +505,14 @@ def main() -> int:
     # guarantee: page 2's length follows the session, so the stylesheet
     # tightens until it fits and, if even the tightest step overruns,
     # the longer render is kept. Never a dropped finding.
-    save_pdf(render_html(report), output, max_pages=MAX_PAGES)
+    pages = save_pdf(render_html(report), output, max_pages=MAX_PAGES)
+    # The count is the one the PDF actually has, not MAX_PAGES: the
+    # fitter keeps the longest render rather than losing a row, so a
+    # heavy session can legitimately come out at four and the log has to
+    # say four.
     _ok(
-        f"Rapport écrit : {output.relative_to(ROOT)} "
-        f"({'3 pages' if qa_analysis is not None else '2 pages, pas de Q&A isolée'})"
+        f"Rapport écrit : {output.relative_to(ROOT)} ({pages} pages"
+        f"{'' if qa_analysis is not None else ', pas de Q&A isolée'})"
     )
 
     print()
