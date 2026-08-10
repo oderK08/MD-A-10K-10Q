@@ -88,13 +88,25 @@ rognée pour tenir.
 et c'est un compromis assumé. La longueur de la page 2 est une propriété
 du call : une session qui esquive huit questions fait huit lignes.
 L'ancienne promesse des deux pages tenait parce que tout y était borné ;
-ça ne l'est plus. Mesuré : la charge d'un vrai run TSLA (5 esquives, 4
-concessions, 4 signaux) fait quatre pages au naturel et revient à trois
-une fois compactée, donc **la compaction est le chemin normal ici**, pas
-un cas d'urgence. Au delà d'environ huit esquives et six concessions,
-même la feuille la plus dense déborde et le rapport passe à quatre pages
-plutôt que de perdre une ligne. Un rapport un peu long vaut mieux qu'un
-rapport auquel manque la ligne qui comptait.
+ça ne l'est plus. Mesuré : une session complète (4 esquives, 4
+concessions, 4 signaux, plus thèmes récurrents, marqueurs de ton et
+chiffres douteux) fait quatre pages au naturel et revient à trois une
+fois compactée, donc **la compaction est le chemin normal ici**, pas un
+cas d'urgence. La marge est mince : treize constats tiennent, quatorze
+non. Au delà, même la feuille la plus dense déborde et le rapport passe
+à quatre pages plutôt que de perdre une ligne. Un rapport un peu long
+vaut mieux qu'un rapport auquel manque la ligne qui comptait.
+
+**Le compte annoncé est mesuré sur le PDF écrit**, pas déduit du budget
+demandé, et ça a servi tout de suite : le premier vrai run TSLA du
+document plié est sorti à quatre pages parce que l'échelle de compaction
+s'arrêtait trop tôt, et il l'a dit. Les fixtures de mise en page
+mesuraient le nombre de lignes et pas la prose qui les remplit, donc les
+tests annonçaient trois pendant que la production en livrait quatre : ils
+rendaient honnêtement deux documents différents. Les fixtures ont été
+recalées sur la longueur réelle des réponses du modèle, et l'échelle a
+gagné un dernier barreau à 7,5 pt, atteint seulement quand tout le reste
+a échoué.
 
 **Jamais fatal.** Le rapport principal est déjà calculable quand cette
 passe démarre : un échec ici se dégrade en une ligne de log et les deux

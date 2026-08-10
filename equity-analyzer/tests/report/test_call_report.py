@@ -666,54 +666,96 @@ def test_a_report_with_a_qa_page_is_three_pages():
 
 
 def _qa_load(dodges, concessions, signals):
+    """
+    A session of the given size, in prose of the length the model really
+    writes.
+
+    THE FIELD LENGTHS MATTER AS MUCH AS THE COUNTS, and getting that
+    wrong cost a real run. These fixtures used to hold short stubs
+    ("une concession formulee assez longuement"), so they measured how
+    many rows fit and not how much text fills them. The tests said three
+    pages while production shipped four, and both were rendering
+    honestly: they were rendering different documents. The strings below
+    are the length of the real TSLA answers, and the full session
+    carries recurring themes, tone markers and uncertain figures too,
+    because the real one does.
+    """
     return _qa(
         dodged_questions=[
-            {"analyst": f"Analyste {i} de Quelque Banque",
-             "question": "une question assez longue sur la marge et le calendrier produit",
-             "what_was_asked": "un pourcentage precis et une date ferme de production",
-             "what_was_given": "une reponse qualitative sur la diversification du carnet",
+            {"analyst": f"Analyste {i}, Quelque Banque d'Investissement",
+             "question": "La trajectoire de marge automobile hors credits reglementaires "
+                         "sur les deux trimestres a venir",
+             "what_was_asked": "Une fourchette chiffree et une date ferme de retour "
+                               "au niveau anterieur",
+             "what_was_given": "Un rappel des effets de base du trimestre precedent, "
+                               "sans aucun guidage prospectif",
              "severity": "high" if i % 2 else "medium"}
             for i in range(dodges)
         ],
         concessions=[
-            {"topic": f"sujet {i}", "admission": "une concession formulee assez longuement",
-             "verbatim": "margins declined sequentially this quarter"}
+            {"topic": f"Sujet {i} de la concession",
+             "admission": "La direction reconnait que le cash operationnel ne suffit "
+                          "plus a financer seul le cycle d'investissement annonce",
+             "verbatim": "our free cash flow ended up being negative for the quarter"}
             for i in range(concessions)
         ],
         implicit_guidance=[
-            {"topic": f"theme {i}", "signal": "un signal prospectif detaille sur le trimestre",
-             "buried_in": "une reponse sur la tresorerie", "direction": "negative"}
+            {"topic": f"Theme {i} du signal",
+             "signal": "Le pic d'investissement n'est pas cette annee mais s'etale sur "
+                       "deux a trois ans, ce qui pese durablement sur le cash",
+             "buried_in": "Une reponse sur la capacite de production, loin de la question posee",
+             "direction": "negative"}
             for i in range(signals)
+        ],
+        recurring_themes=[
+            {"theme": f"Theme recurrent {i}", "analyst_count": 3 + i,
+             "summary": "Plusieurs analystes reviennent sur ce point sans jamais "
+                        "obtenir le chiffre demande"}
+            for i in range(3)
+        ],
+        tone_shift_markers=[
+            "we are being opportunistic in securing certain debt facilities",
+            "as previously guided, our free cash flow ended up being negative",
+        ],
+        uncertain_figures=[
+            "16.3% de marge, peut etre mal transcrit",
+            "30 milliards de lignes de credit, a verifier",
         ],
     )
 
 
 @needs_report_font
-def test_a_real_session_load_is_compacted_back_to_three_pages():
+def test_a_full_session_is_compacted_back_to_three_pages():
     """
-    Measured against the real TSLA run, which came back with 5 dodges, 4
-    concessions and 4 forward signals. At natural size that document is
-    four pages; the fitter brings it to three. So compaction is the
-    NORMAL path here, not an emergency one, which is the price of
-    folding the session in rather than shipping it separately.
+    A complete session, every axis populated: four dodges, four
+    concessions, four forward signals, plus recurring themes, tone
+    markers and uncertain figures. At natural size that is four pages
+    and the fitter brings it back to three.
+
+    So compaction is the NORMAL path here, not an emergency one. That is
+    the price of folding the session into the document rather than
+    shipping it separately, and it is why the ladder in pdf_renderer has
+    a rung most reports never reach.
     """
     import dataclasses
 
-    html = render_html(dataclasses.replace(build_report(), qa_analysis=_qa_load(5, 4, 4)))
+    html = render_html(dataclasses.replace(build_report(), qa_analysis=_qa_load(4, 4, 4)))
 
-    assert page_count(render_pdf(html)) > 3, "le cas réel déborde bien au naturel"
+    assert page_count(render_pdf(html)) > 3, "ce cas déborde bien au naturel"
     assert page_count(render_pdf_fitted(html, max_pages=3)) == 3
 
 
 @needs_report_font
 def test_a_session_too_heavy_for_three_pages_grows_rather_than_losing_rows():
     """
-    THE limit, stated rather than pretended away. Page 2's length is a
-    property of the call, so three pages is a target with a net and not
-    the guarantee two pages used to be. Past roughly eight dodges and
-    six concessions the tightest stylesheet still overruns, and the
-    fitter returns the longer render: a four page report beats one
-    missing the row that mattered.
+    THE limit, stated rather than pretended away, and the margin is
+    thinner than it looks: thirteen findings still fit, fourteen do not.
+    Page 2's length is a property of the call, so three pages is a
+    target with a net and not the guarantee two pages used to be.
+
+    The first real TSLA run of this document landed on the wrong side of
+    that line, at four pages, and said so because the count is measured.
+    A four page report beats one missing the row that mattered.
     """
     import dataclasses
 
@@ -721,7 +763,7 @@ def test_a_session_too_heavy_for_three_pages_grows_rather_than_losing_rows():
     fitted = render_pdf_fitted(html, max_pages=3)
 
     assert page_count(fitted) == 4
-    assert page_count(fitted) < page_count(render_pdf(html)) + 1
+    assert page_count(fitted) < page_count(render_pdf(html))
     # Nothing was dropped to get there.
-    assert "Analyste 7 de Quelque Banque" in html
-    assert "sujet 5" in html
+    assert "Analyste 7, Quelque Banque d'Investissement" in html
+    assert "Sujet 5 de la concession" in html

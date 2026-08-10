@@ -52,6 +52,23 @@ _COMPACTION_STEPS = [
     " h2 { margin: 6pt 0 2pt 0; font-size: 9.5pt; }"
     " p { margin: 0 0 3pt 0; }"
     " .muted, .note { font-size: 7pt; }",
+    # THE LAST RUNG, and it was added because a real run needed it. The
+    # first TSLA run of the folded document came back at four pages: 4
+    # dodges, 4 concessions, 5 forward signals, plus recurring themes and
+    # uncertain figures, and the three steps above all still overran. The
+    # layout tests said three because their fixtures used short stub
+    # strings, so they were measuring the number of rows and not the
+    # prose that actually fills them.
+    #
+    # 7.5pt is small. It is also the alternative to a fourth sheet, it is
+    # only reached when everything above has failed, and footnote sized
+    # type in a document someone asked for beats a page break in the
+    # middle of the dodges. Below this the answer is to let it grow.
+    "body { font-size: 7.5pt; line-height: 1.14; }"
+    " th, td { padding: 0.9pt 3pt; font-size: 6.8pt; }"
+    " h2 { margin: 5pt 0 2pt 0; font-size: 9pt; }"
+    " p { margin: 0 0 2.5pt 0; }"
+    " .muted, .note { font-size: 6.6pt; }",
 ]
 
 
