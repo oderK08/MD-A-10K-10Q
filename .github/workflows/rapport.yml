@@ -43,12 +43,37 @@ name: Rapport (un ticker)
 jobs:
   rapport:
     runs-on: ubuntu-latest
+    # Écrire sur la branche de données, et rien d'autre. Le job ne
+    # touche jamais au code : il ne pousse que dans `donnees`.
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: equity-analyzer
     steps:
       - name: Checkout du repo
         uses: actions/checkout@v4
+
+      - name: Récupérer l'historique des trimestres déjà lus
+        # Ce que les runs précédents ont appris : les engagements
+        # chiffrés d'un trimestre et les esquives d'une session. Sur une
+        # branche à part, pour que l'historique de `main` reste celui du
+        # code et qu'un run ne puisse jamais entrer en conflit avec un
+        # commit humain.
+        #
+        # `|| true` parce que la branche n'existe pas avant le premier
+        # run, et qu'un premier run n'a par définition pas d'historique.
+        # Le script fonctionne sans le répertoire.
+        continue-on-error: true
+        run: |
+          git fetch origin donnees --depth=1 2>/dev/null || true
+          if git rev-parse --verify origin/donnees >/dev/null 2>&1; then
+            git --work-tree=. checkout origin/donnees -- historique 2>/dev/null || true
+            echo "Historique récupéré :"
+            find historique -name '*.json' 2>/dev/null | head -20 || true
+          else
+            echo "Pas encore de branche donnees : premier run."
+          fi
 
       - name: Installer Python
         uses: actions/setup-python@v5
@@ -101,6 +126,77 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
         run: python scripts/rapport.py
+
+      - name: Conserver ce que ce run a appris
+        # Les engagements chiffrés d'un trimestre et les esquives d'une
+        # session, poussés sur `donnees`. C'est ce qui transforme un
+        # instantané en série : au trimestre suivant, la base de
+        # comparaison est déjà là, gratuite, et les esquives récurrentes
+        # deviennent visibles.
+        #
+        # `if: always()` pour la même raison que la publication : un run
+        # qui échoue après avoir extrait une fiche a payé pour elle, et
+        # la jeter obligerait à la repayer.
+        #
+        # `continue-on-error` parce que c'est un sous-produit. Un
+        # conflit de push contre un run parallèle ne doit pas rendre
+        # rouge un run dont le PDF est déjà écrit.
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          if [ -z "$(find historique -name '*.json' 2>/dev/null)" ]; then
+            echo "Rien de nouveau à conserver."
+            exit 0
+          fi
+
+          # DANS UN CLONE À PART, jamais dans l'arbre de travail courant.
+          # Basculer celui-ci sur `donnees` remplacerait son contenu et
+          # effacerait rapports/ et transcripts/ avant l'étape de
+          # publication qui suit.
+          src="$(pwd)/historique"
+          work="$(mktemp -d)"
+          cd "$work"
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          if git fetch -q --depth=1 origin donnees 2>/dev/null; then
+            git checkout -q -B donnees FETCH_HEAD
+          else
+            # Branche orpheline : les données n'ont pas à traîner
+            # l'historique du code derrière elles.
+            echo "Première écriture : création de la branche donnees."
+            git checkout -q --orphan donnees
+          fi
+
+          mkdir -p equity-analyzer/historique
+          cp -r "$src/." equity-analyzer/historique/
+          git add -A equity-analyzer/historique
+          if git diff --cached --quiet; then
+            echo "Historique déjà à jour."
+            exit 0
+          fi
+          git commit -q -m "Historique ${{ inputs.ticker }} (run ${{ github.run_number }})"
+
+          # La course perdue contre un run parallèle est un cas normal,
+          # pas une erreur : deux tickers analysés en même temps écrivent
+          # dans des répertoires différents, donc un rebase suffit.
+          for attempt in 1 2 3; do
+            if git push -q origin donnees; then
+              echo "Historique poussé sur donnees."
+              exit 0
+            fi
+            echo "Push refusé, rebase et nouvelle tentative ($attempt/3)."
+            git fetch -q --depth=1 origin donnees || true
+            git rebase origin/donnees || git rebase --abort || true
+            sleep $((attempt * 3))
+          done
+          echo "Historique non poussé : un autre run a probablement gagné la course."
 
       - name: Publier le rapport
         # `if: always()` parce qu'un run qui échoue APRÈS avoir récupéré

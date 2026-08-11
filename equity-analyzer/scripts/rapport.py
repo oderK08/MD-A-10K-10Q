@@ -126,11 +126,16 @@ from equity_analyzer.report import (
     render_html,
     save_pdf,
 )
+from equity_analyzer.data_layer.history import HistoryStore, QuarterRecord
 from equity_analyzer.data_layer.press_release import (
     as_prompt_block as press_release_block,
     fetch_press_release,
 )
-from equity_analyzer.report.guidance_sheet import as_prompt_block, extract_guidance
+from equity_analyzer.report.guidance_sheet import (
+    GuidanceSheet,
+    as_prompt_block,
+    extract_guidance,
+)
 from equity_analyzer.sentiment import load_lm_dictionary
 
 TICKER = os.environ.get("TICKER", "").strip().upper()
@@ -159,6 +164,11 @@ MAX_PAGES_WITHOUT_QA = 2
 
 ROOT = Path(__file__).parent.parent
 CACHE_DIR = ROOT / "transcripts"
+# Findings kept between runs, so the report can become a series rather
+# than a snapshot. Lives on its own branch in CI (see the workflow), and
+# nothing here breaks when the directory is absent: a first run for a
+# ticker simply has no history.
+HISTORY_DIR = ROOT / "historique"
 REPORTS_DIR = ROOT / "rapports"
 DICTIONARY_PATH = ROOT / "data" / "Loughran-McDonald_MasterDictionary_1993-2025.csv"
 
@@ -340,6 +350,64 @@ def _find_prior_call(source, ticker, cik, label, client):
     )
 
 
+def _known_baseline(store, ticker, label):
+    """
+    A previous quarter's commitments already in the history, if any.
+
+    THE READ COMES BEFORE THE FETCH, and that ordering is most of what
+    persistence buys in the short term. A sheet on disk is a provider
+    request and a model call that do not happen, so a ticker followed
+    for a year mostly stops paying for its own baseline. The value that
+    takes a year to appear is the series; the value that appears on the
+    second run is this.
+
+    Walks back the same bounded distance the live search does, so a
+    stored quarter two back is found rather than ignored, and returns
+    the distance for the same reason: it changes what a difference
+    means.
+    """
+    quarter = previous_label(label)
+    for attempt in range(MAX_BASELINE_QUARTERS_BACK):
+        record = store.get(ticker, quarter)
+        if record is not None and record.commitments:
+            return record, quarter, attempt + 1
+        quarter = previous_label(quarter)
+    return None, None, 0
+
+
+
+def _remember(store, ticker, label, qa_analysis, new_sheet, baseline_quarter):
+    """
+    Writes what this run learned. Never raises, and says what it wrote.
+
+    Only findings the run already produced are stored: nothing here
+    triggers extra work, and no prose written by a model about a quarter
+    is kept, so rewording the report never invalidates the series.
+    """
+    written = []
+
+    if qa_analysis is not None and qa_analysis.dodged_questions:
+        path = store.put(QuarterRecord(
+            ticker=ticker, quarter=label, commitments=[],
+            dodges=qa_analysis.dodged_questions, model=qa_analysis.model,
+        ))
+        if path:
+            written.append(f"{label} ({len(qa_analysis.dodged_questions)} esquive(s))")
+
+    if new_sheet is not None and baseline_quarter and new_sheet.commitments:
+        path = store.put(QuarterRecord(
+            ticker=ticker, quarter=baseline_quarter,
+            commitments=new_sheet.commitments, dodges=[], model=new_sheet.model,
+        ))
+        if path:
+            written.append(
+                f"{baseline_quarter} ({len(new_sheet.commitments)} engagement(s))"
+            )
+
+    if written:
+        _ok(f"Historique mis à jour : {', '.join(written)}")
+
+
 def _press_release_block(cik, label, client):
     """
     What was already public before the call, rendered for both passes.
@@ -368,10 +436,17 @@ def _press_release_block(cik, label, client):
     return press_release_block(release)
 
 
-def _prior_guidance_block(ticker, cik, label, client, company_name):
+def _prior_guidance_block(ticker, cik, label, client, company_name, store=None):
     """
     What the company committed to one quarter ago, rendered for the
     reading prompt. Never raises.
+
+    THE HISTORY IS CONSULTED FIRST. A quarter whose commitments were
+    extracted by an earlier run costs nothing to reuse, where extracting
+    them again costs a provider request and a model call. On a ticker
+    followed across several quarters that is the normal path, so keeping
+    records does not just make the report richer over time, it makes it
+    cheaper from the second run.
 
     WHY THIS IS ALLOWED TO FAIL QUIETLY. It is a second reference point,
     not the report. The quarter before the earliest one on file does not
@@ -382,11 +457,28 @@ def _prior_guidance_block(ticker, cik, label, client, company_name):
     tells the model IT HAS NO BASELINE, which is the part that matters:
     an absent block would let it fill the gap from memory.
 
-    COST, stated plainly because it is charged on every run: one more
-    Alpha Vantage request out of the free tier's 25 (three total), and
-    one more Claude call, on a smaller budget than the reading's. The
-    disk cache absorbs the first of the two on a rerun.
+    COST when the history has nothing: one more Alpha Vantage request
+    out of the free tier's 25, and one more Claude call, on a smaller
+    budget than the reading's.
+
+    Returns (block, sheet_to_store, quarter) so the caller can persist
+    what it had to pay for. `sheet_to_store` is None when the answer
+    came out of the history and there is nothing new to write.
     """
+    if store is not None:
+        known, quarter, back = _known_baseline(store, ticker, label)
+        if known is not None:
+            _ok(f"Base de comparaison : {len(known.commitments)} engagement(s) "
+                f"déjà connu(s) pour {quarter}, aucun appel nécessaire")
+            sheet = GuidanceSheet(
+                ticker=ticker, quarter=quarter, model=known.model or "",
+                commitments=known.commitments, quarters_before=back,
+            )
+            if back > 1:
+                _warn(f"Base de comparaison prise {back} trimestres en arrière "
+                      f"({quarter}) : un écart portera sur {back} trimestres.")
+            return as_prompt_block(sheet), None, quarter
+
     # BROAD ON PURPOSE, and this is the one place in the script where
     # that is right. Everything below is a nicety: the report is fully
     # computable without it. Catching only the transcript exceptions
@@ -403,7 +495,7 @@ def _prior_guidance_block(ticker, cik, label, client, company_name):
     except Exception as exc:  # noqa: BLE001 -- see above
         _warn(f"Aucun call antérieur récupérable : la lecture n'aura pas de base "
               f"de comparaison sur la guidance ({exc})")
-        return as_prompt_block(None, reason="aucun call antérieur disponible")
+        return as_prompt_block(None, reason="aucun call antérieur disponible"), None, None
 
     if back > 1:
         _warn(f"Le call {previous_label(label)} n'est pas disponible : base de "
@@ -421,16 +513,16 @@ def _prior_guidance_block(ticker, cik, label, client, company_name):
         )
     except Exception as exc:  # noqa: BLE001 -- see above
         _warn(f"Engagements de {previous} non extraits : {exc}")
-        return as_prompt_block(None, reason=f"extraction de {previous} échouée")
+        return as_prompt_block(None, reason=f"extraction de {previous} échouée"), None, previous
 
     if sheet.is_empty:
         _warn(f"Aucun engagement chiffré trouvé dans le call {previous} : "
               f"rien à comparer.")
-        return as_prompt_block(None, reason=f"aucun engagement chiffré en {previous}")
+        return as_prompt_block(None, reason=f"aucun engagement chiffré en {previous}"), None, previous
 
     _ok(f"Base de comparaison : {len(sheet.commitments)} engagement(s) chiffré(s) "
         f"pris en {previous}")
-    return as_prompt_block(sheet)
+    return as_prompt_block(sheet), sheet, previous
 
 
 def main() -> int:
@@ -662,7 +754,10 @@ def main() -> int:
     # reference point and the reading could report a level but never a
     # change. Found on a real MSFT report, which quoted the capex twice
     # and never said it had moved.
-    prior_guidance = _prior_guidance_block(TICKER, cik, label, client, company_name)
+    store = HistoryStore(HISTORY_DIR)
+    prior_guidance, new_sheet, baseline_quarter = _prior_guidance_block(
+        TICKER, cik, label, client, company_name, store=store
+    )
 
     # -- The reading --
     print(f"  ...   Lecture du call par Claude ({ANTHROPIC_MODEL or 'modèle par défaut'})")
@@ -726,6 +821,21 @@ def main() -> int:
         f"Rapport écrit : {output.relative_to(ROOT)} ({pages} pages"
         f"{'' if qa_analysis is not None else ', pas de Q&A isolée'})"
     )
+
+    # -- What this run learned, kept for the next one --
+    #
+    # AFTER THE PDF, deliberately. The report is the deliverable and the
+    # history is a by-product; writing it first would put a filesystem
+    # error between a finished analysis and the file the run exists to
+    # produce. `put` swallows its own failures for the same reason.
+    #
+    # TWO QUARTERS ARE WRITTEN, and they are different halves of the
+    # same idea. The quarter READ contributes its dodges, which only
+    # this run knows. The quarter BEFORE contributes the commitments
+    # this run had to extract, so the next run finds them instead of
+    # paying again. Records merge rather than overwrite precisely
+    # because those two arrive on different runs.
+    _remember(store, TICKER, label, qa_analysis, new_sheet, baseline_quarter)
 
     print()
     print("=" * 70)

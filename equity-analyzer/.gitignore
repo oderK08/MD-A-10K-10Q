@@ -44,3 +44,8 @@ data/*
 # PDF générés. Le rapport se regénère à la demande, et un PDF committé
 # est surtout un moyen de croire qu'on regarde le dernier trimestre.
 rapports/
+
+# Historique produit par les runs : vit sur la branche `donnees`,
+# jamais sur `main`. Ignoré ici pour qu'un run local ne salisse pas
+# l'arbre de travail.
+historique/
