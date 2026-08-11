@@ -1,0 +1,43 @@
+{
+ "ticker": "AMD",
+ "quarter": "2026Q2",
+ "model": "claude-sonnet-5",
+ "commitments": [],
+ "dodges": [
+  {
+   "analyst": "Vivek Arya",
+   "question": "Combien de gigawatts de calcul AMD a-t-il en visibilite pour 2027 et quelle est la monetisation par gigawatt",
+   "what_was_asked": "Un chiffre precis de gigawatts sous contrat pour 2027 et un chiffre de revenu par gigawatt (hypothese de 15 milliards de dollars par GW)",
+   "what_was_given": "Une reponse qualitative confirmant une fourchette de 'double-digit billions' par gigawatt sans valider ni infirmer le chiffre de gigawatts ni celui de 15 milliards",
+   "severity": "high"
+  },
+  {
+   "analyst": "Christopher Muse (C.J. Muse)",
+   "question": "Le guidance implique environ 30 milliards de revenus Instinct, quelle est la cadence H1 vs H2 et la marge brute d'Instinct seul",
+   "what_was_asked": "Chiffre de revenu Instinct isole et trajectoire de marge brute Instinct trimestre par trimestre",
+   "what_was_given": "Lisa Su a dit que le chiffre de 30 milliards etait 'probablement trop bas' sans donner de chiffre, et Jean Hu a renvoye a un guidance plus detaille a venir",
+   "severity": "high"
+  },
+  {
+   "analyst": "Timothy Arcuri",
+   "question": "Entre Q2 et Q3, qui croit le plus en dollars, CPU serveur ou GPU, et cela implique-t-il un ralentissement du CPU en Q4",
+   "what_was_asked": "Repartition dollar precise de la croissance sequentielle entre server CPU et data center AI pour Q3 et Q4",
+   "what_was_given": "Confirmation generique que les deux segments croissent 'substantiellement' et que Q4 sera superieur a Q3, sans chiffres separes",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Thomas O'Malley",
+   "question": "Quand arrive le point de croisement entre le business GPU data center et le CPU, et quelle contribution relative en dollars en 2027",
+   "what_was_asked": "Une date ou un ordre de grandeur du croisement entre les deux activites",
+   "what_was_given": "Une reponse qualitative disant que les deux activites vont croitre substantiellement sans preciser de croisement ni de repartition en dollars",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Joshua Buchalter",
+   "question": "Quelles sont les hypotheses d'unites et d'ASP pour le CPU serveur en 2027",
+   "what_was_asked": "Hypotheses chiffrees de croissance des unites et des ASP pour 2027",
+   "what_was_given": "Rappel des tendances Q2 (croissance des unites et des ASP a deux chiffres) sans chiffres prospectifs precis pour 2027",
+   "severity": "low"
+  }
+ ]
+}

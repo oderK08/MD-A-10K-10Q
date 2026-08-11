@@ -1,0 +1,128 @@
+{
+ "ticker": "AMD",
+ "quarter": "2026Q1",
+ "model": "claude-sonnet-5",
+ "commitments": [
+  {
+   "metric": "revenu total",
+   "value": "environ 11,2 milliards de dollars, plus ou moins 300 millions",
+   "period": "T2 2026",
+   "verbatim": "We expect revenue to be approximately $11.2 billion, plus or minus $300 million."
+  },
+  {
+   "metric": "croissance du revenu total",
+   "value": "hausse d'environ 46% sur un an",
+   "period": "T2 2026",
+   "verbatim": "At the middle of our guidance, revenue is expected to be up 46% year-over-year."
+  },
+  {
+   "metric": "croissance sequentielle du revenu",
+   "value": "environ 9%",
+   "period": "T2 2026",
+   "verbatim": "Sequentially, we expect revenue to be up approximately 9%."
+  },
+  {
+   "metric": "marge brute non-GAAP",
+   "value": "environ 56%",
+   "period": "T2 2026",
+   "verbatim": "we expect second quarter non-GAAP gross margin to be approximately 56%"
+  },
+  {
+   "metric": "depenses d'exploitation non-GAAP",
+   "value": "environ 3,3 milliards de dollars",
+   "period": "T2 2026",
+   "verbatim": "non-GAAP operating expenses to be approximately $3.3 billion"
+  },
+  {
+   "metric": "autres revenus et charges non-GAAP",
+   "value": "gain d'environ 60 millions de dollars",
+   "period": "T2 2026",
+   "verbatim": "non-GAAP other income and expense to be a gain of approximately $60 million"
+  },
+  {
+   "metric": "taux d'imposition effectif non-GAAP",
+   "value": "13%",
+   "period": "T2 2026",
+   "verbatim": "Non-GAAP effective tax rate to be 13%"
+  },
+  {
+   "metric": "nombre d'actions dilue",
+   "value": "environ 1,66 milliard d'actions",
+   "period": "T2 2026",
+   "verbatim": "the diluted share count is expected to be approximately 1.66 billion shares"
+  },
+  {
+   "metric": "revenu CPU serveur, croissance annuelle",
+   "value": "plus de 70%",
+   "period": "T2 2026",
+   "verbatim": "we now expect server CPU revenue to grow by more than 70% year-over-year in the second quarter"
+  },
+  {
+   "metric": "TAM CPU serveur",
+   "value": "plus de 120 milliards de dollars",
+   "period": "2030",
+   "verbatim": "we now expect the server CPU TAM to grow at greater than 35% annually, reaching over $120 billion by 2030"
+  },
+  {
+   "metric": "croissance annuelle TAM CPU serveur",
+   "value": "plus de 35% par an",
+   "period": "3 a 5 prochaines annees",
+   "verbatim": "we now expect the server CPU TAM to grow at greater than 35% annually"
+  },
+  {
+   "metric": "revenu Data Center AI annuel",
+   "value": "des dizaines de milliards de dollars",
+   "period": "2027",
+   "verbatim": "we have strong and increasing confidence in our ability to deliver tens of billions of dollars in annual Data Center AI revenue in 2027"
+  },
+  {
+   "metric": "taux de croissance long terme Data Center AI",
+   "value": "superieur a 80% annuel",
+   "period": "annees a venir",
+   "verbatim": "to exceed our long-term growth target of greater than 80% in the coming years"
+  },
+  {
+   "metric": "BPA sur la periode strategique",
+   "value": "plus de 20 dollars",
+   "period": "cadre strategique de long terme",
+   "verbatim": "we see a clear path to exceed our long-term financial targets, including delivering more than $20 in EPS over the strategic time frame"
+  },
+  {
+   "metric": "revenu segment Gaming, second semestre vs premier semestre",
+   "value": "baisse de plus de 20%",
+   "period": "second semestre 2026",
+   "verbatim": "We now expect second half gaming revenue to decline more than 20% compared to the first half."
+  },
+  {
+   "metric": "part de marche CPU serveur",
+   "value": "superieure a 50%",
+   "period": "objectif long terme",
+   "verbatim": "we feel very good about the market and our opportunity to grow to greater than 50% share of that market"
+  },
+  {
+   "metric": "marge brute long terme",
+   "value": "fourchette de 55% a 58%",
+   "period": "long terme",
+   "verbatim": "we outlined the long-term gross margin in the range of 55% to 58%"
+  },
+  {
+   "metric": "part de revenu Turin dans le CPU serveur",
+   "value": "plus de 50%",
+   "period": "T1 2026",
+   "verbatim": "we actually crossed over 50% of our revenue being Turin this quarter"
+  },
+  {
+   "metric": "croissance revenu segment Data Center et Embedded",
+   "value": "croissance a deux chiffres",
+   "period": "T2 2026",
+   "verbatim": "Sequentially, we expect revenue to be up approximately 9% driven by double-digit growth in both our Data Center and the Embedded segments"
+  },
+  {
+   "metric": "croissance segment Embedded",
+   "value": "croissance a deux chiffres",
+   "period": "T2 2026",
+   "verbatim": "growth in our Client and Gaming segment and a double-digit growth in our Embedded segment"
+  }
+ ],
+ "dodges": []
+}
