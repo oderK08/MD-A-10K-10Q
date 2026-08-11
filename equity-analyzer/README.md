@@ -107,6 +107,36 @@ dans les **deux** passes, parce que la distinction « déjà public » contre
 chiffré déjà dans le communiqué a été lu par tout le monde, le même
 chiffre lâché sous une question d'analyste ne l'a pas été.
 
+**Ce que les runs apprennent est gardé.** Chaque run produisait une
+fiche d'engagements, s'en servait une fois et la jetait : le cache
+partait en artefact, qui expire. Le rapport pouvait donc dire ce qui
+avait changé depuis le trimestre dernier, et rien de plus, alors que la
+question qui compte sur une équipe dirigeante est celle que seule une
+**série** tranche : elle promettait ça il y a un an, l'a-t-elle fait.
+Idem côté Q&A, où une esquive isolée est du bruit et le même chiffre
+refusé quatre trimestres d'affilée est un constat.
+
+Les constats structurés sont donc écrits en JSON, un fichier par ticker
+et par trimestre, sur une **branche `donnees`** séparée de `main` pour
+que l'historique du code reste celui du code et qu'un run ne puisse
+jamais entrer en conflit avec un commit humain. Seul ce qu'un run avait
+déjà calculé est stocké : rien ici ne déclenche de travail
+supplémentaire, et aucune prose écrite par un modèle n'est conservée,
+pour qu'une reformulation du rapport n'invalide jamais la série.
+
+Deux trimestres sont écrits à chaque run, et c'est la même idée vue des
+deux côtés. Le trimestre **lu** livre ses esquives, que seul ce run
+connaît. Le trimestre **précédent** livre les engagements que ce run a
+dû extraire. Un enregistrement fusionne donc au lieu d'écraser,
+précisément parce que ses deux moitiés arrivent sur des runs différents.
+
+**Effet immédiat, avant même la série** : l'historique est consulté
+*avant* de payer. Une fiche déjà sur disque est une requête fournisseur
+et un appel modèle qui n'ont pas lieu, donc un ticker suivi sur
+plusieurs trimestres cesse largement de payer sa propre base de
+comparaison. La valeur qui met un an à apparaître est la série ; celle
+qui apparaît au deuxième run est celle-là.
+
 **L'appariement est mesuré, pas supposé.** L'implémentation évidente
 prend le 8-K le plus récent et espère qu'il correspond au call lu. Ça
 casse dans les deux cas que ce projet rencontre sans arrêt : un call

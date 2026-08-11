@@ -276,8 +276,14 @@ def as_prompt_block(sheet: Optional[GuidanceSheet], reason: str = "") -> str:
 
     lines = [header]
     for item in sheet.commitments:
-        period = f" [{item['period']}]" if item["period"] else ""
-        lines.append(f"  {item['metric']}{period} : {item['value']}")
+        # READ WITH `.get`, because these do not all come from
+        # `_commitments` any more. A sheet can be rebuilt from the
+        # history, whose records are plain JSON meant to be readable and
+        # editable on github.com, so a hand written entry missing a key
+        # is a normal event rather than a corrupt one. Indexing would
+        # turn that into a crash in the middle of a paid run.
+        period = f" [{item.get('period')}]" if item.get("period") else ""
+        lines.append(f"  {item.get('metric', '')}{period} : {item.get('value', '')}")
     lines.append("")
     lines.append(
         "Compare ce que la direction annonce AUJOURD'HUI a cette liste. Un chiffre "
