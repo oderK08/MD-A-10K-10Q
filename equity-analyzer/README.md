@@ -91,6 +91,36 @@ indistinguable sur la page de la même phrase écrite d'après le texte.
 **Coût** : un appel Alpha Vantage de plus (3 sur les 25 quotidiens) et un
 appel Claude de plus, sur un budget plus petit que celui de la lecture.
 
+**Troisième repère : ce qui était déjà public.** La passe Q&A est censée
+chercher « ce qui a une valeur prospective mais n'était pas dans le
+communiqué de presse », que le prompt désigne lui-même comme la partie la
+plus utile. Elle n'avait jamais vu de communiqué. Cette section reposait
+donc sur une supposition à propos d'un document non lu, et une
+supposition composée dans la même typographie qu'un constat ne s'en
+distingue pas sur la page.
+
+La matière était là depuis le début : une société qui publie ses
+résultats dépose un 8-K Item 2.02 avec le communiqué en pièce jointe, sur
+EDGAR, gratuit, sans clé et sans quota. Le communiqué part maintenant
+dans les **deux** passes, parce que la distinction « déjà public » contre
+« dit seulement à l'oral » vaut aussi pour la page 1 : un engagement
+chiffré déjà dans le communiqué a été lu par tout le monde, le même
+chiffre lâché sous une question d'analyste ne l'a pas été.
+
+**L'appariement est mesuré, pas supposé.** L'implémentation évidente
+prend le 8-K le plus récent et espère qu'il correspond au call lu. Ça
+casse dans les deux cas que ce projet rencontre sans arrêt : un call
+publié en retard par le fournisseur, donc un rapport qui recule d'un
+trimestre, et la fenêtre où les résultats sont annoncés avant le dépôt
+périodique. Le `period_of_report` d'un 8-K ne peut pas trancher non plus,
+puisque c'est la date de l'événement et pas une fin de période, ce qui a
+déjà produit une réponse fausse dans ce dépôt. Le communiqué est donc
+apparié comme le transcript : en lisant le trimestre que la société
+**nomme dans son propre titre**. Un communiqué qui ne correspond pas
+n'est pas utilisé, parce qu'attacher celui du mauvais trimestre ferait
+présenter comme information nouvelle tout ce que le vrai communiqué
+contenait.
+
 **Ce qui manque est écrit, jamais laissé en blanc.** Pas de consensus, pas
 de 10-K, pas de MD&A : chaque absence apparaît sur la page sous forme d'une
 phrase qui dit laquelle et pourquoi. Une case vide et une case incalculable

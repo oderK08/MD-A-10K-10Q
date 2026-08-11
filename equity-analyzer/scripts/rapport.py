@@ -26,17 +26,31 @@ provider has published the call. The search walks back until it finds
 one and the report says how far back it had to go, rather than passing
 an older call off as the current one.
 
-WHAT THE READING IS MEASURED AGAINST, and it is two things rather than
-one. The EPS consensus says what the QUARTER was expected to earn. The
-previous quarter's quantified commitments say what the COMPANY said it
-would do. Both are needed, because a quarter can beat the consensus
-while quietly doubling its capex envelope, and until the second baseline
-existed the reading could report that envelope as a level but never as a
-change (see report/guidance_sheet.py, and the real MSFT report that
-quoted a raised capex twice without ever saying it had been raised).
+WHAT THE READING IS MEASURED AGAINST, and it is three things rather than
+one.
+
+  THE EPS CONSENSUS says what the QUARTER was expected to earn.
+
+  THE PREVIOUS QUARTER'S COMMITMENTS say what the COMPANY said it would
+  do. A quarter can beat the consensus while quietly doubling its capex
+  envelope, and without this the reading reports that envelope as a
+  level and never as a change (see report/guidance_sheet.py, and the
+  real MSFT report that quoted a raised capex twice without once saying
+  it had been raised).
+
+  THE PRESS RELEASE says what was ALREADY PUBLIC before anyone spoke.
+  Both passes need it for the same distinction: a figure already in the
+  release has been read by everyone, the same figure volunteered under
+  questioning has not. The Q&A pass in particular is told that what
+  carried forward looking value and was NOT in the release is the most
+  useful thing it can find, and it used to answer that from an
+  assumption about a document it had never seen.
 
 WHAT IT COSTS PER RUN
-  SEC EDGAR      4 requests, free, no key. Rate limited client side.
+  SEC EDGAR      4 requests, plus 2 to 4 for the press release (its
+                 filing index and the exhibit, once or twice if the
+                 newest filing turns out to be another quarter). Free,
+                 no key. Rate limited client side.
   Alpha Vantage  3 of the free tier's 25 daily requests (1 consensus,
                  1 transcript, 1 for the previous quarter's call; up to
                  2 more if that previous call is missing and the search
@@ -111,6 +125,10 @@ from equity_analyzer.report import (
     build_call_report,
     render_html,
     save_pdf,
+)
+from equity_analyzer.data_layer.press_release import (
+    as_prompt_block as press_release_block,
+    fetch_press_release,
 )
 from equity_analyzer.report.guidance_sheet import as_prompt_block, extract_guidance
 from equity_analyzer.sentiment import load_lm_dictionary
@@ -320,6 +338,34 @@ def _find_prior_call(source, ticker, cik, label, client):
         f"aucun call sur les {MAX_BASELINE_QUARTERS_BACK} trimestres précédant "
         f"{label} : " + " ; ".join(misses)
     )
+
+
+def _press_release_block(cik, label, client):
+    """
+    What was already public before the call, rendered for both passes.
+    Never raises.
+
+    WHY IT IS WORTH A FETCH. The Q&A pass is told that the most useful
+    thing it can find is what carried forward looking value and was NOT
+    in the press release, and it had never seen one: that section rested
+    on an assumption about an unread document. The release is on EDGAR
+    under Item 2.02, free, no key, no quota, so this costs two requests
+    against a rate limit rather than anything scarce.
+
+    Failure is a printed reason plus a block that tells both passes they
+    CANNOT know what was already public, which is the part that matters.
+    An absent block would let them assume a release and answer against
+    the assumption.
+    """
+    try:
+        release = fetch_press_release(client, cik, label)
+    except Exception as exc:  # noqa: BLE001 -- a nicety must never cost the report
+        _warn(f"Communiqué de résultats non apparié : les passes ne pourront pas "
+              f"dire ce qui était déjà public ({exc})")
+        return press_release_block(None, reason=f"non apparié à {label}")
+
+    _ok(f"Communiqué {label} : {release.word_count} mots ({release.document})")
+    return press_release_block(release)
 
 
 def _prior_guidance_block(ticker, cik, label, client, company_name):
@@ -577,6 +623,13 @@ def main() -> int:
     # inventory, never the finding. Running this first costs one wasted
     # call only when the reading afterwards fails, which aborts the run
     # anyway.
+    # -- What the market already knew before anyone spoke --
+    #
+    # Fetched before both passes because both need it, and for the same
+    # reason: to tell an information that was already public from one
+    # that only came out of someone's mouth. See _press_release_block.
+    press_release = _press_release_block(cik, label, client)
+
     qa_analysis = None
     if not (call.qa or "").strip():
         _warn("Session questions-réponses non isolée dans ce transcript : "
@@ -588,6 +641,7 @@ def main() -> int:
                 api_key=ANTHROPIC_API_KEY,
                 company_name=company_name,
                 verbatim=call.verbatim,
+                press_release=press_release,
                 **({"model": ANTHROPIC_MODEL} if ANTHROPIC_MODEL else {}),
             )
             _ok(
@@ -622,6 +676,7 @@ def main() -> int:
             verbatim=call.verbatim,
             qa_page=qa_analysis is not None,
             prior_guidance=prior_guidance,
+            press_release=press_release,
             **({"model": ANTHROPIC_MODEL} if ANTHROPIC_MODEL else {}),
         )
     except ClaudeError as exc:

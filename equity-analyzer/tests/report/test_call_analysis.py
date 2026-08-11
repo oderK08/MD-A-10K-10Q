@@ -349,6 +349,44 @@ def test_the_prior_guidance_baseline_reaches_the_request_before_the_transcript(m
     assert body.index("ATTENTES DU MARCHE") < body.index("ENGAGEMENTS CHIFFRES")
 
 
+def test_the_press_release_reaches_the_reading_too(monkeypatch):
+    """
+    Not only the Q&A pass. "Already public" against "said out loud only"
+    matters just as much for the quantified commitments on page 1: a
+    figure already in the release has been read by everyone, the same
+    figure volunteered under questioning has not.
+    """
+    from equity_analyzer.report import claude_client
+
+    sent = {}
+
+    def _capture(*a, **k):
+        sent["user"] = k["json"]["messages"][0]["content"]
+        return _Response(payload={"content": [{"type": "text", "text": "Neutre."}]})
+
+    monkeypatch.setattr(claude_client.requests, "post", _capture)
+    analyse_call(
+        "AAOI", "2026Q1", TRANSCRIPT, api_key="sk-test",
+        press_release="COMMUNIQUE DE RESULTATS du trimestre 2026Q1\nle texte publie",
+    )
+
+    body = sent["user"]
+    assert "le texte publie" in body
+    assert body.index("COMMUNIQUE DE RESULTATS") < body.index("---DEBUT DU TRANSCRIPT---")
+
+
+@BOTH_PROMPTS
+def test_the_prompt_makes_unpublished_information_count_double(prompt):
+    """
+    Supplying the release is worth nothing if nothing tells the reading
+    what to do with it. And the guard matters as much as the rule: with
+    no release supplied, asserting that something was not in it is
+    exactly the unfounded claim this whole change removes.
+    """
+    assert "CE QUI N'ETAIT PAS DEJA PUBLIC COMPTE DOUBLE" in prompt
+    assert "tu n'affirmes pas qu'une information n'y figurait pas" in prompt
+
+
 def test_without_a_baseline_the_prompt_carries_no_empty_guidance_block(monkeypatch):
     """
     An empty string means the caller is not using this at all, which is
