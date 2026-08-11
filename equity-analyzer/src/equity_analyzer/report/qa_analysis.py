@@ -223,11 +223,29 @@ def _strings(payload: dict, key: str) -> list:
 
 
 def build_prompt(ticker: str, quarter: str, qa_text: str,
-                 company_name: Optional[str] = None) -> str:
-    """The Q&A alone, whole. The prepared remarks are not this pass's job."""
+                 company_name: Optional[str] = None,
+                 press_release: str = "") -> str:
+    """
+    The Q&A alone, whole, with the press release in front of it as the
+    yardstick. The prepared remarks are not this pass's job.
+
+    THE RELEASE COMES FIRST for the reason it exists here at all:
+    `implicit_guidance` is defined as what carries forward looking value
+    and was NOT in the release, and until the release was supplied this
+    pass was answering that from an assumption about a document it had
+    never read. Putting it before the session means the model knows what
+    was already public before it starts deciding what slipped out.
+
+    `press_release` is already rendered text (see
+    data_layer.press_release.as_prompt_block), including when it is the
+    sentence saying there is none. Empty means the caller is not using
+    this at all.
+    """
     who = company_name or ticker
+    yardstick = f"{press_release}\n\n" if press_release else ""
     return (
         f"Session questions-reponses de {who} ({ticker}), trimestre {quarter}.\n\n"
+        f"{yardstick}"
         f"---DEBUT DE LA SESSION---\n{qa_text}\n---FIN DE LA SESSION---"
     )
 
@@ -240,6 +258,7 @@ def analyse_qa(
     api_key: str,
     company_name: Optional[str] = None,
     verbatim: bool = True,
+    press_release: str = "",
     model: str = DEFAULT_MODEL,
     max_tokens: int = MAX_TOKENS,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
@@ -256,7 +275,7 @@ def analyse_qa(
         raise ClaudeError("session questions-reponses vide : rien a analyser")
 
     payload = parse_response(call_claude(
-        build_prompt(ticker, quarter, qa_text, company_name),
+        build_prompt(ticker, quarter, qa_text, company_name, press_release),
         api_key=api_key,
         system_prompt=system_prompt(verbatim),
         model=model,

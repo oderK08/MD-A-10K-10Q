@@ -112,6 +112,50 @@ def test_a_clean_json_answer_is_parsed(monkeypatch):
     assert result.is_empty is False
 
 
+def test_the_press_release_reaches_the_request_before_the_session(monkeypatch):
+    """
+    `implicit_guidance` is DEFINED as what was not in the press release
+    and is called the most useful part of this pass. Until the release
+    was supplied, that answer came from an assumption about a document
+    the model had never read.
+
+    In front of the session, not after it, so the model knows what was
+    already public before it starts deciding what slipped out.
+    """
+    sent = {}
+
+    def _capture(*a, **k):
+        sent["user"] = k["json"]["messages"][0]["content"]
+        return _Response(json.dumps(_ANSWER))
+
+    monkeypatch.setattr(claude_client.requests, "post", _capture)
+    analyse_qa("UBER", "2026Q2", "des questions", api_key="k",
+               press_release="COMMUNIQUE DE RESULTATS du trimestre 2026Q2\nle texte")
+
+    body = sent["user"]
+    assert "le texte" in body
+    assert body.index("COMMUNIQUE DE RESULTATS") < body.index("---DEBUT DE LA SESSION---")
+
+
+def test_without_a_release_the_prompt_carries_no_empty_yardstick(monkeypatch):
+    """
+    An empty string means the caller is not using this at all, which is
+    different from a caller that looked and could not pair one. The
+    second case sends the "no release" sentence, and that sentence is
+    built by data_layer.press_release, not improvised here.
+    """
+    sent = {}
+
+    def _capture(*a, **k):
+        sent["user"] = k["json"]["messages"][0]["content"]
+        return _Response(json.dumps(_ANSWER))
+
+    monkeypatch.setattr(claude_client.requests, "post", _capture)
+    analyse_qa("UBER", "2026Q2", "des questions", api_key="k")
+
+    assert "COMMUNIQUE" not in sent["user"]
+
+
 def test_a_key_the_report_no_longer_renders_is_ignored_rather_than_stored():
     """
     "Formulations notables" was dropped from the document, so the schema

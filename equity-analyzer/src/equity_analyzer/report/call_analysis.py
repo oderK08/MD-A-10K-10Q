@@ -147,6 +147,8 @@ Les engagements chiffres et datables : guidance, marges visees, capex, calendrie
 
 CE QUI A CHANGE PASSE EN PREMIER. Un chiffre reconduit et un chiffre revise ne valent pas la meme chose : commence par les engagements que la direction MODIFIE dans ce call, avant ceux qu'elle reconduit.
 
+CE QUI N'ETAIT PAS DEJA PUBLIC COMPTE DOUBLE. Si le communique de resultats t'est fourni, il dit ce que le marche savait AVANT le call. Un engagement chiffre qui y figure deja a ete lu par tout le monde ; le meme chiffre lache seulement a l'oral, ou precise seulement sous une question d'analyste, est une information neuve et tu le signales comme telle. Si le communique ne t'est pas fourni, tu n'affirmes pas qu'une information n'y figurait pas.
+
 QUAND UN CHIFFRE EN REVISE UN AUTRE, c'est l'ecart qui est l'information, pas le niveau. Donne l'ancien, le nouveau et l'ampleur du changement, avec la citation ou la direction l'annonce. Si l'ancien chiffre n'est pas prononce dans ce call, tu ne l'as pas : ecris que la base de comparaison manque plutot que de la deviner, et surtout n'ecris pas "desormais releve a" ou "ajuste a" sans dire depuis quoi, ce qui laisse croire a une comparaison que tu n'as pas faite.
 
 {{dodges}}
@@ -254,6 +256,7 @@ def build_prompt(
     history=(),
     verbatim: bool = True,
     prior_guidance: str = "",
+    press_release: str = "",
 ) -> str:
     """
     The transcript, whole, with everything it is measured against in
@@ -279,11 +282,13 @@ def build_prompt(
     who = company_name or ticker
     warning = "" if verbatim else f"{_MACHINE_TRANSCRIPT_NOTE}\n\n"
     baseline = f"{prior_guidance}\n\n" if prior_guidance else ""
+    yardstick = f"{press_release}\n\n" if press_release else ""
     return (
         f"Earnings call de {who} ({ticker}), trimestre {quarter}.\n\n"
         f"{warning}"
         f"{expectations_block(expectation, history)}\n\n"
         f"{baseline}"
+        f"{yardstick}"
         f"Transcript integral ci-dessous, tel que publie.\n\n"
         f"---DEBUT DU TRANSCRIPT---\n{transcript_text}\n---FIN DU TRANSCRIPT---"
     )
@@ -301,6 +306,7 @@ def analyse_call(
     verbatim: bool = True,
     qa_page: bool = False,
     prior_guidance: str = "",
+    press_release: str = "",
     model: str = DEFAULT_MODEL,
     max_tokens: int = MAX_TOKENS,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
@@ -325,6 +331,7 @@ def analyse_call(
         build_prompt(
             ticker, quarter, transcript_text, company_name, expectation, history,
             verbatim=verbatim, prior_guidance=prior_guidance,
+            press_release=press_release,
         ),
         api_key=api_key,
         system_prompt=system_prompt(qa_page),
