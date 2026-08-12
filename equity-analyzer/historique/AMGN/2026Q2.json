@@ -1,0 +1,57 @@
+{
+ "ticker": "AMGN",
+ "quarter": "2026Q2",
+ "model": "claude-sonnet-5",
+ "commitments": [],
+ "dodges": [
+  {
+   "analyst": "Dina Elmonshed (UBS, pour Michael Yee)",
+   "question": "Le design de l'etude Olpasiran (OCEAN(a)) prevoit-il une analyse interimaire ?",
+   "what_was_asked": "Confirmation de la presence ou non d'une analyse interimaire dans le protocole",
+   "what_was_given": "Description generale du design (double aveugle, randomise, seuil Lp(a) > 200) sans mention d'une analyse interimaire",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Umer Raffat (Evercore ISI)",
+   "question": "Quel niveau de confiance sur un taux de vomissements en Phase III MariTide dans la zone mid-20s ou mieux ?",
+   "what_was_asked": "Une estimation ou fourchette chiffree du taux de vomissements attendu",
+   "what_was_given": "Declaration generale de confiance dans le profil de MariTide sans chiffre",
+   "severity": "high"
+  },
+  {
+   "analyst": "Umer Raffat (Evercore ISI)",
+   "question": "Le suivi des malignites dans l'essai dazodalibep se fait-il en aveugle ?",
+   "what_was_asked": "Confirmation du protocole de suivi (aveugle ou non) des malignites",
+   "what_was_given": "Reponse generique sur le role du comite de surveillance des donnees (DSMB) sans confirmer le mode de suivi",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Edward Polglase (Bernstein, pour Courtney Breen)",
+   "question": "Impact de la selection IRA sur l'avenir d'Otezla",
+   "what_was_asked": "Comment penser l'avenir du produit compte tenu de la selection IRA prevue l'an prochain",
+   "what_was_given": "Reponse centree sur la dynamique de volume et la pression 340B, sans aborder l'impact IRA",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Unknown Analyst (Morgan Stanley, pour Terence Flynn)",
+   "question": "Dynamique contractuelle avec l'arrivee d'un PCSK9 oral concurrent",
+   "what_was_asked": "Impact sur les contrats/negociations avec les payeurs",
+   "what_was_given": "Comparaison des labels clinique et de l'observance, aucune mention des dynamiques contractuelles",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Manoj Eradath (Jefferies, pour Akash Tewari)",
+   "question": "Quel est le LDL-C de base dans l'etude OCEAN(a) comparé a HORIZON (65 mg/dL) ?",
+   "what_was_asked": "Le niveau precis de LDL-C de base des patients inclus dans OCEAN(a)",
+   "what_was_given": "Reponse qualitative sur le ciblage d'un Lp(a) plus eleve (>200) sans donner le chiffre de LDL-C de base",
+   "severity": "high"
+  },
+  {
+   "analyst": "Susan Chor (Wells Fargo, pour Mohit Bansal)",
+   "question": "Niveau de concordance entre les deux criteres primaires (ESSPRI et diary) de l'etude symptomatique dazodalibep",
+   "what_was_asked": "Un taux ou une mesure de concordance entre les deux endpoints",
+   "what_was_given": "Explication du rationnel de choix des deux scores, sans donner de niveau de concordance",
+   "severity": "medium"
+  }
+ ]
+}

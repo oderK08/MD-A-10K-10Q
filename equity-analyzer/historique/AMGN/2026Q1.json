@@ -1,0 +1,74 @@
+{
+ "ticker": "AMGN",
+ "quarter": "2026Q1",
+ "model": "claude-sonnet-5",
+ "commitments": [
+  {
+   "metric": "revenus totaux",
+   "value": "$37.1 billion to $38.5 billion",
+   "period": "exercice 2026",
+   "verbatim": "We expect 2026 total revenues in the range of $37.1 billion to $38.5 billion"
+  },
+  {
+   "metric": "benefice par action non-GAAP",
+   "value": "$21.70 to $23.10",
+   "period": "exercice 2026",
+   "verbatim": "non-GAAP earnings per share to be between $21.70 and $23.10"
+  },
+  {
+   "metric": "autres revenus",
+   "value": "$1.7 billion to $1.8 billion",
+   "period": "exercice 2026",
+   "verbatim": "we now expect other revenue to be in the range of $1.7 billion to $1.8 billion"
+  },
+  {
+   "metric": "OI&E non-GAAP",
+   "value": "$2.2 billion to $2.3 billion d'expense",
+   "period": "exercice 2026",
+   "verbatim": "we now anticipate non-GAAP OI&E to be in the range of $2.2 billion to $2.3 billion of expense in 2026"
+  },
+  {
+   "metric": "taux d'imposition non-GAAP",
+   "value": "15% to 16.5%",
+   "period": "exercice 2026",
+   "verbatim": "we now expect a non-GAAP tax rate in the range of 15% to 16.5%"
+  },
+  {
+   "metric": "marge operationnelle non-GAAP en % des ventes de produits",
+   "value": "roughly 45% to 46%",
+   "period": "exercice 2026",
+   "verbatim": "we continue to expect the full-year non-GAAP operating margin as a percentage of product sales to be roughly 45% to 46%"
+  },
+  {
+   "metric": "rachats d'actions",
+   "value": "not to exceed $3 billion",
+   "period": "exercice 2026",
+   "verbatim": "We expect share repurchases not to exceed $3 billion"
+  },
+  {
+   "metric": "depenses d'investissement (capex)",
+   "value": "approximately $2.6 billion",
+   "period": "exercice 2026",
+   "verbatim": "We continue to expect capital expenditures of approximately $2.6 billion in 2026"
+  },
+  {
+   "metric": "marge operationnelle T2",
+   "value": "en ligne avec le T1",
+   "period": "T2 2026",
+   "verbatim": "We further expect second quarter operating margin to be in line with the first quarter operating margin"
+  },
+  {
+   "metric": "initiation d'etudes Phase III pour Dazodalibep",
+   "value": "deux etudes pivotales",
+   "period": "second semestre 2026",
+   "verbatim": "we expect to initiate two pivotal Phase III studies of aplisna in autoimmune hepatitis and chronic inflammatory demyelinating polyneuropathy by the second half of this year"
+  },
+  {
+   "metric": "achevement des etudes Sjogren's dazodalibep",
+   "value": "completion attendue",
+   "period": "second semestre 2026",
+   "verbatim": "completion of both studies is expected in the second half of this year"
+  }
+ ],
+ "dodges": []
+}
