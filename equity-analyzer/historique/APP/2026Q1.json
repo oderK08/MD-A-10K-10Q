@@ -1,0 +1,56 @@
+{
+ "ticker": "APP",
+ "quarter": "2026Q1",
+ "model": "claude-sonnet-5",
+ "commitments": [
+  {
+   "metric": "revenue",
+   "value": "entre 1,915 milliard et 1,945 milliard de dollars",
+   "period": "T2 2026",
+   "verbatim": "We expect revenue between $1.915 billion and $1.945 billion, representing 52% to 55% year-over-year growth"
+  },
+  {
+   "metric": "croissance du revenu en glissement annuel",
+   "value": "52% a 55%",
+   "period": "T2 2026",
+   "verbatim": "representing 52% to 55% year-over-year growth or 4% to 6% sequentially"
+  },
+  {
+   "metric": "croissance sequentielle du revenu",
+   "value": "4% a 6%",
+   "period": "T2 2026",
+   "verbatim": "representing 52% to 55% year-over-year growth or 4% to 6% sequentially"
+  },
+  {
+   "metric": "adjusted EBITDA",
+   "value": "entre 1,615 milliard et 1,645 milliard de dollars",
+   "period": "T2 2026",
+   "verbatim": "Adjusted EBITDA is expected to be between $1.615 billion and $1.645 billion"
+  },
+  {
+   "metric": "marge d'adjusted EBITDA",
+   "value": "environ 84% a 85%",
+   "period": "T2 2026",
+   "verbatim": "with an adjusted EBITDA margin of approximately 84% to 85%"
+  },
+  {
+   "metric": "conversion du free cash flow en pourcentage de l'EBITDA",
+   "value": "environ 75%",
+   "period": "exercice 2026",
+   "verbatim": "free cash flow conversion... will normalize over the course of the year to approximately 75% of EBITDA for 2026"
+  },
+  {
+   "metric": "ouverture de la plateforme au public (Axon self-serve)",
+   "value": "juin",
+   "period": "juin 2026",
+   "verbatim": "we are now well on our way to opening up our platform to the public in June"
+  },
+  {
+   "metric": "montant restant sous l'autorisation de rachat d'actions",
+   "value": "environ 2,3 milliards de dollars",
+   "period": "a la date du call",
+   "verbatim": "approximately $2.3 billion remaining under our share repurchase authorization"
+  }
+ ],
+ "dodges": []
+}
