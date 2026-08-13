@@ -1,0 +1,36 @@
+{
+ "ticker": "MELI",
+ "quarter": "2026Q2",
+ "model": "claude-sonnet-5",
+ "commitments": [],
+ "dodges": [
+  {
+   "analyst": "Marvin Fong (BTIG)",
+   "question": "Quel pourcentage des utilisateurs sont ecosystemiques au Bresil ou sur l'ensemble de la marketplace ?",
+   "what_was_asked": "La part precise des utilisateurs ecosystemiques dans la base totale",
+   "what_was_given": "Des metriques de performance relative (GMV +70%, TPV +90%, AUM double, croissance 37%) mais refus explicite de donner le pourcentage",
+   "severity": "high"
+  },
+  {
+   "analyst": "Joao Pedro Soares (Citi)",
+   "question": "Trajectoire du NII et du NIMAL de la carte de credit sur les prochaines annees",
+   "what_was_asked": "Une projection chiffree ou un horizon precis d'inflection de rentabilite",
+   "what_was_given": "Explication qualitative sur la maturite des cohortes et le rythme d'emission, sans chiffre prospectif",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Andrew Ruben (Morgan Stanley)",
+   "question": "Quel etait le taux de croissance des vendeurs au Bresil avant la baisse des commissions, pour comparer avec les 29% actuels",
+   "what_was_asked": "Le chiffre de croissance des vendeurs avant l'initiative de baisse des take rates",
+   "what_was_given": "Une description qualitative de l'acceleration sans donner le chiffre de reference anterieur",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Deepak Mathivanan (Cantor Fitzgerald)",
+   "question": "Soutenabilite de la marge EBIT au second semestre et arbitrages en cas de degradation de l'environnement",
+   "what_was_asked": "Une indication chiffree ou un engagement sur le niveau de marge futur",
+   "what_was_given": "Une explication de la philosophie de reinvestissement disciplinee, sans chiffre ni engagement precis",
+   "severity": "low"
+  }
+ ]
+}
