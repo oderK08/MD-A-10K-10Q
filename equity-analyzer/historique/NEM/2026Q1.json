@@ -1,0 +1,104 @@
+{
+ "ticker": "NEM",
+ "quarter": "2026Q1",
+ "model": "claude-sonnet-5",
+ "commitments": [
+  {
+   "metric": "production or gold",
+   "value": "5.3 million ounces",
+   "period": "exercice 2026",
+   "verbatim": "keeping us on track to deliver our full-year production guidance of 5.3 million ounces"
+  },
+  {
+   "metric": "capital de developpement",
+   "value": "$1.4 billion",
+   "period": "exercice 2026",
+   "verbatim": "with our full-year development capital guidance of $1.4 billion remaining weighted to the second half"
+  },
+  {
+   "metric": "dividende total en especes",
+   "value": "$1.1 billion par an",
+   "period": "exercice 2026",
+   "verbatim": "cash is allocated to our sustainable total cash dividend of $1.1 billion per year, which is paid quarterly"
+  },
+  {
+   "metric": "dividende par action",
+   "value": "$0.26 par action",
+   "period": "T1 2026",
+   "verbatim": "we declared a dividend of $0.26 per share, which is consistent with the last quarter"
+  },
+  {
+   "metric": "cible de tresorerie nette",
+   "value": "$1 billion plus ou moins $2 billion",
+   "period": "sur l'annee",
+   "verbatim": "our net cash target of $1 billion plus or minus $2 billion over the course of a year"
+  },
+  {
+   "metric": "nouvelle autorisation de rachat d'actions",
+   "value": "$6 billion",
+   "period": "non precise",
+   "verbatim": "our board has doubled the size of our share repurchase program with an additional $6 billion authorization"
+  },
+  {
+   "metric": "recuperation de la capacite operationnelle de Cadia",
+   "value": "80% de capacite operationnelle",
+   "period": "dans les cinq prochaines semaines",
+   "verbatim": "underground rehabilitation to be completed in the next five weeks, enabling return to 80% operating capacity"
+  },
+  {
+   "metric": "recuperation complete de Cadia",
+   "value": "recuperation complete",
+   "period": "fin T2 2026",
+   "verbatim": "with full recovery expected by the end of the second quarter"
+  },
+  {
+   "metric": "impact du prix du petrole sur les couts",
+   "value": "environ $60 million / $12 par once",
+   "period": "non precise",
+   "verbatim": "For every $10 per barrel change in oil prices, we expect approximately a $60 million impact on cost"
+  },
+  {
+   "metric": "impact de la royalte mobile du Ghana",
+   "value": "environ $25 par once",
+   "period": "exercice 2026",
+   "verbatim": "this will represent an incremental cost headwind of approximately $25 per ounce in 2026"
+  },
+  {
+   "metric": "capex d'entretien depense",
+   "value": "$381 million",
+   "period": "T1 2026",
+   "verbatim": "We continue to invest in sustaining capital to strengthen the longevity and integrity of our portfolio, with $381 million spent in the first quarter"
+  },
+  {
+   "metric": "capex de developpement depense",
+   "value": "$239 million",
+   "period": "T1 2026",
+   "verbatim": "We continue to invest in development capital to advance our highest-return opportunities from our deep organic pipeline, with $239 million deployed in the first quarter"
+  },
+  {
+   "metric": "achats d'actions realises",
+   "value": "$2.4 billion",
+   "period": "depuis le dernier earnings call",
+   "verbatim": "Since our last earnings call, we have repurchased $2.4 billion in shares, fully completing our previous authorization"
+  },
+  {
+   "metric": "production",
+   "value": "leger recul par rapport au T1",
+   "period": "T2 2026",
+   "verbatim": "we expect production to be slightly below the first quarter, keeping us on track to deliver our full-year production guidance"
+  },
+  {
+   "metric": "couts tout compris (AISC)",
+   "value": "notably higher, in line with la guidance de fevrier",
+   "period": "T2 2026",
+   "verbatim": "All-in sustaining costs are expected to be notably higher in the second quarter and more in line with the guidance we provided in February"
+  },
+  {
+   "metric": "production a long terme du portefeuille",
+   "value": "6 million onces",
+   "period": "au-dela de 2026, retour progressif",
+   "verbatim": "as we see this portfolio growing back to 6 million ounces"
+  }
+ ],
+ "dodges": []
+}
