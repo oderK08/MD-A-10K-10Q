@@ -29,6 +29,13 @@ esprit que transcrire le webcast public auquel tu assistes. Une réupload
 par un tiers est plus discutable : préfère la source officielle. Ce choix
 est le tien, l'outil ne le fait pas à ta place.
 
+CHOISIR LE MODÈLE. Par défaut large-v3, le plus fiable, mais lourd (~3 Go)
+et lent sur un Mac sans GPU. Pour un test rapide : --model small (~250 Mo)
+ou --model medium. Pour ne pas le retaper à chaque fois, règle-le une fois
+dans ton terminal :
+    export WHISPER_MODEL=small
+Le défaut reste large-v3 pour la prod, où un chiffre mal entendu compte.
+
 INSTALLATION (une fois) :
     pip install openai-whisper       # transcription
     pip install yt-dlp               # seulement si tu pars d'une URL
@@ -125,8 +132,19 @@ def main() -> int:
                         help="fichier audio local (mp3, m4a...) OU URL YouTube")
     parser.add_argument("ticker", help="le ticker, ex: SAP")
     parser.add_argument("trimestre", help="le repère fiscal, ex: 2026Q2")
-    parser.add_argument("--model", default="large-v3",
-                        help="modèle Whisper (défaut: large-v3, le plus fiable)")
+    # The default stays the most accurate model, because on a financial
+    # call the model is what decides whether a figure was heard right,
+    # and a misheard number in a report is a real error. But WHISPER_MODEL
+    # lets someone set a lighter one ONCE in their shell for fast
+    # iteration, without retyping --model every run and without lowering
+    # the default that production relies on. The flag still wins when
+    # given, so a one-off override is `--model ...`.
+    parser.add_argument(
+        "--model",
+        default=os.environ.get("WHISPER_MODEL", "large-v3"),
+        help="modèle Whisper. Défaut: large-v3 (le plus fiable), ou la valeur "
+             "de WHISPER_MODEL si définie. Plus léger et rapide: small, medium.",
+    )
     parser.add_argument("--langue", default="",
                         help="langue du call (ex: en, fr). Vide = détection auto.")
     parser.add_argument("--pas-de-rapport", action="store_true",
