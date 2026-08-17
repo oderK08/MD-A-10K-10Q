@@ -26,12 +26,17 @@ Format : texte brut (`.txt`), au moins 1500 mots (un vrai call en fait
 Depuis un terminal, à la racine de `equity-analyzer/` :
 
 ```bash
+# à partir d'un fichier audio local :
 python scripts/transcrire.py sap_q2.mp3 SAP 2026Q2
+
+# ou directement à partir d'une URL YouTube (call officiel de la société) :
+python scripts/transcrire.py "https://youtube.com/watch?v=XXXX" SAP 2026Q2
 ```
 
-Ça transcrit l'audio avec Whisper, écrit le fichier ici au bon nom, et
-enchaîne sur le rapport si `ANTHROPIC_API_KEY` est défini. Tu n'as rien à
-renommer ni à te rappeler d'autre. Voir `scripts/transcrire.py`.
+Ça extrait l'audio si c'est une URL, le transcrit avec Whisper, écrit le
+fichier ici au bon nom, et enchaîne sur le rapport si `ANTHROPIC_API_KEY`
+est défini. Tu n'as rien à renommer ni à te rappeler d'autre. Voir
+`scripts/transcrire.py`.
 
 ## Sans terminal
 
