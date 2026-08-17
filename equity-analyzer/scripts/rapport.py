@@ -144,6 +144,18 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "").strip()
 ALPHAVANTAGE_API_KEY = os.environ.get("ALPHAVANTAGE_API_KEY", "").strip()
 
+# Outside the SEC's reach, the whole EDGAR spine has nothing to resolve:
+# no CIK, no filing to read the quarter off, no consensus on a
+# comparable basis. So an international run is not the US run with page 3
+# removed, it is a different, shorter path that never touches EDGAR and
+# is driven entirely by a transcript committed to the repository. The
+# quarter cannot be derived, so it is given: QUARTER names both the
+# fiscal label the report prints and the file to read.
+INTERNATIONAL = os.environ.get("REGION", "US").strip().upper() in {
+    "INTERNATIONAL", "HORS_US", "HORS US", "NON_US", "NON US", "INTL"
+}
+QUARTER = os.environ.get("QUARTER", "").strip().upper()
+
 # One document. Page 1 the reading, page 2 the Q&A dissected, page 3 the
 # numbers.
 #
@@ -436,7 +448,23 @@ def _press_release_block(cik, label, client):
     return press_release_block(release)
 
 
-def _prior_guidance_block(ticker, cik, label, client, company_name, store=None):
+def _local_only_source():
+    """
+    The deposited-transcript source with no provider behind it.
+
+    Used by the international path: outside the SEC's reach there is no
+    fiscal calendar to ask Alpha Vantage with, and the provider almost
+    certainly does not carry the call anyway, so the only honest source
+    for the previous quarter is a file someone committed. Reaching for
+    the provider here would spend quota on a request built to fail.
+    """
+    return CachedTranscriptSource(
+        ChainedSource([LocalTextSource(CACHE_DIR)]), TranscriptCache(CACHE_DIR)
+    )
+
+
+def _prior_guidance_block(ticker, cik, label, client, company_name, store=None,
+                          source_factory=None):
     """
     What the company committed to one quarter ago, rendered for the
     reading prompt. Never raises.
@@ -487,10 +515,13 @@ def _prior_guidance_block(ticker, cik, label, client, company_name, store=None):
     # step from writing a PDF, and paying for a fetched transcript to
     # then throw the report away is the worst outcome available here.
     try:
-        source = CachedTranscriptSource(
-            ChainedSource([LocalTextSource(CACHE_DIR), alpha_vantage_source()]),
-            TranscriptCache(CACHE_DIR),
-        )
+        if source_factory is not None:
+            source = source_factory()
+        else:
+            source = CachedTranscriptSource(
+                ChainedSource([LocalTextSource(CACHE_DIR), alpha_vantage_source()]),
+                TranscriptCache(CACHE_DIR),
+            )
         prior_call, previous, back = _find_prior_call(source, ticker, cik, label, client)
     except Exception as exc:  # noqa: BLE001 -- see above
         _warn(f"Aucun call antérieur récupérable : la lecture n'aura pas de base "
@@ -525,14 +556,9 @@ def _prior_guidance_block(ticker, cik, label, client, company_name, store=None):
     return as_prompt_block(sheet), sheet, previous
 
 
-def main() -> int:
-    if not TICKER:
-        print("TICKER est vide. Indique le ticker à analyser.")
-        return 1
-    if not ANTHROPIC_API_KEY:
-        print("ANTHROPIC_API_KEY absent. C'est cette clé qui écrit la page 1.")
-        return 1
-
+def _run_us() -> int:
+    """The default path: EDGAR resolves the company, the quarter and the
+    numbers, and the report carries all three pages."""
     print(f"=== {TICKER} : rapport sur le dernier earnings call ===")
     client = EdgarClient(EdgarClientConfig(user_agent=USER_AGENT, timeout_seconds=30.0))
 
@@ -695,6 +721,39 @@ def main() -> int:
         expectations_reason = str(exc)
         _warn(f"Consensus indisponible : {exc}")
 
+    return _analyse_and_render(
+        client, cik, company_name, call, label,
+        expectation=expectation,
+        expectations_reason=expectations_reason,
+        history=history,
+        quarter_filing=quarter_filing,
+        annual_filing=annual_filing,
+        prior_annual_filing=prior_annual_filing,
+        period_warning=period_warning,
+        stale_quarters=stale_quarters,
+        source_filing_url=filing_index_url(cik, quarter_filing.accession_number),
+        press_release=_press_release_block(cik, label, client),
+    )
+
+
+def _analyse_and_render(
+    client, cik, company_name, call, label, *,
+    expectation=None, expectations_reason=None, history=None,
+    quarter_filing=None, annual_filing=None, prior_annual_filing=None,
+    period_warning=None, stale_quarters=0, source_filing_url=None,
+    press_release="", guidance_source_factory=None, international=False,
+) -> int:
+    """
+    Everything from the two Claude passes to the written PDF, shared by
+    the US and international paths.
+
+    The two paths differ only in what they GATHER: the US one has a
+    consensus, a press release and filings off EDGAR, the international
+    one has a deposited transcript and nothing else. Once the call and
+    its label are in hand the work is identical, so it lives here once.
+    """
+    history = history or ()
+
     # -- The Q&A pass, which runs FIRST --
     #
     # OPTIONAL BUT FIRST, and the order is the point. It becomes page 2,
@@ -705,23 +764,10 @@ def main() -> int:
     # before the reading is written, and the only honest way to know is
     # to have already run this.
     #
-    # THE COST OF BEING WRONG THE OTHER WAY was measured on a real TSLA
-    # run: the same dodged question appeared as a paragraph on page 1 and
-    # as a row on page 2.
-    #
     # A failure here is still not fatal. It downgrades to a printed
     # reason, page 1 is then written WITH its dodges section, and the
     # document comes out two pages instead of three: the reader loses the
-    # inventory, never the finding. Running this first costs one wasted
-    # call only when the reading afterwards fails, which aborts the run
-    # anyway.
-    # -- What the market already knew before anyone spoke --
-    #
-    # Fetched before both passes because both need it, and for the same
-    # reason: to tell an information that was already public from one
-    # that only came out of someone's mouth. See _press_release_block.
-    press_release = _press_release_block(cik, label, client)
-
+    # inventory, never the finding.
     qa_analysis = None
     if not (call.qa or "").strip():
         _warn("Session questions-réponses non isolée dans ce transcript : "
@@ -747,16 +793,10 @@ def main() -> int:
                   f"ses esquives : {exc}")
 
     # -- The second baseline: what was promised a quarter ago --
-    #
-    # The consensus says what the QUARTER was expected to earn. It says
-    # nothing about what the COMPANY said it would do, so until now a
-    # capex envelope, a margin target or a revenue guide arrived with no
-    # reference point and the reading could report a level but never a
-    # change. Found on a real MSFT report, which quoted the capex twice
-    # and never said it had moved.
     store = HistoryStore(HISTORY_DIR)
     prior_guidance, new_sheet, baseline_quarter = _prior_guidance_block(
-        TICKER, cik, label, client, company_name, store=store
+        TICKER, cik, label, client, company_name, store=store,
+        source_factory=guidance_source_factory,
     )
 
     # -- The reading --
@@ -781,11 +821,16 @@ def main() -> int:
     _ok(f"Lecture écrite par {analysis.model} ({len(analysis.text.split())} mots)")
 
     # -- The tone, and the document --
+    #
+    # No dictionary for an international report: page 3 is dropped, so
+    # nothing renders a tone score, and Loughran-McDonald is an English
+    # lexicon that would misread a call held in another language anyway.
     dictionary = None
-    try:
-        dictionary = load_lm_dictionary(DICTIONARY_PATH)
-    except Exception as exc:  # noqa: BLE001 -- absence of the file is the expected case
-        _warn(f"Dictionnaire Loughran-McDonald illisible, tonalité non calculée : {exc}")
+    if not international:
+        try:
+            dictionary = load_lm_dictionary(DICTIONARY_PATH)
+        except Exception as exc:  # noqa: BLE001 -- absence of the file is the expected case
+            _warn(f"Dictionnaire Loughran-McDonald illisible, tonalité non calculée : {exc}")
 
     report = build_call_report(
         TICKER, company_name, cik, call, analysis,
@@ -799,7 +844,8 @@ def main() -> int:
         annual_filing=annual_filing,
         prior_annual_filing=prior_annual_filing,
         lm_dictionary=dictionary,
-        source_filing_url=filing_index_url(cik, quarter_filing.accession_number),
+        source_filing_url=source_filing_url,
+        international=international,
     )
 
     report = dataclasses.replace(report, qa_analysis=qa_analysis)
@@ -817,8 +863,15 @@ def main() -> int:
     # fitter keeps the longest render rather than losing a row, so a
     # heavy session can legitimately come out at four and the log has to
     # say four.
+    # Shown relative to the repo when it sits inside it, absolute
+    # otherwise. A deployment is free to point the output elsewhere, and
+    # a cosmetic log line must not be the thing that raises when it does.
+    try:
+        shown = output.relative_to(ROOT)
+    except ValueError:
+        shown = output
     _ok(
-        f"Rapport écrit : {output.relative_to(ROOT)} ({pages} pages"
+        f"Rapport écrit : {shown} ({pages} pages"
         f"{'' if qa_analysis is not None else ', pas de Q&A isolée'})"
     )
 
@@ -828,13 +881,6 @@ def main() -> int:
     # history is a by-product; writing it first would put a filesystem
     # error between a finished analysis and the file the run exists to
     # produce. `put` swallows its own failures for the same reason.
-    #
-    # TWO QUARTERS ARE WRITTEN, and they are different halves of the
-    # same idea. The quarter READ contributes its dodges, which only
-    # this run knows. The quarter BEFORE contributes the commitments
-    # this run had to extract, so the next run finds them instead of
-    # paying again. Records merge rather than overwrite precisely
-    # because those two arrive on different runs.
     _remember(store, TICKER, label, qa_analysis, new_sheet, baseline_quarter)
 
     print()
@@ -842,6 +888,85 @@ def main() -> int:
     print(analysis.text)
     print("=" * 70)
     return 0
+
+
+def _run_international() -> int:
+    """
+    The path for a company outside the SEC's reach.
+
+    NO EDGAR AT ALL. There is no CIK to resolve, no filing to read the
+    quarter off, and no consensus on a comparable basis, so this never
+    constructs an EdgarClient. The quarter cannot be derived from a
+    filing that does not exist, so it is given: QUARTER names both the
+    label the report prints and the file to read.
+
+    The source is the deposited transcript and only that. Alpha Vantage
+    almost certainly does not carry these calls, and without a fiscal
+    calendar there is nothing to ask it with, so reaching for it would
+    spend quota on a request built to fail. Someone commits the
+    transcript, the same route the US path already offers as its escape
+    hatch, and for a previous quarter too if they want the guidance
+    baseline.
+    """
+    if not QUARTER:
+        print("QUARTER est vide. Hors US, le trimestre ne peut pas être déduit d'un")
+        print("dépôt SEC : il faut le donner (ex: 2026Q2). C'est aussi le nom du")
+        print(f"fichier à créer, ex : transcripts/{expected_filename(TICKER, '2026Q2')}")
+        return 1
+    if not (len(QUARTER) == 6 and QUARTER[4] == "Q" and QUARTER[:4].isdigit()
+            and QUARTER[5] in "1234"):
+        print(f"QUARTER doit ressembler à 2026Q2, reçu : {QUARTER!r}")
+        return 1
+
+    print(f"=== {TICKER} {QUARTER} : rapport hors US (dépôt local) ===")
+    company_name = TICKER
+
+    try:
+        call = LocalTextSource(CACHE_DIR).fetch(TICKER, "", quarter=QUARTER)
+    except TranscriptUnavailable as exc:
+        _fail(f"Aucun transcript déposé pour {TICKER} {QUARTER} : {exc}")
+        print()
+        print("        Dépose-le, sans terminal : transcris le webcast (Whisper),")
+        print("        puis sur github.com fais Add file → Create new file et colle")
+        print("        le texte dans :")
+        print(f"            equity-analyzer/transcripts/{expected_filename(TICKER, QUARTER)}")
+        return 2
+
+    _ok(f"Transcript {QUARTER} : {call.word_count} mots, source {call.source}")
+
+    # The label came from the filename, a human's claim. The company
+    # names the period out loud in the opening, so the cross-check is
+    # free and catches a mislabelled file before it reads a real call as
+    # the wrong quarter. English-language openings only; a warning that
+    # does not fire on a non-English call is a missing check, not a false
+    # pass, so it never blocks the report.
+    period_warning = verify_against_declared(QUARTER, call.full_text)
+    if period_warning:
+        _warn(f"ATTENTION : {period_warning}")
+
+    return _analyse_and_render(
+        None, "", company_name, call, QUARTER,
+        period_warning=period_warning,
+        expectations_reason=(
+            "hors périmètre SEC : pas de consensus BPA sur une base comparable "
+            "pour une société non cotée aux États-Unis"
+        ),
+        guidance_source_factory=_local_only_source,
+        international=True,
+    )
+
+
+def main() -> int:
+    if not TICKER:
+        print("TICKER est vide. Indique le ticker à analyser.")
+        return 1
+    if not ANTHROPIC_API_KEY:
+        print("ANTHROPIC_API_KEY absent. C'est cette clé qui écrit la page 1.")
+        return 1
+
+    if INTERNATIONAL:
+        return _run_international()
+    return _run_us()
 
 
 if __name__ == "__main__":

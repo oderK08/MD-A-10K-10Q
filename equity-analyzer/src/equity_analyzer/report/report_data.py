@@ -129,6 +129,16 @@ class CallReport:
     tone_qa: SectionResult = None
     tone_mdna: SectionResult = None
 
+    # A company outside the SEC's reach: no CIK, no 10-K, no consensus on
+    # the same basis. The reading and the Q&A still hold, since they need
+    # only the call, but page 3 has no inputs and the accounting red
+    # flags would be a category error on statements filed under other
+    # rules. So it is DROPPED rather than shown as a page of "non
+    # disponible": an absence the report can do nothing about is noise,
+    # not information, unlike the US path where a missing 10-K is a real
+    # and printable event. The reading itself says what it lacked.
+    international: bool = False
+
 
 def _ok(value: T) -> SectionResult:
     return SectionResult(value=value, unavailable_reason=None)
@@ -218,6 +228,7 @@ def build_call_report(
     lm_dictionary: Optional[LMDictionary] = None,
     source_filing_url: Optional[str] = None,
     generated_at: Optional[datetime] = None,
+    international: bool = False,
 ) -> CallReport:
     """
     Builds the report object. Every argument is already-fetched data.
@@ -291,6 +302,7 @@ def build_call_report(
             "session de questions non isolée dans ce transcript",
         ),
         tone_mdna=tone_mdna,
+        international=international,
     )
 
 

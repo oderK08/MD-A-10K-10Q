@@ -9,10 +9,17 @@ name: Rapport (un ticker)
 #           document fait deux pages.
 #   page 3  les red flags annuels et la tonalité
 #
-# Le trimestre n'est pas à saisir. EDGAR sait quel trimestre la société
-# vient de déposer et sous quel repère fiscal elle le désigne, et c'est
-# le même repère que celui du fournisseur de transcripts, donc un
-# déposant à clôture juin ou janvier marche sans rien de particulier.
+# Le trimestre n'est pas à saisir en mode US. EDGAR sait quel trimestre
+# la société vient de déposer et sous quel repère fiscal elle le désigne,
+# et c'est le même repère que celui du fournisseur de transcripts, donc
+# un déposant à clôture juin ou janvier marche sans rien de particulier.
+#
+# HORS US (region = International) : il n'y a pas d'EDGAR, donc pas de CIK,
+# pas de 10-K et pas de consensus comparable. Le document se réduit aux
+# pages 1 et 2 (lecture + Q&A), la page 3 comptable disparaît. Le
+# trimestre doit être saisi (quarter), et le transcript déposé à la main
+# dans transcripts/TICKER_QUARTER.txt : le fournisseur ne couvre pas ces
+# calls et il n'y a pas de calendrier fiscal pour le lui demander.
 #
 # Secrets nécessaires (Settings > Secrets and variables > Actions) :
 #   ANTHROPIC_API_KEY    obligatoire, c'est elle qui écrit la page 1
@@ -26,6 +33,21 @@ name: Rapport (un ticker)
         description: "Le ticker (ex: AAOI, MSFT, NVDA, COHR)"
         required: true
         default: "AAOI"
+      region:
+        description: "US (par défaut) ou International (société hors SEC)"
+        required: false
+        default: "US"
+        type: choice
+        options:
+          - US
+          - International
+      quarter:
+        # Hors US il n'y a pas de dépôt SEC pour déduire le trimestre, il
+        # faut donc le donner. C'est aussi le nom du fichier transcript à
+        # déposer : transcripts/TICKER_2026Q2.txt. Ignoré en mode US.
+        description: "Trimestre fiscal, UNIQUEMENT si International (ex: 2026Q2)"
+        required: false
+        default: ""
       user_agent:
         description: "User-Agent SEC EDGAR (nom d'app + email, exigé par la SEC)"
         required: false
@@ -121,6 +143,8 @@ jobs:
       - name: Générer le rapport
         env:
           TICKER: ${{ inputs.ticker }}
+          REGION: ${{ inputs.region }}
+          QUARTER: ${{ inputs.quarter }}
           SEC_USER_AGENT: ${{ inputs.user_agent }}
           ANTHROPIC_MODEL: ${{ inputs.ai_model }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
