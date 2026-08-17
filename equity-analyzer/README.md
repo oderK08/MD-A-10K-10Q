@@ -23,6 +23,39 @@ TICKER=AAOI ANTHROPIC_API_KEY=... ALPHAVANTAGE_API_KEY=... python scripts/rappor
 Sans terminal : onglet **Actions** du dépôt → *Rapport (un ticker)* →
 « Run workflow », saisir le ticker. Le PDF sort en artefact du run.
 
+### Sociétés hors US
+
+Tout ce qui précède repose sur EDGAR, qui est américain : c'est lui qui
+résout la société, décide quel trimestre est le dernier, et fournit le
+consensus, le communiqué et les états annuels. Une société hors périmètre
+SEC n'a rien de tout ça, donc le mode International **n'est pas** le mode
+US moins la page 3, c'est un chemin distinct qui ne touche jamais EDGAR.
+
+Ce qu'on peut produire sans EDGAR, ce sont les deux pages qui ne
+dépendent que du call : la **lecture** et la **Q&A**. La page 3 disparaît
+entièrement (pas de 10-K pour les red flags, pas de MD&A, et le lexique
+Loughran-McDonald est anglais par construction, donc muet sur un call
+tenu dans une autre langue). Le consensus est indisponible et la page le
+dit, plutôt que de le cacher.
+
+Deux choses changent pour l'utilisateur. Le **trimestre doit être saisi**
+(pas d'EDGAR pour le déduire), et le **transcript est déposé à la main** :
+le fournisseur ne couvre pas ces calls et, sans calendrier fiscal, il n'y
+a rien pour le lui demander. C'est la même route que la porte de sortie US
+(transcrire le webcast, coller le texte), le trimestre en plus.
+
+```bash
+REGION=International TICKER=SAP QUARTER=2026Q2 \
+  ANTHROPIC_API_KEY=... python scripts/rapport.py
+# lit transcripts/SAP_2026Q2.txt -> rapports/SAP.pdf (2 pages)
+```
+
+Sans terminal : onglet **Actions**, *region* = International, *quarter* =
+le trimestre fiscal, après avoir déposé `transcripts/SAP_2026Q2.txt` via
+Add file → Create new file. La base de comparaison (engagements du
+trimestre précédent) marche aussi hors US si le call précédent est déposé
+de la même façon.
+
 ## Le principe
 
 **On lit le call, on ne le diffe pas.** Une version antérieure de ce projet

@@ -184,12 +184,15 @@ def _render_header(report: CallReport) -> str:
         f' · <a href="{_e(report.source_filing_url)}">source SEC EDGAR</a>'
         if report.source_filing_url else ""
     )
+    # No CIK line outside the SEC's reach: the company has none, and
+    # printing "CIK " with nothing after it advertises a field the
+    # report could not fill.
+    identifier = f" · CIK {_t(report.cik)}" if report.cik else ""
     return f"""
     <h1>{_t(report.company_name)} ({_t(report.ticker)})</h1>
     <p class="subtitle">
       Earnings call {_t(_quarter_label(call.quarter))}{date_part}
-      · transcript de {call.word_count} mots
-      · CIK {_t(report.cik)}{link}
+      · transcript de {call.word_count} mots{identifier}{link}
     </p>
     """
 
@@ -543,12 +546,15 @@ def _render_provenance(report: CallReport) -> str:
             f" {form} {filing.fiscal_period} {filing.fiscal_year}, déposé le "
             f"{filing.filed_date.isoformat()}, accession {filing.accession_number}."
         )
+    # No EDGAR line outside its perimeter: there are no SEC figures in an
+    # international report, and claiming a source it does not have is
+    # exactly the kind of quiet inaccuracy this project refuses.
+    figures = "" if report.international else f" Chiffres : SEC EDGAR.{filing_line}"
     return f"""
     <p class="footer">
       Généré le {report.generated_at.date().isoformat()}.
       Transcript : {_t(report.call.source)}, {report.call.word_count} mots.
-      Lecture : {_t(getattr(analysis, "model", "n/a"))}.
-      Chiffres : SEC EDGAR.{_t(filing_line)}
+      Lecture : {_t(getattr(analysis, "model", "n/a"))}.{_t(figures)}
       Les citations de la page 1 sont vérifiables mot pour mot dans le transcript en cache.
     </p>
     """
@@ -592,13 +598,30 @@ def render_html(report: CallReport) -> str:
   {_render_expectations(report)}
   {_render_reading(report)}
   {_render_qa_page(report)}
-  <div class="page-break">
+  {_render_backdrop(report)}
+"""
+    return _document(title, body)
+
+
+def _render_backdrop(report: CallReport) -> str:
+    """
+    Page 3, or its absence.
+
+    Outside the SEC's reach there is no 10-K to compute red flags on and
+    no MD&A to score, and the Loughran-McDonald lexicon is English by
+    construction, so the tone of a call held in another language would
+    be noise dressed as a number. The whole block is therefore dropped,
+    and provenance follows the Q&A on the same run of pages rather than
+    forcing a near-empty third sheet. The reading and the Q&A already
+    state, in their own words, what they were written without.
+    """
+    if report.international:
+        return _render_provenance(report)
+    return f"""<div class="page-break">
     {_render_red_flags(report)}
     {_render_tone(report)}
     {_render_provenance(report)}
-  </div>
-"""
-    return _document(title, body)
+  </div>"""
 
 
 def _document(title: str, body: str) -> str:
