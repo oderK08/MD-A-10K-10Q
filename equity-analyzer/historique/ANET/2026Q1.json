@@ -1,0 +1,98 @@
+{
+ "ticker": "ANET",
+ "quarter": "2026Q1",
+ "model": "claude-sonnet-5",
+ "commitments": [
+  {
+   "metric": "revenue growth",
+   "value": "27.7%",
+   "period": "exercice 2026",
+   "verbatim": "it gives us confidence to increase our forecast growth slightly to 27.7%, aiming now for $11.5 billion for 2026"
+  },
+  {
+   "metric": "revenue",
+   "value": "$11.5 billion",
+   "period": "exercice 2026",
+   "verbatim": "aiming now for $11.5 billion for 2026"
+  },
+  {
+   "metric": "AI revenue target",
+   "value": "$3.5 billion",
+   "period": "exercice 2026",
+   "verbatim": "We also increased our AI target now to $3.5 billion this year"
+  },
+  {
+   "metric": "campus revenue goal",
+   "value": "$1.25 billion",
+   "period": "exercice 2026",
+   "verbatim": "We maintain our 2026 campus revenue goal of $1.25 billion"
+  },
+  {
+   "metric": "gross margin",
+   "value": "62% a 64%",
+   "period": "exercice 2026",
+   "verbatim": "we reiterate the range for the fiscal year of 62% to 64%"
+  },
+  {
+   "metric": "operating margin",
+   "value": "environ 46%",
+   "period": "exercice 2026",
+   "verbatim": "Our operating margin outlook remains at approximately 46% for the fiscal year"
+  },
+  {
+   "metric": "taux d'imposition effectif",
+   "value": "21.5%",
+   "period": "exercice 2026",
+   "verbatim": "with a tax rate expected at 21.5%"
+  },
+  {
+   "metric": "revenu",
+   "value": "environ $2.8 billion",
+   "period": "T2 2026",
+   "verbatim": "revenues of approximately $2.8 billion"
+  },
+  {
+   "metric": "marge brute",
+   "value": "62% a 63%",
+   "period": "T2 2026",
+   "verbatim": "gross margin between 62% and 63%"
+  },
+  {
+   "metric": "marge operationnelle",
+   "value": "46% a 47%",
+   "period": "T2 2026",
+   "verbatim": "operating margin between 46% and 47%"
+  },
+  {
+   "metric": "benefice par action dilue",
+   "value": "environ $0.88",
+   "period": "T2 2026",
+   "verbatim": "diluted earnings per share of approximately $0.88 with approximately 1.27 billion diluted shares"
+  },
+  {
+   "metric": "taux d'imposition effectif",
+   "value": "environ 21.5%",
+   "period": "T2 2026",
+   "verbatim": "Our effective tax rate is expected to be approximately 21.5%"
+  },
+  {
+   "metric": "capex batiment Santa Clara",
+   "value": "$180 million",
+   "period": "exercice 2026",
+   "verbatim": "approximately $40 million in CapEx related to this program, estimated to reach $180 million in 2026"
+  },
+  {
+   "metric": "nombre de nouveaux clients a plus de 10% du chiffre d'affaires",
+   "value": "un, peut-etre deux",
+   "period": "exercice 2026",
+   "verbatim": "we still expect at least one, maybe two...I still see one, maybe two 10% customers"
+  },
+  {
+   "metric": "scale-up rack deployments a echelle de production",
+   "value": "1.6 terabit",
+   "period": "2027",
+   "verbatim": "we expect the addition of 1.6 terabit in 2027 at production scale"
+  }
+ ],
+ "dodges": []
+}

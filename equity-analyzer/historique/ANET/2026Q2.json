@@ -1,0 +1,43 @@
+{
+ "ticker": "ANET",
+ "quarter": "2026Q2",
+ "model": "claude-sonnet-5",
+ "commitments": [],
+ "dodges": [
+  {
+   "analyst": "Ben Reitzes (Melius Research)",
+   "question": "Progres sur les AI labs comme clients et sur le potentiel client a plus de 10% au quatrieme trimestre",
+   "what_was_asked": "Statut precis de ce client potentiel a plus de 10% attendu au Q4",
+   "what_was_given": "Reponse centree sur la securite, les vulnerabilites et le webinar avec Anthropic et Palo Alto, sans aborder le client en question",
+   "severity": "high"
+  },
+  {
+   "analyst": "David Vogt (UBS)",
+   "question": "Pourquoi la cible AI est restee inchangee alors que la cible campus a ete relevee dans le guide annuel",
+   "what_was_asked": "Repartition chiffree de la hausse du guide 2026 entre AI et campus",
+   "what_was_given": "Affirmation generale que tous les chiffres vont augmenter, sans donner de repartition ni de nombre precis",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Simon Leopold (Raymond James)",
+   "question": "Composition de l'augmentation incrementale de 1 milliard de dollars du guide annuel",
+   "what_was_asked": "Detail chiffre de la source de la hausse si ce n'est pas uniquement AI ou campus",
+   "what_was_given": "Reponse qualitative evoquant le coeur data center, l'entreprise et le routing, sans chiffres precis, renvoyee a plus tard",
+   "severity": "medium"
+  },
+  {
+   "analyst": "James Fish (Piper Sandler)",
+   "question": "Impact des cycles de renouvellement sur le business front-end versus back-end",
+   "what_was_asked": "Repartition de l'incrementale entre front-end et back-end lie aux cycles de refresh",
+   "what_was_given": "Reponse vague de la CFO indiquant qu'il y a beaucoup a determiner et qu'on verra d'ici la fin de l'annee",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Michael Ng (Goldman Sachs)",
+   "question": "Details sur les ameliorations de la chaine d'approvisionnement (capacite fournisseurs, pricing, avocacy client)",
+   "what_was_asked": "Mecanismes precis des concessions fournisseurs et si Arista offre plus de pricing en echange",
+   "what_was_given": "Reponse generale sur les relations fournisseurs, qualification de nouveaux vendeurs et amelioration des termes, sans detail chiffre",
+   "severity": "low"
+  }
+ ]
+}
