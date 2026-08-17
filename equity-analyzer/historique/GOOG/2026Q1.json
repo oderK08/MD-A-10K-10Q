@@ -1,0 +1,43 @@
+{
+ "ticker": "GOOG",
+ "quarter": "2026Q1",
+ "model": "claude-sonnet-5",
+ "commitments": [],
+ "dodges": [
+  {
+   "analyst": "Doug Anmuth",
+   "question": "Quel sera le montant du CapEx 2027 face au backlog croissant ?",
+   "what_was_asked": "Une quantification chiffree de l'augmentation du CapEx prevue pour 2027",
+   "what_was_given": "Confirmation qualitative que le CapEx augmentera significativement, sans chiffre, renvoye a un futur call",
+   "severity": "high"
+  },
+  {
+   "analyst": "Justin Post",
+   "question": "Quelles marges attendre sur les contrats geants d'IA generative (~100 milliards de dollars) ?",
+   "what_was_asked": "Le niveau de marge attendu sur ces contrats specifiques",
+   "what_was_given": "Refus explicite de commenter des contrats specifiques, retour a la notion generale de cadre ROIC",
+   "severity": "high"
+  },
+  {
+   "analyst": "Ken Gawrelski",
+   "question": "Quelle est la repartition actuelle de la capacite de calcul entre usage interne et Cloud externe ?",
+   "what_was_asked": "Un pourcentage ou une ventilation chiffree de l'allocation interne vs externe",
+   "what_was_given": "Reponse generale sur le cadre de planification a long terme et le ROIC, sans chiffres",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Mark Shmulik",
+   "question": "Quelle part de la force de Search vient du changement de comportement des consommateurs vs les outils IA pour annonceurs ?",
+   "what_was_asked": "Une dimensionnalisation ou decomposition quantifiee des deux facteurs",
+   "what_was_given": "Reponse qualitative sur l'expansion generale de Search sans decomposition chiffree",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Brian Nowak",
+   "question": "Quelle est la philosophie de tarification des TPU vendus a des tiers ?",
+   "what_was_asked": "Une explication precise de la strategie de pricing des TPU compte tenu du ROIC eleve du Cloud",
+   "what_was_given": "Reponse generale sur une approche opportuniste et un cadre ROIC, sans details sur la tarification",
+   "severity": "low"
+  }
+ ]
+}

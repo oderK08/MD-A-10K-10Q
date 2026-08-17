@@ -1,0 +1,44 @@
+{
+ "ticker": "GOOG",
+ "quarter": "2025Q4",
+ "model": "claude-sonnet-5",
+ "commitments": [
+  {
+   "metric": "CapEx",
+   "value": "$175 à $185 milliards",
+   "period": "exercice 2026",
+   "verbatim": "Our 2026 CapEx investments are anticipated to be in the range of $175 to $185 billion."
+  },
+  {
+   "metric": "CapEx",
+   "value": "$175 milliards à $185 milliards, avec ramp au cours de l'annee",
+   "period": "exercice 2026",
+   "verbatim": "For the full year 2026, we expect CapEx to be in the range of $175 billion to $185 billion with investments ramping over the course of the year."
+  },
+  {
+   "metric": "repartition du CapEx entre machines et actifs longue duree",
+   "value": "environ 60% serveurs, 40% data centers et reseaux",
+   "period": "exercice 2026",
+   "verbatim": "Approximately 60% of our investment in 2025 and it's going to be fairly similar in 2026 went towards machines."
+  },
+  {
+   "metric": "allocation du compute ML vers le cloud",
+   "value": "juste au-dessus de la moitie",
+   "period": "exercice 2026",
+   "verbatim": "For 2026, just over half of our ML compute is expected to go towards the cloud business."
+  },
+  {
+   "metric": "croissance de la depreciation",
+   "value": "acceleration au T1 et augmentation significative sur l'annee",
+   "period": "exercice 2026",
+   "verbatim": "we expect the growth rate in 2026 depreciation to accelerate in Q1 and meaningfully increase for the full year."
+  },
+  {
+   "metric": "impact du change sur le revenu consolide",
+   "value": "vent favorable (tailwind)",
+   "period": "T1 2026",
+   "verbatim": "At current spot rates, we would expect to see an FX tailwind to our consolidated revenues in Q1."
+  }
+ ],
+ "dodges": []
+}
