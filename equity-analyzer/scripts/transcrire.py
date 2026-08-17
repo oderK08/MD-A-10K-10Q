@@ -1,28 +1,37 @@
 """
-D'un fichier audio à un rapport, en une commande.
+D'un fichier audio OU d'une URL YouTube à un rapport, en une commande.
 
-    python scripts/transcrire.py CHEMIN_AUDIO TICKER TRIMESTRE
+    python scripts/transcrire.py SOURCE TICKER TRIMESTRE
 
-    exemple :
+    SOURCE peut être :
+      un fichier audio local   sap_q2.mp3
+      une URL YouTube          https://www.youtube.com/watch?v=XXXX
+
+    exemples :
     python scripts/transcrire.py sap_q2.mp3 SAP 2026Q2
+    python scripts/transcrire.py "https://youtube.com/watch?v=XXXX" SAP 2026Q2
 
 CE QUE ÇA FAIT, dans l'ordre :
 
-  1. transcrit l'audio avec Whisper,
-  2. écrit le texte dans transcripts/TICKER_TRIMESTRE.txt (le nom exact
+  1. si SOURCE est une URL, extrait l'audio avec yt-dlp,
+  2. transcrit l'audio avec Whisper,
+  3. écrit le texte dans transcripts/TICKER_TRIMESTRE.txt (le nom exact
      que le rapport attend, pour que tu n'aies rien à renommer),
-  3. si ANTHROPIC_API_KEY est présent, enchaîne et génère le rapport.
+  4. si ANTHROPIC_API_KEY est présent, enchaîne et génère le rapport.
 
 Tu n'as donc qu'UNE chose à retenir : cette commande. Le nom du fichier,
 son emplacement, le format du trimestre, tout est géré ici.
 
-CE QUE ÇA NE FAIT PAS : récupérer l'audio. Whisper transcrit un fichier
-que tu fournis. Enregistrer le webcast auquel tu assistes est ta partie,
-et c'est la seule route honnête (copier un site de transcripts ne l'est
-pas). Voir transcript_source.py.
+UN MOT SUR YOUTUBE. Les conditions de YouTube restreignent le
+téléchargement. Pour un earnings call posté par la SOCIÉTÉ sur sa chaîne
+officielle, en extraire l'audio pour ton analyse interne est dans le même
+esprit que transcrire le webcast public auquel tu assistes. Une réupload
+par un tiers est plus discutable : préfère la source officielle. Ce choix
+est le tien, l'outil ne le fait pas à ta place.
 
 INSTALLATION (une fois) :
-    pip install openai-whisper
+    pip install openai-whisper       # transcription
+    pip install yt-dlp               # seulement si tu pars d'une URL
     puis ffmpeg :  brew install ffmpeg   (macOS)
                    sudo apt-get install ffmpeg   (Ubuntu)
 """
@@ -31,8 +40,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
@@ -46,6 +57,42 @@ MIN_WORDS = 1500
 def _valid_quarter(quarter: str) -> bool:
     return (len(quarter) == 6 and quarter[4] == "Q"
             and quarter[:4].isdigit() and quarter[5] in "1234")
+
+
+def _is_url(source: str) -> bool:
+    return source.startswith(("http://", "https://"))
+
+
+def _download_audio(url: str, into: Path) -> Path:
+    """
+    The call's audio, pulled from a video URL with yt-dlp.
+
+    A subprocess rather than the library, because `pip install yt-dlp`
+    puts the command on the PATH and shelling out keeps this script from
+    depending on yt-dlp's Python API, which changes more often than its
+    CLI. Errors clearly when the tool is missing.
+    """
+    if shutil.which("yt-dlp") is None:
+        sys.exit(
+            "yt-dlp n'est pas installé, il extrait l'audio d'une URL. Fais :\n"
+            "    pip install yt-dlp\n"
+            "(et ffmpeg, comme pour Whisper). Ou pars d'un fichier audio local."
+        )
+    target = into / "audio.%(ext)s"
+    print(f"Extraction de l'audio depuis {url} ...")
+    result = subprocess.call([
+        "yt-dlp", "-x", "--audio-format", "mp3",
+        "-o", str(target), url,
+    ])
+    if result != 0:
+        sys.exit(
+            "yt-dlp n'a pas pu récupérer l'audio. Vérifie l'URL, et que la vidéo "
+            "est bien accessible (ni privée, ni géo-bloquée)."
+        )
+    files = sorted(into.glob("audio.*"))
+    if not files:
+        sys.exit("yt-dlp n'a produit aucun fichier audio.")
+    return files[0]
 
 
 def _transcribe(audio: Path, model_name: str, language: str) -> str:
@@ -74,7 +121,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Audio -> transcript nommé -> rapport, en une commande.",
     )
-    parser.add_argument("audio", help="le fichier audio du call (mp3, m4a, wav...)")
+    parser.add_argument("source",
+                        help="fichier audio local (mp3, m4a...) OU URL YouTube")
     parser.add_argument("ticker", help="le ticker, ex: SAP")
     parser.add_argument("trimestre", help="le repère fiscal, ex: 2026Q2")
     parser.add_argument("--model", default="large-v3",
@@ -85,10 +133,6 @@ def main() -> int:
                         help="s'arrêter après le transcript, ne pas générer le PDF")
     args = parser.parse_args()
 
-    audio = Path(args.audio)
-    if not audio.is_file():
-        sys.exit(f"Fichier audio introuvable : {audio}")
-
     ticker = args.ticker.strip().upper()
     quarter = args.trimestre.strip().upper()
     if not _valid_quarter(quarter):
@@ -96,7 +140,24 @@ def main() -> int:
                  "C'est le repère FISCAL de la société, celui qu'elle annonce "
                  "dans le call.")
 
-    text = _transcribe(audio, args.model, args.langue.strip())
+    # A URL is downloaded into a scratch directory that lives only for
+    # the run; a local path is used where it sits, untouched. The
+    # quarter is validated FIRST, so a typo does not cost a download.
+    tmp = None
+    if _is_url(args.source):
+        tmp = tempfile.mkdtemp(prefix="transcrire_")
+        audio = _download_audio(args.source, Path(tmp))
+    else:
+        audio = Path(args.source)
+        if not audio.is_file():
+            sys.exit(f"Fichier audio introuvable : {audio}\n"
+                     "(ou, si c'était une URL, elle doit commencer par http)")
+
+    try:
+        text = _transcribe(audio, args.model, args.langue.strip())
+    finally:
+        if tmp is not None:
+            shutil.rmtree(tmp, ignore_errors=True)
     words = len(text.split())
     if words < MIN_WORDS:
         sys.exit(
