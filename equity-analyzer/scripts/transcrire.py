@@ -115,12 +115,21 @@ def _transcribe(audio: Path, model_name: str, language: str) -> str:
         )
 
     print(f"Transcription de {audio.name} avec le modèle {model_name}...")
-    print("(un call d'une heure prend quelques minutes sur GPU, plus sur CPU)")
+    print("(sur un Mac sans GPU, un call d'une heure peut prendre 30 à 60 min)")
     model = whisper.load_model(model_name)
+    # verbose=False AFFICHE une barre de progression sur la durée de
+    # l'audio. Le défaut (None) ne montre rien, et une transcription
+    # silencieuse de 40 minutes est indistinguable d'un plantage : c'est
+    # exactement ce qui a fait croire à un gel. verbose=True imprimerait
+    # tout le texte au fur et à mesure, trop bavard ; False donne le juste
+    # milieu, une barre et rien d'autre.
+    #
     # language=None laisse Whisper détecter; on passe la valeur seulement
     # si l'utilisateur l'a donnée, pour ne pas forcer l'anglais sur un
     # call tenu dans une autre langue.
-    result = model.transcribe(str(audio), language=language or None)
+    result = model.transcribe(
+        str(audio), language=language or None, verbose=False
+    )
     return (result.get("text") or "").strip()
 
 
