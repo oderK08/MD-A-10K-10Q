@@ -1,0 +1,43 @@
+{
+ "ticker": "AMAT",
+ "quarter": "2026Q2",
+ "model": "claude-sonnet-5",
+ "commitments": [],
+ "dodges": [
+  {
+   "analyst": "Atif Malik",
+   "question": "Le projet Terafab fait-il partie des plus de 10 nouveaux projets en pipeline ?",
+   "what_was_asked": "Confirmation si Terafab est dans le pipeline actuel ou plutot pour l'annee prochaine",
+   "what_was_given": "Refus de commenter un projet specifique, simple correction que c'etait plus de 10 projets",
+   "severity": "high"
+  },
+  {
+   "analyst": "Timothy Arcuri",
+   "question": "Risque d'extension des restrictions liees a Huawei sur des complexes de fabs mixtes",
+   "what_was_asked": "Evaluation du risque que les restrictions s'etendent a des sites co-melant capacite autorisee et non autorisee",
+   "what_was_given": "Refus explicite de commenter, renvoi vers le fait que tout est deja integre dans le guidage",
+   "severity": "high"
+  },
+  {
+   "analyst": "Vivek Arya",
+   "question": "La croissance semi future sera-t-elle tiree par les unites ou par le prix ?",
+   "what_was_asked": "Vue sur la repartition volume versus prix dans la croissance semi sur 1 a 3 ans",
+   "what_was_given": "Refus explicite de speculer sur unites versus pricing, reponse centree sur la demande de calcul globale",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Atif Malik",
+   "question": "Calendrier d'adoption du large panel packaging",
+   "what_was_asked": "Timing precis pour l'adoption des nouvelles architectures de packaging grand format",
+   "what_was_given": "Refus de donner un calendrier specifique, discours general sur le positionnement d'Applied",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Jim Schneider",
+   "question": "Quelle techno sera la plus porteuse en 2027, DRAM ou logique de pointe ?",
+   "what_was_asked": "Identification du segment le plus fort en croissance en 2027",
+   "what_was_given": "Refus de trancher, reponse que les deux segments accelereront de facon similaire",
+   "severity": "low"
+  }
+ ]
+}
