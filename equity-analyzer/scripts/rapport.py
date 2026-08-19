@@ -73,6 +73,7 @@ producing a document whose first page apologises.
 from __future__ import annotations
 
 import dataclasses
+import json
 import os
 import sys
 import time
@@ -131,6 +132,7 @@ from equity_analyzer.data_layer.press_release import (
     as_prompt_block as press_release_block,
     fetch_press_release,
 )
+from equity_analyzer.report.record import report_record
 from equity_analyzer.report.guidance_sheet import (
     GuidanceSheet,
     as_prompt_block,
@@ -874,6 +876,22 @@ def _analyse_and_render(
         f"Rapport écrit : {shown} ({pages} pages"
         f"{'' if qa_analysis is not None else ', pas de Q&A isolée'})"
     )
+
+    # -- The machine-readable twin of the PDF --
+    #
+    # The PDF is for a person; a sector view is asked of many reports at
+    # once, and nothing reasons across PDFs. So the same report is also
+    # written as JSON next to it, and a later pass can load a dozen and
+    # synthesise. Never fatal: the PDF is already on disk, so a failure
+    # here costs the sidecar, not the deliverable.
+    try:
+        record_path = REPORTS_DIR / f"{TICKER}.json"
+        record_path.write_text(
+            json.dumps(report_record(report), indent=1, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception as exc:  # noqa: BLE001 -- a by-product must not cost the run
+        _warn(f"Fiche JSON du rapport non écrite : {exc}")
 
     # -- What this run learned, kept for the next one --
     #
