@@ -17,7 +17,10 @@ import pytest
 from equity_analyzer.report import claude_client
 from equity_analyzer.report.claude_client import ClaudeError
 from equity_analyzer.report.sector import (
+    DISTANT_DAYS,
     SectorSynthesis,
+    _distant_tickers,
+    _reference_date,
     analyse_sector,
     build_prompt,
     parse_response,
@@ -195,3 +198,99 @@ def test_empty_axes_are_dropped_rather_than_rendered_blank():
 def test_no_em_dash_reaches_the_rendered_page():
     html = render_sector_html(_synthesis())
     assert "—" not in html and "–" not in html
+
+
+# -- A company on an older results cycle -------------------------------
+
+
+def _dated(ticker, results_date=None, generated=None):
+    """A minimal record carrying only what the distance test needs."""
+    rec = {"ticker": ticker, "societe": ticker, "trimestre": "2026Q2",
+           "lecture": f"## Verdict\n{ticker}."}
+    if results_date is not None:
+        rec["date_resultats"] = results_date
+    if generated is not None:
+        rec["genere_le"] = generated
+    return rec
+
+
+def test_reference_date_prefers_the_results_date_over_generation():
+    rec = _dated("A", results_date="2026-07-30", generated="2026-08-15")
+    assert _reference_date(rec).isoformat() == "2026-07-30"
+
+
+def test_reference_date_falls_back_to_generation_when_no_results_date():
+    rec = _dated("A", generated="2026-08-15")
+    assert _reference_date(rec).isoformat() == "2026-08-15"
+
+
+def test_reference_date_is_none_when_nothing_is_datable():
+    assert _reference_date(_dated("A")) is None
+    assert _reference_date({"ticker": "A", "date_resultats": "pas une date"}) is None
+
+
+def test_a_company_a_quarter_behind_is_flagged_distant():
+    records = [_dated("FRESH", results_date="2026-08-10"),
+               _dated("OLD", results_date="2026-05-01")]
+    distant = _distant_tickers(records)
+    assert "FRESH" not in distant
+    assert distant["OLD"] == (
+        _reference_date(records[0]) - _reference_date(records[1])).days
+
+
+def test_normal_season_spread_is_not_flagged():
+    # A few weeks apart is a normal earnings season, not a stale cycle.
+    records = [_dated("A", results_date="2026-08-10"),
+               _dated("B", results_date="2026-07-25")]
+    assert _distant_tickers(records) == {}
+
+
+def test_the_threshold_boundary_does_not_flag():
+    from datetime import date, timedelta
+    newest = date(2026, 8, 10)
+    behind = newest - timedelta(days=DISTANT_DAYS)
+    records = [_dated("A", results_date=newest.isoformat()),
+               _dated("B", results_date=behind.isoformat())]
+    assert _distant_tickers(records) == {}
+
+
+def test_no_dates_at_all_flags_nobody():
+    assert _distant_tickers([_dated("A"), _dated("B")]) == {}
+    # The existing dateless fixtures must stay unflagged.
+    assert _distant_tickers(_RECORDS) == {}
+
+
+def test_the_distant_company_is_flagged_in_the_prompt():
+    records = [_dated("FRESH", results_date="2026-08-10"),
+               _dated("OLD", results_date="2026-05-01")]
+    prompt = build_prompt(records)
+    assert "ATTENTION PERIODE" in prompt
+    assert "OLD" in prompt.split("ATTENTION PERIODE")[1][:200]
+    # The fresh company carries no such flag.
+    assert prompt.count("ATTENTION PERIODE") == 1
+
+
+def test_the_system_prompt_carries_the_period_rule():
+    prompt = system_prompt().lower()
+    assert "avertissement periode" in prompt
+    assert "arriere plan" in prompt
+
+
+def test_analyse_sector_exposes_the_distant_companies(monkeypatch):
+    _answers(monkeypatch, json.dumps(_ANSWER))
+    records = [_dated("FRESH", results_date="2026-08-10"),
+               _dated("OLD", results_date="2026-05-01")]
+    synthesis = analyse_sector(records, api_key="k")
+    assert synthesis.has_distant is True
+    assert "OLD" in synthesis.distant
+
+
+def test_a_distant_company_is_warned_on_the_page():
+    html = render_sector_html(_synthesis(distant={"AMD": 92}))
+    assert "Periode decalee" in html
+    assert "AMD" in html
+
+
+def test_an_up_to_date_group_carries_no_period_warning():
+    html = render_sector_html(_synthesis())
+    assert "Periode decalee" not in html

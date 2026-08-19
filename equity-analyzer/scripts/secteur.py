@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from equity_analyzer.report.claude_client import ClaudeError  # noqa: E402
-from equity_analyzer.report.sector import analyse_sector  # noqa: E402
+from equity_analyzer.report.sector import _distant_tickers, analyse_sector  # noqa: E402
 from equity_analyzer.report.sector_render import render_sector_html  # noqa: E402
 from equity_analyzer.report.pdf_renderer import save_pdf  # noqa: E402
 
@@ -96,6 +96,12 @@ def main() -> int:
               + ", ".join(f"{k} {v}" for k, v in quarters.items())
               + ". La synthese le signale sur la page.")
 
+    distant = _distant_tickers(records)
+    if distant:
+        _warn("Periode decalee (rapport d'un autre cycle) : "
+              + ", ".join(f"{k} ({v} j de retard)" for k, v in distant.items())
+              + ". Ces societes sont lues en arriere plan, pas comme le trimestre en cours.")
+
     print(f"  ...   Synthese par Claude ({ANTHROPIC_MODEL or 'modele par defaut'})")
     try:
         synthesis = analyse_sector(
@@ -133,6 +139,7 @@ def main() -> int:
                 "guidance": synthesis.guidance,
                 "read_throughs": synthesis.read_throughs,
                 "ton": synthesis.ton,
+                "periode_decalee": synthesis.distant,
             }, indent=1, ensure_ascii=False),
             encoding="utf-8",
         )

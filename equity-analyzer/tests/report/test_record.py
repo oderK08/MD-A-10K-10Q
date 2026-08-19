@@ -11,7 +11,7 @@ reading.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from equity_analyzer.report.record import report_record
 from equity_analyzer.report.report_data import build_call_report
@@ -25,13 +25,14 @@ READING = (
 )
 
 
-def _report(**overrides):
+def _report(transcript=None, **overrides):
     kwargs = dict(call_quarter="2026Q2",
                   generated_at=datetime(2026, 8, 1, tzinfo=timezone.utc))
     kwargs.update(overrides)
     return build_call_report(
         "SAP", "SAP SE", "0001",
-        make_transcript(prepared="x " * 40, qa="q " * 40),
+        transcript if transcript is not None
+        else make_transcript(prepared="x " * 40, qa="q " * 40),
         make_analysis(text=READING),
         **kwargs,
     )
@@ -83,6 +84,31 @@ def test_no_qa_page_records_qa_as_none():
 
 def test_an_international_report_is_marked_as_such():
     assert report_record(_report(international=True))["international"] is True
+
+
+def test_the_results_date_is_the_call_date_when_known():
+    """
+    A sector view compares freshness across issuers, and a fiscal label
+    cannot do that. The call date is the truth of when the results landed.
+    """
+    record = report_record(
+        _report(transcript=make_transcript(
+            prepared="x " * 40, qa="q " * 40, call_date=date(2026, 7, 30))))
+    assert record["date_resultats"] == "2026-07-30"
+
+
+def test_the_results_date_falls_back_to_the_release_date():
+    """No call date, but the consensus carries when the numbers were
+    reported: that still dates the results."""
+    record = report_record(_report(
+        expectation=make_expectation(reported_date=date(2026, 7, 28))))
+    assert record["date_resultats"] == "2026-07-28"
+
+
+def test_the_results_date_is_none_when_nothing_dates_the_results():
+    """Neither a call date nor a consensus: the field is null and a sector
+    view falls back to when the report was generated."""
+    assert report_record(_report())["date_resultats"] is None
 
 
 def test_a_reading_without_a_verdict_line_yields_an_empty_verdict_not_a_crash():

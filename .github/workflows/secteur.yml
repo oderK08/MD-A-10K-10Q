@@ -45,13 +45,20 @@ jobs:
         # La matière de la synthèse : les fiches JSON écrites par les runs
         # de rapport, sur la branche `donnees`. Sans elles, rien à
         # comparer, et secteur.py le dira proprement.
+        #
+        # Les rapports sont archivés sous `equity-analyzer/rapports/` sur
+        # `donnees` (c'est là que rapport.py les pousse). On lit donc ce
+        # chemin exact, depuis la racine du dépôt, pour que les fiches
+        # atterrissent dans equity-analyzer/rapports/ où secteur.py les
+        # attend. Un pathspec `rapports` seul ne matche rien sur donnees.
         continue-on-error: true
+        working-directory: ${{ github.workspace }}
         run: |
           git fetch origin donnees --depth=1 2>/dev/null || true
           if git rev-parse --verify origin/donnees >/dev/null 2>&1; then
-            git --work-tree=. checkout origin/donnees -- rapports 2>/dev/null || true
+            git checkout origin/donnees -- equity-analyzer/rapports 2>/dev/null || true
             echo "Rapports archivés récupérés :"
-            find rapports -name '*.json' 2>/dev/null | head -40 || true
+            find equity-analyzer/rapports -name '*.json' 2>/dev/null | head -40 || true
           else
             echo "Pas encore de branche donnees : lance d'abord des rapports."
           fi

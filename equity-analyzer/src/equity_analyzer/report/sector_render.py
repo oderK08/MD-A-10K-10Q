@@ -26,6 +26,18 @@ def _header(synthesis) -> str:
             "dernier call disponible, le trimestre est indique a cote de son nom. Un "
             "ecart entre pairs peut donc porter sur des moments differents.</p>"
         )
+    distant = getattr(synthesis, "distant", None) or {}
+    if distant:
+        names = ", ".join(
+            f"{_t(t)} ({int(d)} j de retard)"
+            for t, d in sorted(distant.items(), key=lambda kv: -kv[1])
+        )
+        warn += (
+            '<p class="note">Periode decalee : le dernier rapport disponible de '
+            f"{names} est nettement plus ancien que celui du reste du groupe, donc "
+            "un autre cycle de resultats. Ces societes sont lues en arriere plan, "
+            "pas comme le trimestre en cours.</p>"
+        )
     return f"""
     <h1>Synthese sectorielle</h1>
     <p class="subtitle">{pairs}</p>
