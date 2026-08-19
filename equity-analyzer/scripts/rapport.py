@@ -124,8 +124,7 @@ from equity_analyzer.report import (
     analyse_call,
     analyse_qa,
     build_call_report,
-    render_html,
-    save_pdf,
+    render_report_pdf,
 )
 from equity_analyzer.data_layer.history import HistoryStore, QuarterRecord
 from equity_analyzer.data_layer.press_release import (
@@ -854,13 +853,14 @@ def _analyse_and_render(
 
     REPORTS_DIR.mkdir(exist_ok=True)
     output = REPORTS_DIR / f"{TICKER}.pdf"
-    # Compacted to fit the budget this document actually has. With a Q&A
-    # page that is a target with a net rather than a guarantee, because
-    # page 2's length follows the session: the stylesheet tightens until
-    # it fits and, if even the tightest step overruns, the longer render
-    # is kept. Never a dropped finding.
+    # The reading and the compaction are fitted together: page 1 is
+    # filled at the font the document actually uses, so a long Q&A that
+    # forces the whole document to a smaller font does not leave the
+    # reading floating in white space (see render_report_pdf, and the
+    # real GOOG report that showed the bug).
     budget = MAX_PAGES_WITH_QA if qa_analysis is not None else MAX_PAGES_WITHOUT_QA
-    pages = save_pdf(render_html(report), output, max_pages=budget)
+    pdf_bytes, pages = render_report_pdf(report, budget)
+    output.write_bytes(pdf_bytes)
     # The count is the one the PDF actually has, not the budget: the
     # fitter keeps the longest render rather than losing a row, so a
     # heavy session can legitimately come out at four and the log has to

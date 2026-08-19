@@ -259,18 +259,18 @@ def _filler(word_count):
     return "## Verdict\n" + " ".join(body)
 
 
-def _best_fit_words(report):
+def _best_fit_words(report, css=""):
     """
     The largest reading, in words, that keeps page 1 to one page for
-    THIS report, reproducing what `_render_reading` measures. Used to
-    assert the fit sits at the real edge and moves with the caveats.
+    THIS report at the given compaction level. Used to assert the fit
+    sits at the real edge and moves with the caveats.
     """
     from equity_analyzer.report.html_renderer import _page_one_pages, _reading_html
     from equity_analyzer.report.markdown import truncate_words
 
     full = report.analysis.text
     fits = [n for n in range(300, 900, 10)
-            if _page_one_pages(report, _reading_html(truncate_words(full, n)[0], True)) == 1]
+            if _page_one_pages(report, _reading_html(truncate_words(full, n)[0], True), css) == 1]
     return max(fits) if fits else 0
 
 
@@ -285,17 +285,27 @@ def test_a_reading_that_fits_is_kept_whole_and_not_truncated():
     assert page_count(render_pdf(html)) == 2
 
 
-@needs_report_font
-def test_an_overlong_reading_is_measured_down_so_page_one_never_overflows():
+def test_an_overlong_reading_stays_within_budget():
     """
-    Measured, not counted. A reading far longer than a page is trimmed
-    until page 1 fits, the note is added, and the document does not spill
-    onto an extra sheet. Pinned to the production font: capacity is a
-    property of the typeface.
+    A reading far longer than a page does not blow the document past its
+    budget: the orchestrator fits it. `render_report_pdf` trims to fit
+    whatever the font, so the no-Q&A report stays two pages.
     """
-    html = render_html(build_report(reading=_filler(1200)))
-    assert "Lecture tronquée" in html
-    assert page_count(render_pdf(html)) == 2
+    from equity_analyzer.report.html_renderer import render_report_pdf
+    _, pages = render_report_pdf(build_report(reading=_filler(1200)), 2)
+    assert pages == 2
+
+
+def test_an_overlong_reading_is_actually_trimmed_with_a_note():
+    """
+    And it IS trimmed: the fit returns a word count below the full
+    reading, and the rendered page carries the truncation note.
+    """
+    from equity_analyzer.report.html_renderer import _fit_reading_words
+    report = build_report(reading=_filler(1200))
+    kept = _fit_reading_words(report, "")
+    assert kept is not None and kept < 1200
+    assert "Lecture tronquée" in render_html(report, reading_words=kept)
 
 
 @needs_report_font
@@ -335,22 +345,39 @@ def test_caveats_shrink_the_kept_reading_but_page_one_still_fits():
             "2025 »), appariement à vérifier avant de conclure quoi que ce soit"
         ),
     )
+    from equity_analyzer.report.html_renderer import render_report_pdf
     assert _best_fit_words(warned) < _best_fit_words(clean)
-    assert page_count(render_pdf(render_html(warned))) == 2
+    assert render_report_pdf(warned, 2)[1] == 2
 
 
-def test_an_overlong_reading_is_truncated_and_the_report_says_so():
+@needs_report_font
+def test_a_heavy_qa_keeps_the_full_reading_rather_than_trimming_it():
     """
-    A reading that HAS been trimmed carries the sentence saying so, and
-    the words past the cut are gone. Not font-guarded: page 1 is fitted
-    to one page whatever the typeface, so the document is two pages
-    either way.
-    """
-    html = render_html(build_report(reading=_filler(1200)))
+    The GOOG bug, pinned. A long reading with a heavy Q&A used to be
+    trimmed to fit page 1 at NATURAL font, and then the whole document
+    compacted its font, leaving the trimmed reading floating in white
+    space.
 
-    assert "Lecture tronquée" in html
-    assert "mot1100" not in html
-    assert page_count(render_pdf(html)) == 2
+    Now the fit is done at the font the document really uses. Once the
+    document compacts (a heavy Q&A forces it), page 1 holds the whole
+    reading, so the orchestrator keeps it intact instead of cutting it:
+    the fit at the compaction level the document lands on is None (no
+    trim). The reader keeps every section, and "A surveiller" is no
+    longer cut.
+    """
+    import dataclasses
+    from equity_analyzer.report.html_renderer import _fit_reading_words, render_report_pdf
+    from equity_analyzer.report.pdf_renderer import _COMPACTION_STEPS
+
+    report = dataclasses.replace(
+        build_report(reading=_filler(620)), qa_analysis=_qa_load(8, 6, 6))
+    # A document heavy enough that it must compact its font.
+    _, pages = render_report_pdf(report, 3)
+    assert pages >= 3
+
+    # At the first compaction step (the least-compacted the fallback will
+    # pick for such a document), the full reading fits page 1: no trim.
+    assert _fit_reading_words(report, _COMPACTION_STEPS[0]) is None
 
 
 @needs_report_font
