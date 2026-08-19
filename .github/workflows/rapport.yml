@@ -151,27 +151,30 @@ jobs:
           ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
         run: python scripts/rapport.py
 
-      - name: Conserver ce que ce run a appris
-        # Les engagements chiffrés d'un trimestre et les esquives d'une
-        # session, poussés sur `donnees`. C'est ce qui transforme un
-        # instantané en série : au trimestre suivant, la base de
-        # comparaison est déjà là, gratuite, et les esquives récurrentes
-        # deviennent visibles.
+      - name: Conserver ce que ce run a produit
+        # Trois choses poussées sur `donnees`, une branche à part de
+        # `main` pour que l'historique du code reste celui du code :
         #
-        # `if: always()` pour la même raison que la publication : un run
-        # qui échoue après avoir extrait une fiche a payé pour elle, et
-        # la jeter obligerait à la repayer.
+        #   historique/  les engagements et esquives structurés, qui
+        #                transforment un instantané en série (base de
+        #                comparaison gratuite au trimestre suivant).
+        #   rapports/    les PDF eux-mêmes, archivés pour de bon plutôt
+        #                que perdus avec l'artefact du run qui expire.
+        #   rapports/*.json  le jumeau machine de chaque PDF, la matière
+        #                d'une analyse sectorielle (on ne raisonne pas
+        #                sur des PDF ; on charge des JSON).
         #
-        # `continue-on-error` parce que c'est un sous-produit. Un
-        # conflit de push contre un run parallèle ne doit pas rendre
-        # rouge un run dont le PDF est déjà écrit.
+        # `if: always()` : un run qui échoue après avoir produit quelque
+        # chose l'a payé, le jeter obligerait à le repayer.
+        # `continue-on-error` : c'est un sous-produit, un conflit de push
+        # contre un run parallèle ne doit pas rendre le run rouge.
         if: always()
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -u
-          if [ -z "$(find historique -name '*.json' 2>/dev/null)" ]; then
+          if [ -z "$(find historique rapports -type f 2>/dev/null)" ]; then
             echo "Rien de nouveau à conserver."
             exit 0
           fi
@@ -180,7 +183,7 @@ jobs:
           # Basculer celui-ci sur `donnees` remplacerait son contenu et
           # effacerait rapports/ et transcripts/ avant l'étape de
           # publication qui suit.
-          src="$(pwd)/historique"
+          src="$(pwd)"
           work="$(mktemp -d)"
           cd "$work"
           git init -q
@@ -198,21 +201,22 @@ jobs:
             git checkout -q --orphan donnees
           fi
 
-          mkdir -p equity-analyzer/historique
-          cp -r "$src/." equity-analyzer/historique/
-          git add -A equity-analyzer/historique
+          mkdir -p equity-analyzer/historique equity-analyzer/rapports
+          [ -d "$src/historique" ] && cp -r "$src/historique/." equity-analyzer/historique/ || true
+          [ -d "$src/rapports" ] && cp -r "$src/rapports/." equity-analyzer/rapports/ || true
+          git add -A equity-analyzer/historique equity-analyzer/rapports
           if git diff --cached --quiet; then
-            echo "Historique déjà à jour."
+            echo "Rien de neuf à pousser."
             exit 0
           fi
-          git commit -q -m "Historique ${{ inputs.ticker }} (run ${{ github.run_number }})"
+          git commit -q -m "Rapport et historique ${{ inputs.ticker }} (run ${{ github.run_number }})"
 
           # La course perdue contre un run parallèle est un cas normal,
           # pas une erreur : deux tickers analysés en même temps écrivent
           # dans des répertoires différents, donc un rebase suffit.
           for attempt in 1 2 3; do
             if git push -q origin donnees; then
-              echo "Historique poussé sur donnees."
+              echo "Rapport et historique poussés sur donnees."
               exit 0
             fi
             echo "Push refusé, rebase et nouvelle tentative ($attempt/3)."
