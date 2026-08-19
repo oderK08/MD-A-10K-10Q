@@ -1,0 +1,139 @@
+name: Synthèse sectorielle
+
+# Tu donnes une liste de tickers, tu obtiens un PDF de 2 à 3 pages qui
+# lit leurs earnings calls ENSEMBLE : divergences, ce que le marché
+# redoute vu par les questions, guidance côte à côte, read-throughs, ton.
+#
+# Ça ne relit pas les calls : ça charge les rapports DÉJÀ archivés (leur
+# jumeau JSON) sur la branche `donnees`. Il faut donc avoir lancé le
+# rapport sur chaque société d'abord. Chaque société est prise à son
+# dernier trimestre disponible ; si les trimestres divergent, la synthèse
+# le signale.
+#
+# Secret nécessaire : ANTHROPIC_API_KEY (c'est elle qui écrit la synthèse).
+
+"on":
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "Les sociétés, séparées par une espace (ex: NVDA AMD AVGO)"
+        required: true
+        default: "MSFT TSLA PLTR"
+      ai_model:
+        description: "Modèle Claude qui écrit la synthèse"
+        required: false
+        default: "claude-sonnet-5"
+        type: choice
+        options:
+          - claude-sonnet-5
+          - claude-opus-5
+          - claude-haiku-4-5-20251001
+
+jobs:
+  secteur:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: equity-analyzer
+    steps:
+      - name: Checkout du repo
+        uses: actions/checkout@v4
+
+      - name: Récupérer les rapports archivés
+        # La matière de la synthèse : les fiches JSON écrites par les runs
+        # de rapport, sur la branche `donnees`. Sans elles, rien à
+        # comparer, et secteur.py le dira proprement.
+        continue-on-error: true
+        run: |
+          git fetch origin donnees --depth=1 2>/dev/null || true
+          if git rev-parse --verify origin/donnees >/dev/null 2>&1; then
+            git --work-tree=. checkout origin/donnees -- rapports 2>/dev/null || true
+            echo "Rapports archivés récupérés :"
+            find rapports -name '*.json' 2>/dev/null | head -40 || true
+          else
+            echo "Pas encore de branche donnees : lance d'abord des rapports."
+          fi
+
+      - name: Installer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer la police du rapport (Lato)
+        # Le PDF intègre Lato via @font-face pointant sur un vrai .ttf.
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-lato
+
+      - name: Installer les dépendances
+        run: |
+          pip install --ignore-installed cryptography
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Lancer la suite de tests
+        run: python -m pytest tests/ -q
+
+      - name: Générer la synthèse
+        env:
+          TICKERS: ${{ inputs.tickers }}
+          ANTHROPIC_MODEL: ${{ inputs.ai_model }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        # $TICKERS est volontairement non quoté : il est découpé en
+        # arguments (les tickers). Ce workflow n'est déclenché qu'à la
+        # main par un membre du dépôt.
+        run: python scripts/secteur.py $TICKERS
+
+      - name: Conserver la synthèse
+        # Le PDF et son jumeau JSON, poussés sur `donnees` à côté des
+        # rapports. Même mécanique que le run de rapport : clone à part,
+        # push avec rebase, la course perdue est normale.
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          if [ -z "$(find rapports -name 'secteur_*' 2>/dev/null)" ]; then
+            echo "Aucune synthèse produite à conserver."
+            exit 0
+          fi
+          src="$(pwd)"
+          work="$(mktemp -d)"
+          cd "$work"
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git fetch -q --depth=1 origin donnees 2>/dev/null; then
+            git checkout -q -B donnees FETCH_HEAD
+          else
+            git checkout -q --orphan donnees
+          fi
+          mkdir -p equity-analyzer/rapports
+          cp "$src"/rapports/secteur_* equity-analyzer/rapports/ 2>/dev/null || true
+          git add -A equity-analyzer/rapports
+          if git diff --cached --quiet; then
+            echo "Rien de neuf à pousser."
+            exit 0
+          fi
+          git commit -q -m "Synthèse sectorielle (run ${{ github.run_number }})"
+          for attempt in 1 2 3; do
+            if git push -q origin donnees; then
+              echo "Synthèse poussée sur donnees."
+              exit 0
+            fi
+            git fetch -q --depth=1 origin donnees || true
+            git rebase origin/donnees || git rebase --abort || true
+            sleep $((attempt * 3))
+          done
+          echo "Synthèse non poussée : un autre run a probablement gagné la course."
+
+      - name: Publier la synthèse
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: secteur
+          path: equity-analyzer/rapports/secteur_*
+          if-no-files-found: warn
