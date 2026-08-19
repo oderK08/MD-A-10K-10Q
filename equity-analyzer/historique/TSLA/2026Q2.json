@@ -1,0 +1,43 @@
+{
+ "ticker": "TSLA",
+ "quarter": "2026Q2",
+ "model": "claude-sonnet-5",
+ "commitments": [],
+ "dodges": [
+  {
+   "analyst": "Alexander Perry",
+   "question": "Quels jalons precis (ex: miles par incident) declencheraient une acceleration du deploiement robotaxi ?",
+   "what_was_asked": "Un indicateur chiffre ou seuil concret de fiabilite/securite declenchant l'acceleration",
+   "what_was_given": "Reponse qualitative sur le concept de 'March of 9s' sans metrique chiffree",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Colin Langan",
+   "question": "Pourquoi ne pas concentrer le deploiement robotaxi sur une seule ville avant d'en ajouter d'autres, et quel est le frein reel au volume ?",
+   "what_was_asked": "Le frein concret empechant d'augmenter rapidement le nombre de vehicules dans une ville majeure",
+   "what_was_given": "Explication strategique sur la generalisation du stack et le suivi des miles plutot que du nombre de vehicules, sans chiffre precis sur le frein",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Colin Langan",
+   "question": "Voyez-vous des synergies a terme entre SpaceX et Tesla, et cela aurait-il du sens de les combiner ?",
+   "what_was_asked": "Une position claire sur une eventuelle fusion ou combinaison des deux societes",
+   "what_was_given": "Refus de commenter, renvoi au general counsel qui rappelle le cadre de gouvernance sans repondre sur le fond",
+   "severity": "high"
+  },
+  {
+   "analyst": "Dan Levy",
+   "question": "Le rythme du capex est il actuellement plafonne par l'efficacite, ou est ce le facteur determinant pour lever les contraintes d'approvisionnement ?",
+   "what_was_asked": "Une evaluation chiffree du niveau de capex jugé optimal ou du plafond actuel",
+   "what_was_given": "Reponse generale sur la philosophie de depense rapide sans etre gaspilleur, sans chiffre de capex",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Dan Levy",
+   "question": "Quel est le mix de demande actuel entre data centers et applications reseau classiques pour le stockage d'energie ?",
+   "what_was_asked": "Une repartition chiffree ou approximative de la demande entre data centers et grid",
+   "what_was_given": "Explication qualitative sur les usages (peak shaving, lissage de puissance pour l'IA) sans donner de mix chiffre",
+   "severity": "high"
+  }
+ ]
+}

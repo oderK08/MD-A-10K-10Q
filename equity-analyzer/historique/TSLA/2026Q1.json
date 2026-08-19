@@ -1,0 +1,98 @@
+{
+ "ticker": "TSLA",
+ "quarter": "2026Q1",
+ "model": "claude-sonnet-5",
+ "commitments": [
+  {
+   "metric": "capex",
+   "value": "over $25 billion",
+   "period": "exercice 2026",
+   "verbatim": "our current expectation for 2026 is over $25 billion of CapEx"
+  },
+  {
+   "metric": "energy storage deployments",
+   "value": "higher than 2025",
+   "period": "exercice 2026",
+   "verbatim": "we still expect 2026 deployments to be higher than 2025"
+  },
+  {
+   "metric": "EU-wide FSD approval",
+   "value": "later in Q2",
+   "period": "T2 2026",
+   "verbatim": "This sets us up well for an EU-wide approval later in Q2"
+  },
+  {
+   "metric": "China FSD broader approval",
+   "value": "by Q3",
+   "period": "T3 2026",
+   "verbatim": "we're hoping that we can get approval by Q3"
+  },
+  {
+   "metric": "Optimus usefulness outside Tesla",
+   "value": "sometime next year",
+   "period": "2027",
+   "verbatim": "expect Optimus to be useful outside Tesla sometime next year"
+  },
+  {
+   "metric": "FSD version 15 release",
+   "value": "by end of this year or early next year",
+   "period": "fin 2026 / debut 2027",
+   "verbatim": "Version 15, hopefully by the end of this year or certainly by early next year"
+  },
+  {
+   "metric": "Optimus V3 demonstration",
+   "value": "around mid-year",
+   "period": "milieu 2026",
+   "verbatim": "we should be able to show it off around mid-year"
+  },
+  {
+   "metric": "second Optimus factory (Giga Texas) production start",
+   "value": "around summer next year",
+   "period": "ete 2027",
+   "verbatim": "which will probably start production around summer next year"
+  },
+  {
+   "metric": "Optimus start of production",
+   "value": "around late July or August",
+   "period": "T3 2026",
+   "verbatim": "We are assuming start of production will be around late July or August"
+  },
+  {
+   "metric": "unsupervised FSD reaching customer cars",
+   "value": "probably in the fourth quarter",
+   "period": "T4 2026",
+   "verbatim": "I'm just guessing here, but probably in the fourth quarter"
+  },
+  {
+   "metric": "V14 for Hardware 3 release",
+   "value": "end of June",
+   "period": "juin 2026",
+   "verbatim": "And that's expected to come end of June"
+  },
+  {
+   "metric": "AI4.1/AI4+ upgrade production start",
+   "value": "middle of next year",
+   "period": "milieu 2027",
+   "verbatim": "That AI4.1 or AI4+ will probably go into production in the middle of next year"
+  },
+  {
+   "metric": "research semiconductor fab cost",
+   "value": "roughly $3 billion",
+   "period": "non precise",
+   "verbatim": "We expect this to be roughly a $3 billion initiative and capable of a few thousand wafers per month"
+  },
+  {
+   "metric": "Tesla Roadster unveil",
+   "value": "in a month or so",
+   "period": "non precise",
+   "verbatim": "we may be able to debut that in a month or so"
+  },
+  {
+   "metric": "FSD paid customers",
+   "value": "nearly 1.3 million",
+   "period": "cumule a fin T1 2026",
+   "verbatim": "reaching nearly 1.3 million paid customers globally"
+  }
+ ],
+ "dodges": []
+}
