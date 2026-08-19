@@ -88,11 +88,20 @@ def report_record(report) -> dict:
     """
     analysis = report.analysis
     reading = getattr(analysis, "text", "") or ""
+    # The real date of the results, for a sector view to tell a company
+    # read this season from one whose latest report is an old cycle. The
+    # fiscal label cannot do that job across issuers (a June-year filer's
+    # Q4 and a December-year filer's Q2 can be the same calendar week), so
+    # a date is the only thing that compares. Call date first, else the
+    # release date the consensus carries; None when neither is known and
+    # the reader falls back to when the report was generated.
+    results_date = report.call.call_date or report.call.release_date
     return {
         "ticker": report.ticker,
         "societe": report.company_name,
         "trimestre": report.call.quarter,
         "international": bool(getattr(report, "international", False)),
+        "date_resultats": results_date.isoformat() if results_date else None,
         "genere_le": report.generated_at.date().isoformat(),
         "modele": getattr(analysis, "model", None),
         "verdict": _verdict_line(reading),
