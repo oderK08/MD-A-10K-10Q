@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import re
 from html import escape as _e
+from typing import Optional
 
 from .fonts import body_font_stack, font_face_css
 from .markdown import markdown_to_html, truncate_words
@@ -320,62 +321,76 @@ def _reading_html(text: str, truncated: bool) -> str:
     return f'<div class="reading">{markdown_to_html(text)}{note}</div>'
 
 
-def _page_one_pages(report: CallReport, reading_html: str) -> int:
+def _page_one_pages(report: CallReport, reading_html: str, css: str = "") -> int:
     """
     How many pages page 1 ALONE takes: the header, the caveats, the
     consensus strip and the reading, rendered as a standalone document
     with the same stylesheet and footer as the real one.
 
-    Isolating page 1 is what lets the reading be fitted to the room that
-    is actually left after the caveats and the consensus have taken
-    theirs, rather than to a fixed guess that has to assume the worst.
+    `css` applies the SAME compaction override the whole document will
+    use, so the reading is fitted to the room it will really have. This
+    is the fix for the bug the user hit: fitting page 1 at natural size
+    and then letting the document compact its font left the reading
+    filling only part of a now smaller page.
     """
-    from .pdf_renderer import page_count, render_pdf
+    from .pdf_renderer import _with_override_css, page_count, render_pdf
 
     body = (
         f"{_render_header(report)}{_render_caveats(report)}"
         f"{_render_expectations(report)}{reading_html}"
     )
-    return page_count(render_pdf(_document("page 1", body)))
+    doc = _document("page 1", body)
+    if css:
+        doc = _with_override_css(doc, css)
+    return page_count(render_pdf(doc))
 
 
-def _render_reading(report: CallReport) -> str:
+def _fit_reading_words(report: CallReport, css: str = "") -> Optional[int]:
     """
-    Page 1's reason for existing: the model's reading of the call, kept
-    as long as it fits on one page and cut only when it does not.
+    The largest reading, in words, that keeps page 1 to one page AT THE
+    GIVEN compaction level. None means the whole reading fits and nothing
+    is trimmed.
 
-    MEASURED, NOT COUNTED. A fixed word cap has to cover the worst
-    layout and so truncates the common report early, leaving white space
-    (a real MSFT report was cut mid "A surveiller" with a third of the
-    page empty). This renders page 1 on its own and keeps the largest
-    reading that stays on one page. A reading under `_ALWAYS_FITS_WORDS`
-    skips the measurement, since it cannot overflow.
+    Measured, so it holds for whatever font the final document uses: a
+    heavily compacted document has a smaller font, so page 1 holds MORE
+    words, so less is trimmed and no white space is left.
     """
     full = report.analysis.text or ""
     ceiling, _ = truncate_words(full, MAX_READING_WORDS)
+    trimmed_to_ceiling = ceiling != full
 
     if len(ceiling.split()) <= _ALWAYS_FITS_WORDS:
-        return _reading_html(ceiling, ceiling != full)
+        return None if not trimmed_to_ceiling else MAX_READING_WORDS
+    if _page_one_pages(report, _reading_html(ceiling, trimmed_to_ceiling), css) <= 1:
+        return None if not trimmed_to_ceiling else MAX_READING_WORDS
 
-    # Does the whole reading (up to the hard ceiling) already fit?
-    if _page_one_pages(report, _reading_html(ceiling, ceiling != full)) <= 1:
-        return _reading_html(ceiling, ceiling != full)
-
-    # It overruns: find the largest word count that keeps page 1 to one
-    # page. Binary search, so a long reading costs about ten renders and
-    # not one per word.
     words = ceiling.split()
     lo, hi, best = _ALWAYS_FITS_WORDS, len(words), _ALWAYS_FITS_WORDS
     while lo <= hi:
         mid = (lo + hi) // 2
         candidate, _ = truncate_words(full, mid)
-        if _page_one_pages(report, _reading_html(candidate, True)) <= 1:
+        if _page_one_pages(report, _reading_html(candidate, True), css) <= 1:
             best = mid
             lo = mid + 1
         else:
             hi = mid - 1
-    text, _ = truncate_words(full, best)
-    return _reading_html(text, True)
+    return best
+
+
+def _render_reading(report: CallReport, reading_words: Optional[int] = None) -> str:
+    """
+    Page 1's reason for existing: the model's reading of the call.
+
+    `reading_words` is how many words to keep. None means the whole
+    reading, up to the hard ceiling; an int is the fit computed by the
+    orchestrator for the compaction level the document will use. Fitting
+    is NOT done here any more, so this function does no rendering and the
+    document assembly stays cheap. See `render_report_pdf`.
+    """
+    full = report.analysis.text or ""
+    limit = MAX_READING_WORDS if reading_words is None else min(reading_words, MAX_READING_WORDS)
+    text, truncated = truncate_words(full, limit)
+    return _reading_html(text, truncated)
 
 
 # -- Page 2 -------------------------------------------------------------
@@ -622,7 +637,7 @@ def _render_provenance(report: CallReport) -> str:
 # -- The document -------------------------------------------------------
 
 
-def render_html(report: CallReport) -> str:
+def render_html(report: CallReport, reading_words: Optional[int] = None) -> str:
     """
     One document, three pages, in the order a reader works through them.
 
@@ -637,14 +652,10 @@ def render_html(report: CallReport) -> str:
     backdrop the quarter happened against, so it comes last rather than
     interrupting the two halves of the call.
 
-    THREE PAGES IS NOW A TARGET WITH A NET, NOT A GUARANTEE, and that is
-    a deliberate trade. Page 2's length is a property of the call: a
-    session that dodged eight questions has eight rows. The old two page
-    promise held because everything on the page was bounded; this is
-    not, so `save_pdf(..., max_pages=3)` compacts the stylesheet until it
-    fits, and if even the tightest step overruns it returns that rather
-    than dropping a finding. A slightly long report beats a report
-    missing the row that mattered.
+    `reading_words` bounds the page 1 reading. None means the whole
+    reading (up to the hard ceiling); the orchestrator `render_report_pdf`
+    passes the fit it measured for the compaction the document will use.
+    Pure string assembly, no rendering, so it is cheap to call in a loop.
 
     Page 2 disappears entirely when there is no Q&A to dissect, and the
     document is two pages again. An empty page carrying six empty
@@ -655,11 +666,49 @@ def render_html(report: CallReport) -> str:
   {_render_header(report)}
   {_render_caveats(report)}
   {_render_expectations(report)}
-  {_render_reading(report)}
+  {_render_reading(report, reading_words)}
   {_render_qa_page(report)}
   {_render_backdrop(report)}
 """
     return _document(title, body)
+
+
+def render_report_pdf(report: CallReport, max_pages: int) -> tuple:
+    """
+    The report as PDF bytes, and the page count it actually has.
+
+    THE READING AND THE COMPACTION ARE FITTED TOGETHER, which is the fix
+    for the white space the user saw on a GOOG report: page 1's reading
+    was trimmed to fill a NATURAL-size page, then the whole document
+    compacted its font because the Q&A was long, and the already-trimmed
+    reading no longer filled the now smaller page.
+
+    So it walks the compaction levels from none to tightest and, at each
+    one, fits the reading to page 1 AT THAT level before rendering the
+    whole document. The first level whose document fits the budget wins,
+    with the reading filling page 1 at the exact font the reader sees. If
+    even the tightest level overruns, that render is returned rather than
+    dropping a finding, same policy as the old fitter.
+    """
+    from .pdf_renderer import _COMPACTION_STEPS, _with_override_css, page_count, render_pdf
+
+    attempts = []
+    for level, css in enumerate(["", *_COMPACTION_STEPS]):
+        words = _fit_reading_words(report, css)
+        html = render_html(report, reading_words=words)
+        pdf = render_pdf(html if not css else _with_override_css(html, css))
+        pages = page_count(pdf)
+        if pages <= max_pages:
+            return pdf, pages
+        attempts.append((pages, level, pdf))
+
+    # Nothing fits the budget. Return the best effort: the FEWEST pages,
+    # and on a tie the LEAST compacted, because a document that is going
+    # to overflow anyway should stay as readable as it can rather than be
+    # shrunk to a tiny font for no gain.
+    attempts.sort(key=lambda a: (a[0], a[1]))
+    best_pages, _, best_pdf = attempts[0]
+    return best_pdf, best_pages
 
 
 def _render_backdrop(report: CallReport) -> str:
@@ -873,4 +922,4 @@ def _render_qa_page(report: CallReport) -> str:
 """
 
 
-__all__ = ["MAX_READING_WORDS", "render_html"]
+__all__ = ["MAX_READING_WORDS", "render_html", "render_report_pdf"]
