@@ -1,0 +1,36 @@
+{
+ "ticker": "META",
+ "quarter": "2026Q2",
+ "model": "claude-sonnet-5",
+ "commitments": [],
+ "dodges": [
+  {
+   "analyst": "Brian Nowak (Morgan Stanley)",
+   "question": "Quelles perspectives preliminaires pour le CapEx 2027 ?",
+   "what_was_asked": "Un premier chiffrage ou une philosophie precise sur le CapEx 2027",
+   "what_was_given": "Refus explicite de donner un chiffre, description generale de la flexibilite de planification",
+   "severity": "high"
+  },
+  {
+   "analyst": "Brian Nowak (Morgan Stanley)",
+   "question": "Quel produit (agents consommateurs, business agents, API, location de compute) scalera en premier pour montrer un ROIC quantifiable en 26/27 ?",
+   "what_was_asked": "Une hierarchisation claire des opportunites avec un calendrier de monetisation",
+   "what_was_given": "Reponse generale d'optimisme sur toutes les pistes sans priorisation ni metrique",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Douglas Anmuth (JPMorgan)",
+   "question": "Difference entre vendre du compute a des tiers et en acheter simultanement a des tiers",
+   "what_was_asked": "Explication chiffree ou structurelle (timing, training vs inference, type de puces) du sens des flux de compute",
+   "what_was_given": "Reponse conceptuelle sur l'arbitrage monetisation immediate vs actifs futurs, sans detail chiffre",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Eric Sheridan (Goldman Sachs)",
+   "question": "Philosophie sur le mix dette/equity pour financer la depense CapEx",
+   "what_was_asked": "Une vision precise du mix cible de financement",
+   "what_was_given": "Description generale de la strategie (cash flow fort, plus de dette, partenariats type BlackRock) sans ratio cible",
+   "severity": "low"
+  }
+ ]
+}

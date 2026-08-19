@@ -1,0 +1,50 @@
+{
+ "ticker": "META",
+ "quarter": "2026Q1",
+ "model": "claude-sonnet-5",
+ "commitments": [
+  {
+   "metric": "revenu total",
+   "value": "58 à 61 milliards de dollars",
+   "period": "T2 2026",
+   "verbatim": "We expect second quarter 2026 total revenue to be in the range of $58 to $61 billion."
+  },
+  {
+   "metric": "impact du change sur la croissance du revenu",
+   "value": "environ 2% de vent favorable",
+   "period": "T2 2026",
+   "verbatim": "Our guidance assumes foreign currency is an approximately 2% tailwind to year-over-year total revenue growth."
+  },
+  {
+   "metric": "charges totales",
+   "value": "162 à 169 milliards de dollars",
+   "period": "exercice 2026",
+   "verbatim": "We expect full year 2026 total expenses to be in the range of $162 to $169 billion, unchanged from our prior outlook."
+  },
+  {
+   "metric": "résultat opérationnel",
+   "value": "supérieur à celui de 2025",
+   "period": "exercice 2026",
+   "verbatim": "We continue to expect to deliver operating income this year that is above 2025 operating income."
+  },
+  {
+   "metric": "dépenses d'investissement (CapEx)",
+   "value": "125 à 145 milliards de dollars",
+   "period": "exercice 2026",
+   "verbatim": "We anticipate 2026 capital expenditures, including principal payments on finance leases, to be in the range of $125 to $145 billion, increased from our prior range of $120 to $135 billion."
+  },
+  {
+   "metric": "taux d'imposition",
+   "value": "13% à 16%",
+   "period": "T2 à T4 2026",
+   "verbatim": "We expect our tax rate for the remaining quarters of 2026 to be between 13%-16%."
+  },
+  {
+   "metric": "capacité de silicium personnalisé déployée",
+   "value": "plus d'un gigawatt",
+   "period": "non précisé",
+   "verbatim": "we are rolling out more than one gigawatt of our own custom silicon that we are developing with Broadcom."
+  }
+ ],
+ "dodges": []
+}
