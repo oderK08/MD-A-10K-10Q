@@ -53,17 +53,17 @@ def test_the_budget_is_two_without_a_qa_page_and_three_with_one():
 @needs_report_font
 def test_a_report_without_a_qa_page_is_compacted_at_the_budget_production_uses():
     """
-    The regression itself, rendered.
+    A report with no Q&A page is held to two pages, at the budget the
+    script really passes.
 
-    The tight case: a stale call AND a period mismatch warning together
-    cost page 1 around sixty words of room, so a reading at the cap
-    overflows at natural size. Compacted at the budget the script really
-    passes, it has to come back to two. Asserted through the script's
-    constant rather than a literal 2, so flattening the budget back to a
-    single number fails here.
+    Page 1 is now fitted to one page by measurement whatever the caveats,
+    so it no longer overflows on its own; the guarantee that matters here
+    is the budget itself. Asserted through the script's constant rather
+    than a literal 2, so flattening the budget back to a single number
+    (the regression this test exists for) fails here.
     """
     report = build_report(
-        reading=_filler(MAX_READING_WORDS - 1),
+        reading=_filler(1200),
         quarters_back=2,
         period_warning=(
             "demandé 2026Q1 mais la société annonce 2025Q3 (« third quarter of fiscal "
@@ -72,7 +72,7 @@ def test_a_report_without_a_qa_page_is_compacted_at_the_budget_production_uses()
     )
     html = render_html(report)
     assert report.qa_analysis is None
-    assert page_count(render_pdf(html)) > 2, "ce cas doit vraiment déborder au naturel"
 
     budget = _entry_point().MAX_PAGES_WITHOUT_QA
+    assert budget == 2
     assert page_count(render_pdf_fitted(html, max_pages=budget)) == 2

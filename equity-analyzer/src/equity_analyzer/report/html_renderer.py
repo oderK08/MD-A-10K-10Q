@@ -105,34 +105,37 @@ _CSS_TEMPLATE = """
 """
 
 # What page 1 actually holds, MEASURED against rendered PDFs rather than
-# estimated, and measured WITH THE PRODUCTION FONT EMBEDDED. That last
-# part is not a detail: the first version of this number was calibrated
-# on a machine where Lato was not installed, so the report fell back to
-# Helvetica, which is narrower. The number looked right, every test was
-# green, and CI went red on the first real run because the runner
-# installs `fonts-lato` and therefore renders the wider face. A page
-# budget measured in the wrong typeface is not a measurement.
+# estimated. A FIXED WORD CAP WAS THE WRONG TOOL, and a real MSFT report
+# showed why: page 1 was truncated in the middle of "A surveiller" while
+# a third of the page sat empty. The cap has to cover the WORST layout
+# (both caveats firing, which eats about sixty words of room), so on the
+# common report where no caveat fires it cuts long before the page is
+# full. A single number cannot be both the worst-case ceiling and the
+# common-case target.
 #
-# The Lato numbers, with the header, the consensus strip and the beat
-# history all present:
-#   620 mots  -> 2 pages      625 mots -> 3 pages
-#   610 mots  -> 2 pages once the "reading truncated" note is added too,
-#                and that note is why the cap is 610 and not 620.
-# The prompt asks for 450 to 600, so this still sits above the requested
-# range: it is a safety net for a model that overruns, not the target.
+# So the reading is no longer cut by counting words. It is cut by
+# MEASURING: page 1 is rendered on its own and the reading is kept as
+# long as it stays on one page, whatever the caveats, the consensus
+# strip or the font happen to cost this particular report. Nothing is
+# truncated that fits, and nothing that fits is left off. See
+# `_fit_reading`. This is the same "measure, don't guess" rule the page
+# fitter already follows for the whole document.
 #
-# One case is tighter and is handled downstream rather than by lowering
-# this number for everyone: when BOTH page 1 caveats fire at once (a
-# stale call AND a period mismatch, which is rare and means the report
-# needs those warnings more than it needs a roomy page), real capacity
-# drops to around 540 words and the natural render runs to three pages.
-# `save_pdf(..., max_pages=2)` compacts it back, which is the mechanism
-# this project already chose over letting a report overflow.
-#
-# Frozen from both sides by tests, and those tests refuse to run at all
-# when the production font is missing rather than quietly re-measuring
-# Helvetica (see tests/report/test_call_report.py).
-MAX_READING_WORDS = 610
+# MAX_READING_WORDS survives only as a HARD CEILING on that search, so a
+# model that returns three thousand words does not get three thousand
+# rendered even if compaction could technically swallow them: past this,
+# the page stops being a reading and becomes a wall. It sits well above
+# what a page ever holds, so in practice the measurement binds first and
+# this only catches the runaway.
+MAX_READING_WORDS = 900
+
+# Below this many words a reading always fits page 1, even with both
+# caveats firing (worst-case capacity is around 540). Under it, the
+# measurement is skipped entirely: no render, and the reading is kept
+# whole. This keeps the common short reading free and the test suite
+# fast, and means the measured path runs only when a reading is actually
+# long enough to be at risk.
+_ALWAYS_FITS_WORDS = 380
 
 
 def _css() -> str:
@@ -305,18 +308,74 @@ def _render_expectations(report: CallReport) -> str:
     """
 
 
-def _render_reading(report: CallReport) -> str:
-    """Page 1's reason for existing: the model's reading of the call."""
-    analysis = report.analysis
-    text, truncated = truncate_words(analysis.text, MAX_READING_WORDS)
-    note = ""
-    if truncated:
-        note = (
-            '<p class="muted">Lecture tronquée en fin de section pour tenir en une '
-            "page. Le transcript intégral reste en cache et l'analyse peut être "
-            "relancée.</p>"
-        )
+_TRUNCATION_NOTE = (
+    '<p class="muted">Lecture tronquée en fin de section pour tenir en une '
+    "page. Le transcript intégral reste en cache et l'analyse peut être "
+    "relancée.</p>"
+)
+
+
+def _reading_html(text: str, truncated: bool) -> str:
+    note = _TRUNCATION_NOTE if truncated else ""
     return f'<div class="reading">{markdown_to_html(text)}{note}</div>'
+
+
+def _page_one_pages(report: CallReport, reading_html: str) -> int:
+    """
+    How many pages page 1 ALONE takes: the header, the caveats, the
+    consensus strip and the reading, rendered as a standalone document
+    with the same stylesheet and footer as the real one.
+
+    Isolating page 1 is what lets the reading be fitted to the room that
+    is actually left after the caveats and the consensus have taken
+    theirs, rather than to a fixed guess that has to assume the worst.
+    """
+    from .pdf_renderer import page_count, render_pdf
+
+    body = (
+        f"{_render_header(report)}{_render_caveats(report)}"
+        f"{_render_expectations(report)}{reading_html}"
+    )
+    return page_count(render_pdf(_document("page 1", body)))
+
+
+def _render_reading(report: CallReport) -> str:
+    """
+    Page 1's reason for existing: the model's reading of the call, kept
+    as long as it fits on one page and cut only when it does not.
+
+    MEASURED, NOT COUNTED. A fixed word cap has to cover the worst
+    layout and so truncates the common report early, leaving white space
+    (a real MSFT report was cut mid "A surveiller" with a third of the
+    page empty). This renders page 1 on its own and keeps the largest
+    reading that stays on one page. A reading under `_ALWAYS_FITS_WORDS`
+    skips the measurement, since it cannot overflow.
+    """
+    full = report.analysis.text or ""
+    ceiling, _ = truncate_words(full, MAX_READING_WORDS)
+
+    if len(ceiling.split()) <= _ALWAYS_FITS_WORDS:
+        return _reading_html(ceiling, ceiling != full)
+
+    # Does the whole reading (up to the hard ceiling) already fit?
+    if _page_one_pages(report, _reading_html(ceiling, ceiling != full)) <= 1:
+        return _reading_html(ceiling, ceiling != full)
+
+    # It overruns: find the largest word count that keeps page 1 to one
+    # page. Binary search, so a long reading costs about ten renders and
+    # not one per word.
+    words = ceiling.split()
+    lo, hi, best = _ALWAYS_FITS_WORDS, len(words), _ALWAYS_FITS_WORDS
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        candidate, _ = truncate_words(full, mid)
+        if _page_one_pages(report, _reading_html(candidate, True)) <= 1:
+            best = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    text, _ = truncate_words(full, best)
+    return _reading_html(text, True)
 
 
 # -- Page 2 -------------------------------------------------------------

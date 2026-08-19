@@ -259,80 +259,114 @@ def _filler(word_count):
     return "## Verdict\n" + " ".join(body)
 
 
-def test_a_reading_at_the_cap_still_leaves_the_report_at_two_pages():
+def _best_fit_words(report):
     """
-    This is the measurement that sets MAX_READING_WORDS. The prompt asks
-    for 450 to 600 words; the cap sits above that range as a safety net
-    for a model that overruns. If a future style change shrinks the real
-    capacity of page 1, this fails here rather than on a real report.
+    The largest reading, in words, that keeps page 1 to one page for
+    THIS report, reproducing what `_render_reading` measures. Used to
+    assert the fit sits at the real edge and moves with the caveats.
     """
-    pdf = render_pdf(render_html(build_report(reading=_filler(MAX_READING_WORDS))))
-    assert page_count(pdf) == 2
+    from equity_analyzer.report.html_renderer import _page_one_pages, _reading_html
+    from equity_analyzer.report.markdown import truncate_words
+
+    full = report.analysis.text
+    fits = [n for n in range(300, 900, 10)
+            if _page_one_pages(report, _reading_html(truncate_words(full, n)[0], True)) == 1]
+    return max(fits) if fits else 0
+
+
+def test_a_reading_that_fits_is_kept_whole_and_not_truncated():
+    """
+    The reading is no longer cut to a fixed count. One comfortably within
+    a page is rendered in full, with no truncation note. A short reading
+    must never lose its tail.
+    """
+    html = render_html(build_report(reading=_filler(300)))
+    assert "Lecture tronquée" not in html
+    assert page_count(render_pdf(html)) == 2
 
 
 @needs_report_font
-def test_the_cap_sits_at_the_real_limit_and_not_far_below_it(monkeypatch):
+def test_an_overlong_reading_is_measured_down_so_page_one_never_overflows():
     """
-    The other half of the measurement, and the one that keeps the test
-    above honest: without it MAX_READING_WORDS could be lowered to 50
-    and everything would still pass while page 1 sat two thirds empty.
-    Raising the cap by forty words has to actually overflow.
+    Measured, not counted. A reading far longer than a page is trimmed
+    until page 1 fits, the note is added, and the document does not spill
+    onto an extra sheet. Pinned to the production font: capacity is a
+    property of the typeface.
     """
-    monkeypatch.setattr(html_renderer, "MAX_READING_WORDS", MAX_READING_WORDS + 40)
-    pdf = render_pdf(render_html(build_report(reading=_filler(MAX_READING_WORDS + 40))))
-    assert page_count(pdf) == 3
+    html = render_html(build_report(reading=_filler(1200)))
+    assert "Lecture tronquée" in html
+    assert page_count(render_pdf(html)) == 2
 
 
 @needs_report_font
-def test_the_cap_plus_every_caveat_is_compacted_back_to_two_pages():
+def test_the_trimmed_reading_fills_the_page_and_is_not_left_half_empty():
     """
-    The tight case, handled downstream rather than by lowering the cap
-    for everyone: a stale call AND a period mismatch both warning at
-    once costs page 1 around sixty words of room. That combination is
-    rare and, when it happens, the report needs those warnings more than
-    it needs a roomy page, so the fitter absorbs it.
+    The bug this whole change fixes: a real MSFT report was cut mid
+    "A surveiller" with a third of the page blank, because a fixed cap
+    calibrated on plain text overshot the real capacity of a reading full
+    of headings and bullets. The trimmed reading must sit at the REAL
+    edge, so a good chunk more has to actually overflow page 1.
     """
-    report = build_report(
-        reading=_filler(MAX_READING_WORDS - 1),
+    report = build_report(reading=_filler(1200))
+    best = _best_fit_words(report)
+    assert best > 0
+
+    from equity_analyzer.report.html_renderer import _page_one_pages, _reading_html
+    from equity_analyzer.report.markdown import truncate_words
+    over, _ = truncate_words(report.analysis.text, best + 50)
+    assert _page_one_pages(report, _reading_html(over, True)) == 2, \
+        "la page devrait déborder bien avant d'être aux deux tiers vide"
+
+
+@needs_report_font
+def test_caveats_shrink_the_kept_reading_but_page_one_still_fits():
+    """
+    Why measuring beats a fixed cap. When caveats take room, the reading
+    is trimmed to what is LEFT, so page 1 fits without overflow and
+    without padding. A stale call plus a period mismatch leave fewer
+    words than a clean page, and both render to one page.
+    """
+    clean = build_report(reading=_filler(1200))
+    warned = build_report(
+        reading=_filler(1200),
         quarters_back=2,
         period_warning=(
             "demandé 2026Q1 mais la société annonce 2025Q3 (« third quarter of fiscal "
             "2025 »), appariement à vérifier avant de conclure quoi que ce soit"
         ),
     )
-    html = render_html(report)
-
-    assert page_count(render_pdf(html)) > 2, "ce cas doit vraiment déborder au naturel"
-    assert page_count(render_pdf_fitted(html, max_pages=2)) == 2
+    assert _best_fit_words(warned) < _best_fit_words(clean)
+    assert page_count(render_pdf(render_html(warned))) == 2
 
 
 def test_an_overlong_reading_is_truncated_and_the_report_says_so():
     """
-    The cap allows for the note: a reading that HAS been truncated
-    carries the sentence saying so, and the page still has to hold both.
+    A reading that HAS been trimmed carries the sentence saying so, and
+    the words past the cut are gone. Not font-guarded: page 1 is fitted
+    to one page whatever the typeface, so the document is two pages
+    either way.
     """
-    html = render_html(build_report(reading=_filler(MAX_READING_WORDS + 400)))
+    html = render_html(build_report(reading=_filler(1200)))
 
     assert "Lecture tronquée" in html
-    assert f"mot{MAX_READING_WORDS + 300}" not in html
+    assert "mot1100" not in html
     assert page_count(render_pdf(html)) == 2
 
 
 @needs_report_font
-def test_the_worst_realistic_case_is_compacted_back_to_two_pages():
+def test_the_worst_realistic_case_stays_within_the_budget():
     """
-    Built to overflow from both ends at once: a reading at the cap with
-    both page 1 caveats firing, and a page 2 where every red flag is
-    unavailable with a long reason and Piotroski names failed criteria.
-    Verified to ACTUALLY overflow at natural size first, otherwise the
-    second half of this test would prove nothing.
+    Overflowing from both ends at once: a very long reading with both
+    caveats firing, and a page of red flags where every score is
+    unavailable with a long reason. Page 1 is fitted to one page by
+    measurement, and the fitter holds the rest to the no-Q&A budget.
     """
     failing_prior = dict(_ANNUAL_CURRENT)
     failing_current = dict(
         _ANNUAL_PRIOR, operating_cash_flow=10, shares_outstanding=2_000_000
     )
     report = build_report(
-        reading=_filler(MAX_READING_WORDS),
+        reading=_filler(1200),
         annual_filing=_annual(2024, **failing_current),
         prior_annual_filing=_annual(2023, **failing_prior),
         period_warning=(
@@ -342,8 +376,6 @@ def test_the_worst_realistic_case_is_compacted_back_to_two_pages():
         quarters_back=2,
     )
     html = render_html(report)
-
-    assert page_count(render_pdf(html)) > 2, "le pire cas doit vraiment déborder"
     assert page_count(render_pdf_fitted(html, max_pages=2)) == 2
 
 
