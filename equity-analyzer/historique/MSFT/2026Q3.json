@@ -1,0 +1,158 @@
+{
+ "ticker": "MSFT",
+ "quarter": "2026Q3",
+ "model": "claude-sonnet-5",
+ "commitments": [
+  {
+   "metric": "Microsoft Cloud gross margin percentage",
+   "value": "roughly 64%",
+   "period": "T4 FY2026",
+   "verbatim": "Microsoft Cloud gross margin percentage should be roughly 64%, down year over year"
+  },
+  {
+   "metric": "Productivity and Business Processes revenue",
+   "value": "$37.0 to $37.3 billion, growth of 12% to 13%",
+   "period": "T4 FY2026",
+   "verbatim": "we expect revenue of $37.0 to $37.3 billion or growth of 12% to 13%"
+  },
+  {
+   "metric": "Microsoft 365 Commercial cloud revenue growth (adjusted)",
+   "value": "15% to 16% in constant currency",
+   "period": "T4 FY2026",
+   "verbatim": "we expect revenue growth to be between 15% and 16% in constant currency"
+  },
+  {
+   "metric": "Microsoft 365 Commercial cloud revenue growth (reported)",
+   "value": "13% to 14% in constant currency",
+   "period": "T4 FY2026",
+   "verbatim": "we expect revenue growth to be between 13% and 14% in constant currency"
+  },
+  {
+   "metric": "Microsoft 365 Commercial products revenue growth",
+   "value": "mid-single digits",
+   "period": "T4 FY2026",
+   "verbatim": "Microsoft 365 Commercial products revenue should grow in the mid-single digits"
+  },
+  {
+   "metric": "Microsoft 365 Consumer cloud revenue growth",
+   "value": "low 20% range",
+   "period": "T4 FY2026",
+   "verbatim": "Microsoft 365 Consumer cloud revenue growth should be in the low 20% range"
+  },
+  {
+   "metric": "LinkedIn revenue growth",
+   "value": "approximately 10%",
+   "period": "T4 FY2026",
+   "verbatim": "For LinkedIn, we expect revenue growth of approximately 10%"
+  },
+  {
+   "metric": "Dynamics 365 revenue growth",
+   "value": "low double digits",
+   "period": "T4 FY2026",
+   "verbatim": "we expect revenue growth to be in the low double digits"
+  },
+  {
+   "metric": "Intelligent Cloud revenue",
+   "value": "$37.95 to $38.25 billion, growth of 27% to 28%",
+   "period": "T4 FY2026",
+   "verbatim": "we expect revenue of $37.95 to $38.25 billion or growth of 27% to 28%"
+  },
+  {
+   "metric": "Azure revenue growth",
+   "value": "39% to 40% in constant currency",
+   "period": "T4 FY2026",
+   "verbatim": "we expect Q4 revenue growth to be between 39% and 40% in constant currency"
+  },
+  {
+   "metric": "On-premise server revenue",
+   "value": "decline in the mid-single digits",
+   "period": "T4 FY2026",
+   "verbatim": "we expect revenue to decline in the mid-single digits with ongoing customer shift to cloud offerings"
+  },
+  {
+   "metric": "More Personal Computing revenue",
+   "value": "$11.75 to $12.25 billion",
+   "period": "T4 FY2026",
+   "verbatim": "we expect revenue to be $11.75 to $12.25 billion"
+  },
+  {
+   "metric": "Windows OEM and devices revenue",
+   "value": "decline in the mid- to high teens",
+   "period": "T4 FY2026",
+   "verbatim": "Windows OEM and devices revenue should decline in the mid- to high teens"
+  },
+  {
+   "metric": "Search advertising revenue ex-TAC growth",
+   "value": "high single digits",
+   "period": "T4 FY2026",
+   "verbatim": "Search advertising revenue ex-TAC growth should be in the high single digits"
+  },
+  {
+   "metric": "Xbox content and services revenue",
+   "value": "decline in the low teens",
+   "period": "T4 FY2026",
+   "verbatim": "we expect revenue to decline in the low teens"
+  },
+  {
+   "metric": "Total company revenue",
+   "value": "$86.7 to $87.8 billion, growth of 13% to 15%",
+   "period": "T4 FY2026",
+   "verbatim": "revenue should be between $86.7 and $87.8 billion or growth of 13% to 15%"
+  },
+  {
+   "metric": "COGS",
+   "value": "$29.4 to $29.6 billion, growth of 22% to 23%",
+   "period": "T4 FY2026",
+   "verbatim": "we expect COGS of $29.4 to $29.6 billion or growth of 22% to 23%"
+  },
+  {
+   "metric": "Operating expense",
+   "value": "$19.3 to $19.4 billion, growth of approximately 7%",
+   "period": "T4 FY2026",
+   "verbatim": "operating expense of $19.3 to $19.4 billion or growth of approximately 7%"
+  },
+  {
+   "metric": "Full-year operating margin",
+   "value": "up about one point year over year",
+   "period": "exercice FY2026",
+   "verbatim": "we expect full-year FY '26 operating margins to be up about one point year over year"
+  },
+  {
+   "metric": "Other income and expense (ex-OpenAI impact)",
+   "value": "roughly negative $100 million",
+   "period": "T4 FY2026",
+   "verbatim": "other income and expense is expected to be roughly negative $100 million"
+  },
+  {
+   "metric": "Effective tax rate",
+   "value": "approximately 19%",
+   "period": "T4 FY2026",
+   "verbatim": "we expect our adjusted Q4 effective tax rate to be approximately 19%"
+  },
+  {
+   "metric": "Capital expenditures",
+   "value": "over $40 billion",
+   "period": "T4 FY2026",
+   "verbatim": "We expect CapEx spend to increase to over $40 billion as we continue to bring more capacity online"
+  },
+  {
+   "metric": "Capital expenditures",
+   "value": "roughly $190 billion",
+   "period": "annee civile 2026",
+   "verbatim": "we expect to invest roughly $190 billion in capital expenditures"
+  },
+  {
+   "metric": "Operating expense growth FY2027",
+   "value": "mid- to high single digits",
+   "period": "exercice FY2027",
+   "verbatim": "Operating expense growth will be in the mid- to high single digits"
+  },
+  {
+   "metric": "Revenue and operating income growth FY2027",
+   "value": "double-digit growth",
+   "period": "exercice FY2027",
+   "verbatim": "we expect another year of double-digit revenue and operating income growth in FY '27"
+  }
+ ],
+ "dodges": []
+}

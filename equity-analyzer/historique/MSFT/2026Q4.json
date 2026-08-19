@@ -1,0 +1,29 @@
+{
+ "ticker": "MSFT",
+ "quarter": "2026Q4",
+ "model": "claude-sonnet-5",
+ "commitments": [],
+ "dodges": [
+  {
+   "analyst": "Karl Keirstead (UBS)",
+   "question": "Quelle traction materielle les modeles ouverts et personnalises pourraient-ils avoir sur les 1 a 2 prochaines annees, et comment Microsoft en beneficie malgre son exposition aux frontier labs",
+   "what_was_asked": "Une estimation chiffree ou un ordre de grandeur de l'adoption des modeles ouverts/custom",
+   "what_was_given": "Une explication architecturale et philosophique sur le choix de modeles, sans aucune quantification",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Mark Moerdler (Bernstein Research)",
+   "question": "Comment Microsoft gere la hausse des prix des composants sans augmenter fortement les prix ou degrader les marges",
+   "what_was_asked": "Un engagement ou une indication chiffree sur l'impact marge des hausses de prix hardware",
+   "what_was_given": "Un discours general sur l'efficience et l'equilibre de pricing, sans chiffre ni engagement precis",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Gabriela Borges (Goldman Sachs)",
+   "question": "Comment le ROI sur les decisions de CapEx actuelles se compare-t-il a il y a un an, et quels leviers internes de silicium restent disponibles",
+   "what_was_asked": "Une comparaison chiffree ou quantitative du ROIC entre les deux periodes",
+   "what_was_given": "Une reponse qualitative sur la confiance croissante et les leviers de marge, sans aucune metrique de comparaison",
+   "severity": "high"
+  }
+ ]
+}
