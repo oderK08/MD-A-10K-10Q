@@ -1,0 +1,186 @@
+{
+ "tickers": [
+  "MSFT",
+  "GOOG"
+ ],
+ "trimestres": {
+  "MSFT": "2026Q4",
+  "GOOG": "2026Q1"
+ },
+ "modele": "claude-sonnet-5",
+ "fil_directeur": "Les deux directions racontent le meme trimestre au fond : une demande cloud/IA qui depasse la capacite disponible, un investissement en infrastructure qui s'intensifie encore, et un cloud qui accelere en croissance et en marge. MSFT dit explicitement que 'demand continues to exceed available supply' et relance sa guidance Azure a 'approximately 45%' en devise constante pour le trimestre a venir. GOOG parle de contrainte de capacite via Sundar Pichai ('we are compute constrained in the near term') et note que son propre chiffre d'affaires Cloud 'would have been higher if we were able to meet all demand'. Les deux groupes relevent ou defendent un effort de CapEx plus lourd pour l'exercice a venir, sans remettre en cause la trajectoire de depense. Les deux beats du trimestre sont presentes comme portes par l'execution et la demande plutot que par des elements exceptionnels isoles, meme si le detail comptable complique la lecture chez chacun. Les deux directions evitent de chiffrer precisement l'economie unitaire de leurs investissements IA (marge par contrat, ROIC, repartition interne/externe) quand la question est posee frontalement. Ce narratif d'acceleration de la demande cloud, deja largement anticipe par le marche via les guidances precedentes, est probablement deja integre dans les cours des deux titres. L'angle de cette synthese est donc moins le fait qu'elles investissent davantage, deja su, que la maniere dont chacune presente et justifie ce surcroit de depense.",
+ "divergences": [
+  {
+   "driver": "Nature de la variation de CapEx affichee",
+   "positions": [
+    {
+     "ticker": "MSFT",
+     "position": "Le CapEx calendaire 2026 affiche baisse de 190 a 175 milliards de dollars, mais la direction insiste que ce n'est qu'un artefact comptable de reclassement de baux ('our calendar year 2026 CapEx investment expectations remain unchanged')."
+    },
+    {
+     "ticker": "GOOG",
+     "position": "Le CapEx 2026 est releve de 175-185 a 180-190 milliards de dollars pour integrer l'acquisition Intersect, et 2027 est annonce 'significantly' superieur a 2026 sans chiffre."
+    }
+   ],
+   "qui_diverge": "MSFT presente une baisse nominale qu'elle desamorce comme trompeuse, tandis que GOOG assume une hausse nominale et signale une nouvelle accelaration a venir : deux facons opposees de communiquer sur le meme sujet d'investissement croissant."
+  },
+  {
+   "driver": "Impact sur la marge cloud d'une acquisition recente",
+   "positions": [
+    {
+     "ticker": "GOOG",
+     "position": "Chiffre un headwind precis lie a Wiz : 'a low single-digit percentage point headwind to Cloud's operating margin for the remainder of 2026'."
+    },
+    {
+     "ticker": "MSFT",
+     "position": "Ne mentionne aucun headwind d'acquisition sur la marge Microsoft Cloud, qui ressort au contraire au dessus de la guidance (65% realises contre 64% guides)."
+    }
+   ],
+   "qui_diverge": "GOOG est seule a quantifier un frein de marge lie a une acquisition specifique ce trimestre, MSFT ne presente que des ameliorations de marge."
+  },
+  {
+   "driver": "Precision de la guidance de croissance cloud a venir",
+   "positions": [
+    {
+     "ticker": "MSFT",
+     "position": "Donne un chiffre precis et directionnel : Azure guide a 'approximately 45% in constant currency' pour le prochain trimestre, contre 39-40% donne au trimestre precedent."
+    },
+    {
+     "ticker": "GOOG",
+     "position": "Ne donne pas de pourcentage de croissance Cloud attendu, s'appuie a la place sur le backlog qui 'nearly doubled sequentially, reaching $462 billion' comme indicateur de demande future."
+    }
+   ],
+   "qui_diverge": "MSFT s'engage sur un chiffre de croissance explicite pour le trimestre suivant quand GOOG prefere un indicateur de stock (backlog) sans traduire cela en guidance de croissance chiffree."
+  },
+  {
+   "driver": "Lisibilite du beat BPA du trimestre",
+   "positions": [
+    {
+     "ticker": "MSFT",
+     "position": "Beat propre et documente, +12,6% sur consensus, avec decomposition explicite des elements exceptionnels ('a benefit of $0.27 on diluted earnings per share')."
+    },
+    {
+     "ticker": "GOOG",
+     "position": "Le consensus fourni est ajuste (2,63$) contre un publie GAAP (5,11$) gonfle par des 'unrealized gains in our nonmarketable equity securities portfolio', rendant la comparaison non exploitable telle quelle."
+    }
+   ],
+   "qui_diverge": "La qualite de la comparaison chiffree diverge nettement : MSFT permet une lecture propre du beat operationnel, GOOG melange des bases comptables differentes qui brouillent le signal."
+  }
+ ],
+ "questions_marche": [
+  {
+   "sujet": "Chiffrage de l'investissement CapEx futur (2027 ou impact marge des contrats)",
+   "presse_chez": [
+    "MSFT",
+    "GOOG"
+   ],
+   "repondu_par": [],
+   "esquive_par": [
+    "MSFT",
+    "GOOG"
+   ],
+   "lecture": "Aucune des deux directions n'accepte de chiffrer precisement l'economie de ses investissements IA a venir (ROIC chez MSFT, CapEx 2027 ou marge par contrat chez GOOG), signe d'un flou assume sur la rentabilite marginale du cycle d'investissement en cours."
+  },
+  {
+   "sujet": "Ventilation ou allocation precise des ressources internes/externes ou des modeles utilises",
+   "presse_chez": [
+    "MSFT",
+    "GOOG"
+   ],
+   "repondu_par": [],
+   "esquive_par": [
+    "MSFT",
+    "GOOG"
+   ],
+   "lecture": "Sur l'adoption de modeles ouverts (MSFT) comme sur l'allocation interne versus externe du compute (GOOG), les deux directions retombent sur un discours de cadre general plutot que sur une donnee chiffree, ce qui limite la capacite du marche a auditer la strategie de capacite."
+  }
+ ],
+ "guidance": [
+  {
+   "metrique": "CapEx annee civile 2026",
+   "par_societe": [
+    {
+     "ticker": "MSFT",
+     "mouvement": "abaisse",
+     "detail": "de 'roughly $190 billion' a 'approximately $175 billion', mais la direction dit que l'investissement reel est inchange, effet de reclassement de baux"
+    },
+    {
+     "ticker": "GOOG",
+     "mouvement": "releve",
+     "detail": "de $175-185 milliards a $180-190 milliards, pour integrer l'acquisition Intersect"
+    }
+   ]
+  },
+  {
+   "metrique": "CapEx 2027",
+   "par_societe": [
+    {
+     "ticker": "GOOG",
+     "mouvement": "releve",
+     "detail": "'we expect our 2027 CapEx to significantly increase compared to 2026', sans chiffre"
+    }
+   ]
+  },
+  {
+   "metrique": "Croissance Azure / Cloud (prochain trimestre ou periode a venir)",
+   "par_societe": [
+    {
+     "ticker": "MSFT",
+     "mouvement": "releve",
+     "detail": "Azure guide a 'approximately 45% in constant currency', contre 39-40% donne au trimestre precedent"
+    }
+   ]
+  },
+  {
+   "metrique": "Marge operationnelle FY / marge Cloud",
+   "par_societe": [
+    {
+     "ticker": "MSFT",
+     "mouvement": "tenu",
+     "detail": "precision nouvelle : 'full fiscal year operating margins should be down less than 1 point' pour FY27"
+    },
+    {
+     "ticker": "GOOG",
+     "mouvement": "abaisse",
+     "detail": "headwind Cloud 'low single-digit percentage point' lie a l'integration de Wiz pour le reste de 2026"
+    }
+   ]
+  },
+  {
+   "metrique": "Taux d'imposition",
+   "par_societe": [
+    {
+     "ticker": "MSFT",
+     "mouvement": "releve",
+     "detail": "'approximately 20%' pour FY27, contre environ 19% guide pour le seul T4 FY26 au trimestre precedent"
+    }
+   ]
+  },
+  {
+   "metrique": "Effet de change (FX)",
+   "par_societe": [
+    {
+     "ticker": "GOOG",
+     "mouvement": "abaisse",
+     "detail": "tailwind attendu de 'approximately 1 percentage point' en Q2 contre 3 points au T1"
+    }
+   ]
+  }
+ ],
+ "read_throughs": [
+  {
+   "de": "GOOG",
+   "vers": "MSFT",
+   "implication": "Si GOOG se dit 'compute constrained' et releve son CapEx 2026 puis annonce une hausse 'significant' pour 2027, cela confirme, en deduction, que la tension de capacite evoquee par MSFT ('demand continues to exceed available supply') est un phenomene sectoriel partage et non idiosyncratique a un seul fournisseur.",
+   "base": "Sundar Pichai : 'we are compute constrained in the near term', repris cote GOOG en parallele du 'demand continues to exceed available supply' de MSFT."
+  },
+  {
+   "de": "MSFT",
+   "vers": "GOOG",
+   "implication": "L'explication de MSFT selon laquelle son CapEx affiche en baisse est un artefact comptable (reclassement bail financement vers bail operationnel) invite, en deduction, a lire avec prudence toute variation de CapEx GAAP chez GOOG egalement, meme si GOOG n'evoque pas ce mecanisme precis pour son propre chiffre.",
+   "base": "MSFT : 'the shift from finance to operating leases adjusts our expectation' alors que l'investissement reel resterait inchange."
+  }
+ ],
+ "ton": "MSFT adopte un ton de transparence assumee, la direction devance elle meme la question du CapEx en expliquant l'artefact comptable avant qu'on ne le lui demande, et elle chiffre precisement ses guidances a venir (45% Azure, plus de 50 milliards de CapEx, marge FY27). Cette confiance scriptee se heurte toutefois en Q&A a des esquives nettes des qu'il s'agit de chiffrer l'impact marge du pricing hardware ou une comparaison de ROIC, la direction y retombant sur un discours qualitatif. GOOG affiche un enthousiasme plus appuye dans son script ('outstanding first quarter', backlog qui double), mais son ton en Q&A est plus defensif : sur le CapEx 2027, la marge par contrat, et la ventilation du backlog, les reponses renvoient systematiquement a de futurs calls ou a des cadres generaux (ROIC), sans donnee chiffree, un ecart script/Q&A plus marque que chez MSFT.",
+ "periode_decalee": {}
+}
