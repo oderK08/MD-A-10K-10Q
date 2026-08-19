@@ -102,15 +102,6 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Installer la police du rapport (Lato)
-        # Le rapport intègre Lato dans le PDF via @font-face pointant sur
-        # un vrai fichier .ttf : xhtml2pdf ne consulte pas la base de
-        # polices système. Et ce n'est pas qu'une question d'allure : le
-        # plafond de mots de la page 1 est calibré sur la largeur de
-        # cette fonte, donc rendre dans une autre est rendre un document
-        # qui n'a pas été mesuré. Vérifié durement à l'étape suivante.
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-lato
-
       - name: Installer les dépendances
         run: |
           # xhtml2pdf peut entrer en conflit avec un paquet cryptography
@@ -120,19 +111,20 @@ jobs:
           pip install -e .
 
       - name: Vérifier que la police du rapport est bien résolue
-        # Combien de mots tiennent sur la page 1 dépend de la fonte, et
-        # le plafond est calibré sur Lato. Sans elle, xhtml2pdf se
-        # rabat sur Helvetica, plus étroite : les tests de pagination se
-        # mettraient en veille et le PDF sortirait dans une autre fonte
-        # que celle sur laquelle il a été mesuré. Ça doit échouer fort
-        # plutôt que passer en silence.
+        # La police Lato est maintenant EMBARQUÉE dans le dépôt
+        # (src/equity_analyzer/report/assets/fonts), plus installée par
+        # apt : apt-get gelait des runs entiers pendant des dizaines de
+        # minutes sur les miroirs GitHub. Cette vérification garde son
+        # sens comme garde-fou : si un fichier de police disparaissait,
+        # xhtml2pdf se rabattrait en silence sur Helvetica. Ça doit
+        # échouer fort plutôt que passer inaperçu.
         run: |
           python -c "
           from equity_analyzer.report.fonts import font_face_css
           import sys
           if not font_face_css():
-              sys.exit('Lato introuvable : le paquet fonts-lato manque.')
-          print('Police du rapport résolue.')
+              sys.exit('Police Lato introuvable dans le dépôt (assets/fonts).')
+          print('Police du rapport résolue depuis le dépôt.')
           "
 
       - name: Lancer la suite de tests

@@ -61,9 +61,6 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Installer la police du rapport (Lato)
-        # Le PDF intègre Lato via @font-face pointant sur un vrai .ttf.
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-lato
 
       - name: Installer les dépendances
         run: |

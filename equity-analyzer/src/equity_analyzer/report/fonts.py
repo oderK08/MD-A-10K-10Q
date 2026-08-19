@@ -13,11 +13,19 @@ Why Lato: Seravek was requested first, but it is a proprietary Apple
 font shipped with macOS only -- absent from the GitHub Actions runners
 that generate these reports, and not licensed for bundling here. Lato
 was chosen instead as the closest freely-redistributable humanist sans:
-same warm, slightly editorial feel, and available as a plain apt package
-(`fonts-lato`) so CI and a developer machine render identically. Seravek
-is not referenced anywhere, not even as a CSS fallback -- the user's
-instruction was not to use it, and a Mac-only fallback would have meant
-the same report rendering in two different faces.
+same warm, slightly editorial feel. Seravek is not referenced anywhere,
+not even as a CSS fallback -- the user's instruction was not to use it,
+and a Mac-only fallback would have meant the same report rendering in
+two different faces.
+
+Why the font is VENDORED into the repo (assets/fonts) rather than
+apt-installed: `apt-get` on the CI runners froze whole runs for tens of
+minutes on mirror timeouts. Lato is under the SIL Open Font License
+(LICENSE-Lato.txt sits beside the .ttf files), so it can ship with the
+code. The font now travels with the repo: no network, no package
+manager, reproducible, and one less step that can hang. The system apt
+paths are kept only as a fallback for a machine that happens to have the
+package.
 
 Degrades honestly: when no font file is found, `font_face_css()` returns
 "" and the stylesheet's own generic `sans-serif` stack applies. The
@@ -32,14 +40,13 @@ from pathlib import Path
 # Family name used in the stylesheet. Must match the @font-face rule.
 BODY_FONT_FAMILY = "ReportSans"
 
-# Searched in order; first hit wins. Covers the Debian/Ubuntu apt layout
-# (both this sandbox and the ubuntu-latest CI runner), plus a
-# repo-local vendored copy for anyone who'd rather not install a system
-# package.
+# Searched in order; first hit wins. The vendored copy comes FIRST, so
+# every machine renders with the exact same font files that ship in the
+# repo; the system apt paths are only a fallback.
 _CANDIDATE_DIRS = [
+    Path(__file__).resolve().parent / "assets" / "fonts",
     Path("/usr/share/fonts/truetype/lato"),
     Path("/usr/share/fonts/lato"),
-    Path(__file__).resolve().parent / "assets" / "fonts",
 ]
 
 # (css weight, css style, filename). Regular and bold are what the
