@@ -1,0 +1,131 @@
+{
+ "ticker": "GOOG",
+ "societe": "Alphabet Inc.",
+ "trimestre": "2026Q1",
+ "international": false,
+ "genere_le": "2026-08-19",
+ "modele": "claude-sonnet-5",
+ "verdict": "Plutot bullish : la direction releve son capex 2026 et annonce un capex 2027 \"significantly\" superieur, ce qui alourdit l'effort d'investissement, mais elle le fait en s'appuyant sur une acceleration nette du Cloud (revenu, marge, backlog) et sur des indicateurs de demande (backlog, deals, tokens) tous en forte hausse.",
+ "lecture": "## Verdict\n\nPlutot bullish : la direction releve son capex 2026 et annonce un capex 2027 \"significantly\" superieur, ce qui alourdit l'effort d'investissement, mais elle le fait en s'appuyant sur une acceleration nette du Cloud (revenu, marge, backlog) et sur des indicateurs de demande (backlog, deals, tokens) tous en forte hausse.\n\n## Face aux attentes\n\nLa comparaison chiffree fournie n'est pas exploitable : le consensus (2,63 $) est etabli sur une base ajustee alors que le publie (5,11 $) est du GAAP, gonfle notamment par des \"unrealized gains in our nonmarketable equity securities portfolio\". Je ne peux donc pas dire si ce trimestre a bat ou manque le consensus. Ce qui est verifiable, c'est le discours de la direction elle meme, qui presente le trimestre comme exceptionnel : \"We had an outstanding first quarter, delivering our 11th consecutive quarter of double-digit revenue growth.\" Le palmares des quatre trimestres precedents montre des depassements reguliers du consensus ajuste (de +5,5% a +39,8%), ce qui installe une habitude de beat que ce trimestre, dans son propre recit, ne dementait pas.\n\n## Les declarations cles\n\nCe qui change : la guidance capex 2026 est relevee de $175-185 milliards a $180-190 milliards, explicitement pour integrer une acquisition : \"We are updating our full year 2026 CapEx guidance range to $180 billion to $190 billion, up from our previous estimate of $175 billion to $185 billion to now include investment related to the acquisition of Intersect, which closed in March.\" L'ampleur du mouvement est de +5 milliards en haut et en bas de fourchette, motivee par une operation externe, pas par une revision de la demande interne.\n\nPlus significatif encore, la direction ouvre la porte a un saut d'echelle en 2027 : \"we expect our 2027 CapEx to significantly increase compared to 2026.\" Aucun chiffre n'est donne, mais le mot \"significantly\" et l'insistance sur la demande non satisfaite (\"our Cloud revenue would have been higher if we were able to meet all demand\") signalent un cycle d'investissement qui s'accelere encore.\n\nNouvelle information sur la marge Cloud : l'integration de Wiz va peser dessus : \"we expect a low single-digit percentage point headwind to Cloud's operating margin for the remainder of 2026 related to the acquisition.\" C'est un frein chiffre qui n'apparaissait pas dans la liste du trimestre precedent.\n\nSur le FX, la guidance qualitative anterieure (\"tailwind\") est desormais quantifiee et degressive : \"we would expect to see an FX tailwind of approximately 1 percentage point to our consolidated revenue in Q2 compared to a 3 percentage point FX tailwind in the first quarter.\" Le vent favorable retombe donc de 3 a 1 point.\n\nCe qui est reconduit sans changement : la repartition capex 60% serveurs / 40% data centers et reseau est confirmee a l'identique (\"Approximately 60% of our investment in technical infrastructure this quarter was in servers, and 40% was in data centers and networking equipment\"), et l'acceleration de la depreciation est reaffirmee qualitativement sans nouveau chiffre.\n\nNouveaute chiffree hors liste de reference : le backlog Cloud a \"nearly doubled sequentially, reaching $462 billion\", et Anat Ashkenazi precise que \"just over half of the total backlog will convert to revenue in the next 24 months\", avec des ventes de TPU dont \"a small percent\" sera reconnu en 2026 et \"the majority to be realized as revenue in 2027\".\n\n## A surveiller\n\nLe capex 2027 sera-t-il chiffre au prochain call, et de quelle ampleur par rapport aux $180-190 milliards de 2026 ? Le headwind de marge Cloud lie a Wiz reste-t-il contenu en \"low single-digit\" ou s'aggrave-t-il ? La contrainte de compute evoquee par Sundar Pichai (\"we are compute constrained in the near term\") se traduit-elle par des pertes de revenu Cloud constatees dans les trimestres suivants ? Le FX redevient-il neutre ou negatif au-dela du T2 comme le suggere la trajectoire 3% vers 1% ?",
+ "attentes": {
+  "disponible": true,
+  "bpa_attendu": 2.63,
+  "bpa_publie": 5.11,
+  "surprise_pct": 94.2966,
+  "comparable": false
+ },
+ "qa": {
+  "esquives": [
+   {
+    "analyst": "Doug Anmuth",
+    "question": "Quel sera le montant du CapEx 2027 ?",
+    "what_was_asked": "Une quantification ou fourchette chiffree du CapEx attendu pour 2027",
+    "what_was_given": "Confirmation qualitative d'une hausse significative, renvoi a de futurs calls pour plus de clarte",
+    "severity": "high"
+   },
+   {
+    "analyst": "Justin Post",
+    "question": "Quelles marges sur les gros contrats Cloud IA generative (deals a 100 milliards de dollars) ?",
+    "what_was_asked": "Le niveau de marge attendu sur ces contrats specifiques comparativement au Cloud existant",
+    "what_was_given": "Refus de commenter des contrats specifiques, renvoi generique au cadre ROIC",
+    "severity": "high"
+   },
+   {
+    "analyst": "Ken Gawrelski",
+    "question": "Quelle est la repartition de la capacite de calcul entre usage interne et Cloud externe ?",
+    "what_was_asked": "Un chiffre ou une proportion precise d'allocation interne versus externe",
+    "what_was_given": "Explication generale du cadre de planification et de ROIC sans donnee chiffree",
+    "severity": "medium"
+   },
+   {
+    "analyst": "Mark Shmulik",
+    "question": "Quelle part de la force de Search vient du changement de comportement (AI Mode) versus les nouveaux outils publicitaires ?",
+    "what_was_asked": "Une dimensionnalisation quantitative des deux effets",
+    "what_was_given": "Reponse qualitative sur l'expansion generale de Search sans decomposition chiffree",
+    "severity": "medium"
+   },
+   {
+    "analyst": "Justin Post",
+    "question": "Repartition de la croissance du backlog entre TPU et Cloud",
+    "what_was_asked": "Une ventilation chiffree precise du backlog entre ventes de TPU et contrats GCP",
+    "what_was_given": "Indication que la majorite reste des accords GCP et calendrier approximatif de conversion en revenu, sans chiffres exacts de repartition",
+    "severity": "medium"
+   }
+  ],
+  "esquives_graves": 2,
+  "concessions": [
+   {
+    "topic": "Contrainte de capacite Cloud",
+    "admission": "Le chiffre d'affaires Cloud aurait ete plus eleve sans les contraintes de capacite",
+    "verbatim": "Our Cloud revenue would have been higher if we were able to meet all demand"
+   },
+   {
+    "topic": "Effet de change sur Google Services",
+    "admission": "Une partie de la performance de Search/Services est attribuable a un vent favorable de change, pas seulement a l'activite sous-jacente",
+    "verbatim": "Google Services benefited from a strong FX tailwind"
+   },
+   {
+    "topic": "Pression sur les marges futures",
+    "admission": "Un vent contraire lie a la hausse de la depreciation, consequence du CapEx eleve, continuera de peser",
+    "verbatim": "We'll have the headwind associated with higher depreciation coming from higher CapEx levels"
+   }
+  ],
+  "signaux_prospectifs": [
+   {
+    "topic": "Calendrier de conversion du backlog TPU",
+    "signal": "Seule une petite partie des ventes de hardware TPU sera comptabilisee en revenu cette annee, la majorite arrivant en 2027",
+    "buried_in": "Reponse d'Anat Ashkenazi a Justin Post sur la ventilation du backlog",
+    "direction": "positive"
+   },
+   {
+    "topic": "Conversion du backlog Cloud global",
+    "signal": "Un peu plus de la moitie du backlog total de 462 milliards de dollars se convertira en revenu dans les 24 prochains mois",
+    "buried_in": "Reponse sur la repartition TPU versus GCP dans le backlog",
+    "direction": "positive"
+   },
+   {
+    "topic": "Monetisation publicitaire de Gemini app",
+    "signal": "Le management indique explicitement ne pas se precipiter sur l'introduction de publicite dans l'app Gemini, ce qui retarde une source de revenu potentielle",
+    "buried_in": "Reponse de Philipp Schindler a Michael Nathanson sur les images shopping dans Gemini",
+    "direction": "neutral"
+   },
+   {
+    "topic": "Demande enterprise AI",
+    "signal": "Croissance de 800% en glissement annuel des solutions enterprise AI, signal de forte traction sous-jacente non detaille dans le communique",
+    "buried_in": "Reponse de Sundar Pichai sur l'allocation de capacite entre divisions",
+    "direction": "positive"
+   },
+   {
+    "topic": "Pression inflationniste sur la chaine d'approvisionnement",
+    "signal": "Le management confirme integrer une inflation de la chaine d'approvisionnement dans les commentaires CapEx 26/27 sans quantifier l'impact",
+    "buried_in": "Reponse de Sundar Pichai a Ken Gawrelski sur la chaine d'approvisionnement",
+    "direction": "negative"
+   }
+  ],
+  "themes_recurrents": [
+   {
+    "theme": "Contrainte de capacite de calcul et arbitrages d'allocation (ROIC)",
+    "analyst_count": 5,
+    "summary": "Plusieurs analystes (Brian Nowak, Doug Anmuth, Eric Sheridan, Michael Nathanson, Ken Gawrelski) interrogent la direction sur comment elle priorise le CapEx et la capacite entre Search, Cloud interne et clients externes, la direction repondant systematiquement via un cadre ROIC sans chiffres precis."
+   },
+   {
+    "theme": "Strategie et economie des ventes de TPU",
+    "analyst_count": 3,
+    "summary": "Brian Nowak, Ken Gawrelski (indirectement) et Justin Post interrogent sur la logique de pricing et le poids des ventes de TPU dans le backlog, la direction restant evasive sur les details financiers specifiques."
+   },
+   {
+    "theme": "Commerce agentique et Universal Commerce Protocol",
+    "analyst_count": 2,
+    "summary": "Eric Sheridan et Ross Sandler questionnent l'impact du commerce agentique et de l'UCP sur le modele publicitaire, Philipp Schindler insistant sur l'experience utilisateur avant la monetisation."
+   },
+   {
+    "theme": "Moteurs de la croissance des requetes Search",
+    "analyst_count": 2,
+    "summary": "Doug Anmuth et Mark Shmulik cherchent a comprendre si la croissance vient du changement de comportement utilisateur ou des outils publicitaires, sans decomposition chiffree fournie."
+   }
+  ],
+  "chiffres_a_verifier": []
+ },
+ "source_transcript": "Alpha Vantage",
+ "mots_transcript": 8259
+}
