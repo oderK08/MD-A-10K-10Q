@@ -1,0 +1,114 @@
+{
+ "ticker": "CRWV",
+ "societe": "CoreWeave, Inc.",
+ "trimestre": "2026Q2",
+ "international": false,
+ "date_resultats": "2026-08-11",
+ "genere_le": "2026-08-20",
+ "modele": "claude-sonnet-5",
+ "verdict": "Plutot bullish, mais avec une revision d'echelle d'investissement qui merite l'attention du gerant : la direction releve simultanement le chiffre d'affaires, la marge et la puissance active guides pour l'exercice, tout en portant le capex 2026 de la fourchette $31-35 milliards annoncee au T1 a \"$35 billion to $39 billion\", soit environ 4 milliards de dollars de plus au point median.",
+ "lecture": "## Verdict\n\nPlutot bullish, mais avec une revision d'echelle d'investissement qui merite l'attention du gerant : la direction releve simultanement le chiffre d'affaires, la marge et la puissance active guides pour l'exercice, tout en portant le capex 2026 de la fourchette $31-35 milliards annoncee au T1 a \"$35 billion to $39 billion\", soit environ 4 milliards de dollars de plus au point median.\n\n## Face aux attentes\n\nLe BPA publie (-1.32) bat le consensus (-1.52) de 13.2%, apres deux trimestres consecutifs manques nettement (-23.1% puis -37.7%). La direction ne commente jamais explicitement l'ecart au consensus mais revendique la surperformance operationnelle : \"We outperformed our plan across the board with the operating leverage we have been building beginning to show up clearly in our results.\" A nuancer : la perte nette s'est creusee en absolu, \"Net loss for Q2 was $626 million compared to a net loss of $290 million in Q2 of 2025\", tiree par une charge d'interets qui a plus que double sur un an. Le beat vient donc davantage d'un controle des couts operationnels et d'un levier operationnel naissant que d'une amelioration de la rentabilite globale.\n\n## Les declarations cles\n\nCe qui change par rapport au T1 :\n\nCapex FY2026 releve de $31-35 milliards a \"$35 billion to $39 billion\", justifie par \"our increased expectations around capacity to be delivered to customers this year as well as some of our significant recent wins\". C'est l'engagement le plus lourd de consequences : plus de capex signifie plus de dette et d'emission de capital a venir.\n\nRevenue guidance FY2026 relevee de $12-13 milliards a \"$12.4 billion to $13.2 billion\". Adjusted operating income FY2026 releve de $900M-1.1B a \"$960 million to $1.15 billion\". Puissance active fin 2026 relevee de plus de 1.7 GW a \"more than 1.85 gigawatts of active power, up from our previous guidance of more than 1.7 gigawatts.\" ARR annualise fin 2026 releve de $18-19 milliards a \"$18.5 billion to $19.5 billion\". Ces quatre revisions vont dans le meme sens haussier et sont coherentes avec le message de demande superieure a l'offre.\n\nNouvelle guidance T3, absente du call precedent : revenu \"$3.45 billion to $3.6 billion\", resultat operationnel ajuste \"$200 million to $260 million\", charge d'interets \"$860 million to $940 million\", capex \"$11.5 billion to $13.5 billion\". A noter que le capex Q2 reel ($9.4 milliards) a legerement depasse le haut de la fourchette guidee au T1 ($7-9 milliards).\n\nInformation nouvelle, non presente dans la liste du T1 : marge de contribution sur les contrats signes au Q2 \"5 to 10 percentage points above those added in recent quarters\", et ARR de l'inference geree guide a \"at least $250 million\" fin 2026, apres etre passe de 1 million a plus de 100 millions en un trimestre. Egalement neuve : la hausse de prix generalisee, \"an approximately 25% increase across SKUs\" annoncee en juillet, qui n'apparaissait pas dans les engagements anterieurs et qui alimente directement l'expansion de marge future.\n\nLe backlog atteint $104.2 milliards, hors \"over $25 billion of net new customer commitments added in the early weeks of Q3\", signal de demande qui deborde le trimestre cloture.\n\n## A surveiller\n\nLe capex FY2026 de $35-39 milliards se traduit-il par une hausse proportionnelle de la dette et de la dilution actionnariale au prochain trimestre, ou l'entreprise finance-t-elle davantage via prepaiements clients. La marge operationnelle ajuste atteint-elle bien le \"low teens\" annonce pour le T4. L'ARR de l'inference geree franchit-il effectivement les $250 millions promis. La part du backlog avec livraison commencee passe-t-elle des \"more than 50%\" actuels aux \"two-thirds\" annonces d'ici fin d'annee.",
+ "attentes": {
+  "disponible": true,
+  "bpa_attendu": -1.52,
+  "bpa_publie": -1.32,
+  "surprise_pct": 13.1579,
+  "comparable": true
+ },
+ "qa": {
+  "esquives": [
+   {
+    "analyst": "Samik Chatterjee (JPMorgan)",
+    "question": "Quelle part du parc installe arrive a echeance de contrat dans les prochaines annees ?",
+    "what_was_asked": "Une estimation chiffree de la proportion du fleet actuel eligible au renouvellement",
+    "what_was_given": "Reponse qualitative : c'est une part tres limitee du fleet, sans pourcentage ni volume precis",
+    "severity": "medium"
+   },
+   {
+    "analyst": "Brad Zelnick (Deutsche Bank)",
+    "question": "Decomposer les 5 a 10 points de marge supplementaire entre duree de contrat, differenciation concurrentielle et autres facteurs",
+    "what_was_asked": "Une ventilation quantifiee des drivers de marge",
+    "what_was_given": "Le CEO reconnait que c'est difficile a decomposer et donne une explication qualitative generale",
+    "severity": "high"
+   },
+   {
+    "analyst": "Michael Turrin (Wells Fargo)",
+    "question": "Uplift attendu de Vera Rubin par rapport aux generations precedentes",
+    "what_was_asked": "Une indication chiffree du gain de monetisation attendu avec Vera Rubin",
+    "what_was_given": "Discours qualitatif sur l'enthousiasme et la demande, sans chiffre d'uplift",
+    "severity": "medium"
+   }
+  ],
+  "esquives_graves": 1,
+  "concessions": [
+   {
+    "topic": "Opposition locale aux data centers",
+    "admission": "Certaines communautes ont mis en place des moratoires affectant la localisation des projets",
+    "verbatim": "certain communities have moved forward with moratoriums"
+   },
+   {
+    "topic": "Decomposition de la marge",
+    "admission": "Le management admet ne pas pouvoir isoler precisement les facteurs de hausse de marge",
+    "verbatim": "it's difficult to deconstruct it"
+   }
+  ],
+  "signaux_prospectifs": [
+   {
+    "topic": "ARR de sortie 2026",
+    "signal": "La fourchette d'ARR de sortie a ete relevee a 18,5 a 19,5 milliards de dollars pour 2026",
+    "buried_in": "Reponse a une question sur la pression haussiere sur les prix",
+    "direction": "positive"
+   },
+   {
+    "topic": "Inference managee",
+    "signal": "Objectif d'environ 250 millions de dollars d'ARR d'ici la fin de l'annee pour ce segment",
+    "buried_in": "Reponse sur le renouvellement de contrats plus anciens",
+    "direction": "positive"
+   },
+   {
+    "topic": "Puissance active contractee",
+    "signal": "4,2 GW deja contractes plus 1,5 GW d'options terrain/LOI, soit pres de 6 GW mi-2026, en ligne pour plus de 8 GW d'ici fin 2030",
+    "buried_in": "Reponse a une question sur la resistance reglementaire",
+    "direction": "positive"
+   },
+   {
+    "topic": "Charge de puissance ajoutee en fin de trimestre",
+    "signal": "300 MW sur les 500 MW ajoutes au Q2 l'ont ete en juin, impact revenu attendu surtout au Q3 et Q4",
+    "buried_in": "Reponse sur la linearite de la capacite ajoutee",
+    "direction": "positive"
+   },
+   {
+    "topic": "Marge sur la generation Vera Rubin",
+    "signal": "Vera Rubin montre une expansion de marge des le demarrage, contribuant fortement aux 5 a 10 points de marge supplementaire",
+    "buried_in": "Reponse sur la monetisation de Vera Rubin",
+    "direction": "positive"
+   },
+   {
+    "topic": "DDTL 5.5 et duree des contrats",
+    "signal": "L'acces au financement de contrats plus courts ouvre un marche enterprise jusque-la peu accessible",
+    "buried_in": "Reponse sur le changement de strategie de duree de contrat",
+    "direction": "positive"
+   }
+  ],
+  "themes_recurrents": [
+   {
+    "theme": "Expansion des marges (5 a 10 points)",
+    "analyst_count": 4,
+    "summary": "Plusieurs analystes (Samik, Brad, Turrin, Raimo) interrogent sur l'origine et la durabilite de la hausse de marge observee sur les nouveaux contrats"
+   },
+   {
+    "theme": "Flexibilite de duree des contrats (courte vs longue duree, DDTL)",
+    "analyst_count": 3,
+    "summary": "Samik, Brad et Brett questionnent la strategie de recontractualisation sur des durees plus courtes permise par le financement DDTL 5.5"
+   },
+   {
+    "theme": "Capacite en puissance et contexte reglementaire",
+    "analyst_count": 2,
+    "summary": "Irvin Liu et implicitement Samik interrogent la trajectoire de deploiement de puissance active face aux oppositions locales et contraintes de supply chain"
+   }
+  ],
+  "chiffres_a_verifier": []
+ },
+ "source_transcript": "Alpha Vantage",
+ "mots_transcript": 8594
+}

@@ -1,0 +1,29 @@
+{
+ "ticker": "CRWV",
+ "quarter": "2026Q2",
+ "model": "claude-sonnet-5",
+ "commitments": [],
+ "dodges": [
+  {
+   "analyst": "Samik Chatterjee (JPMorgan)",
+   "question": "Quelle part du parc installe arrive a echeance de contrat dans les prochaines annees ?",
+   "what_was_asked": "Une estimation chiffree de la proportion du fleet actuel eligible au renouvellement",
+   "what_was_given": "Reponse qualitative : c'est une part tres limitee du fleet, sans pourcentage ni volume precis",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Brad Zelnick (Deutsche Bank)",
+   "question": "Decomposer les 5 a 10 points de marge supplementaire entre duree de contrat, differenciation concurrentielle et autres facteurs",
+   "what_was_asked": "Une ventilation quantifiee des drivers de marge",
+   "what_was_given": "Le CEO reconnait que c'est difficile a decomposer et donne une explication qualitative generale",
+   "severity": "high"
+  },
+  {
+   "analyst": "Michael Turrin (Wells Fargo)",
+   "question": "Uplift attendu de Vera Rubin par rapport aux generations precedentes",
+   "what_was_asked": "Une indication chiffree du gain de monetisation attendu avec Vera Rubin",
+   "what_was_given": "Discours qualitatif sur l'enthousiasme et la demande, sans chiffre d'uplift",
+   "severity": "medium"
+  }
+ ]
+}

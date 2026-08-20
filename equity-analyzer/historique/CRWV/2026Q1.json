@@ -1,0 +1,116 @@
+{
+ "ticker": "CRWV",
+ "quarter": "2026Q1",
+ "model": "claude-sonnet-5",
+ "commitments": [
+  {
+   "metric": "revenue guidance",
+   "value": "$12 billion to $13 billion",
+   "period": "exercice 2026",
+   "verbatim": "reaffirming our full year guidance of $12 billion to $13 billion of revenue"
+  },
+  {
+   "metric": "adjusted operating income guidance",
+   "value": "$900 million to $1.1 billion",
+   "period": "exercice 2026",
+   "verbatim": "and $900 million to $1.1 billion of adjusted operating income"
+  },
+  {
+   "metric": "revenue guidance",
+   "value": "$2.45 billion to $2.6 billion",
+   "period": "T2 2026",
+   "verbatim": "For Q2, we expect revenue in the range of $2.45 billion to $2.6 billion"
+  },
+  {
+   "metric": "adjusted operating income guidance",
+   "value": "$30 million to $90 million",
+   "period": "T2 2026",
+   "verbatim": "We expect Q2 adjusted operating income of $30 million to $90 million"
+  },
+  {
+   "metric": "interest expense guidance",
+   "value": "$650 million à $730 million",
+   "period": "T2 2026",
+   "verbatim": "Our Q2 interest expense is expected to be in the range of $650 million to $730 million"
+  },
+  {
+   "metric": "capex guidance",
+   "value": "$7 billion à $9 billion",
+   "period": "T2 2026",
+   "verbatim": "We expect CapEx to be $7 billion to $9 billion as we continue to bring significant capacity online"
+  },
+  {
+   "metric": "capex guidance",
+   "value": "$31 billion à $35 billion",
+   "period": "exercice 2026",
+   "verbatim": "For the full year, we now expect CapEx of $31 billion to $35 billion"
+  },
+  {
+   "metric": "annualized run rate revenue",
+   "value": "$18 billion à $19 billion",
+   "period": "fin 2026",
+   "verbatim": "We now expect to end 2026 with $18 billion to $19 billion of annualized run rate revenue"
+  },
+  {
+   "metric": "annualized run rate revenue",
+   "value": "plus de $30 billion",
+   "period": "fin 2027",
+   "verbatim": "We continue to expect to grow annualized run rate revenue to more than $30 billion as we exit 2027"
+  },
+  {
+   "metric": "part du backlog 2027 deja contractee",
+   "value": "plus de 75%",
+   "period": "exercice 2027",
+   "verbatim": "more than 75% of which is already contracted, excluding any benefit from not-yet-exercised customer renewals"
+  },
+  {
+   "metric": "active power",
+   "value": "plus de 1.7 gigawatts",
+   "period": "fin 2026",
+   "verbatim": "we remain firmly on track to reach or exceed our target of more than 1.7 gigawatts by the end of 2026"
+  },
+  {
+   "metric": "active power",
+   "value": "plus de 8 gigawatts",
+   "period": "2030",
+   "verbatim": "strongly positioned to meet our goal of reaching more than 8 gigawatts of active power by 2030"
+  },
+  {
+   "metric": "contracted power venant en service",
+   "value": "substantial majority",
+   "period": "fin 2027",
+   "verbatim": "We expect the substantial majority of this contracted power to come online by the end of 2027"
+  },
+  {
+   "metric": "adjusted operating margin de sortie",
+   "value": "low double digits",
+   "period": "T4 2026",
+   "verbatim": "continue to expect adjusted operating margin to expand sequentially for the remainder of the year, returning to low double digits by Q4"
+  },
+  {
+   "metric": "premier site self-build",
+   "value": "later this year",
+   "period": "exercice 2026",
+   "verbatim": "We expect our first self-build site to come online later this year"
+  },
+  {
+   "metric": "ARR pour software, CPU et networking business",
+   "value": "plus de $100 million",
+   "period": "fin 2026",
+   "verbatim": "each of which we expect to exceed $100 million of ARR by the end of the year"
+  },
+  {
+   "metric": "taux d'imposition",
+   "value": "broadly consistent",
+   "period": "exercice 2026",
+   "verbatim": "our tax rate should remain broadly consistent over 2026"
+  },
+  {
+   "metric": "contribution margin sur deploiements arrives a maturite",
+   "value": "mid-20s",
+   "period": "non precise",
+   "verbatim": "contribution margins normalizing in the mid-20s"
+  }
+ ],
+ "dodges": []
+}
