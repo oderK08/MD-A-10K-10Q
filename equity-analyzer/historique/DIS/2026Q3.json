@@ -1,0 +1,22 @@
+{
+ "ticker": "DIS",
+ "quarter": "2026Q3",
+ "model": "claude-sonnet-5",
+ "commitments": [],
+ "dodges": [
+  {
+   "analyst": "Robert Fishman",
+   "question": "Quelle part de la croissance de Walt Disney World vient des investissements organiques versus le rattrapage lie a l'ouverture d'Epic l'an dernier",
+   "what_was_asked": "une ventilation chiffree entre effet de rattrapage (comparaison facile) et croissance organique reelle",
+   "what_was_given": "une affirmation qualitative que la croissance est desormais presque entierement organique, sans chiffres ni ventilation",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Jessica Reif Ehrlich",
+   "question": "Comment definir le succes de l'accord TikTok pour Disney+",
+   "what_was_asked": "des criteres ou metriques concrets de succes pour ce partenariat",
+   "what_was_given": "un discours strategique general sur l'engagement des fans et une app plus sticky, sans metrique de succes definie",
+   "severity": "medium"
+  }
+ ]
+}

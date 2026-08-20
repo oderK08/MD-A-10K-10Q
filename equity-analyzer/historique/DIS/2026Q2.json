@@ -1,0 +1,56 @@
+{
+ "ticker": "DIS",
+ "quarter": "2026Q2",
+ "model": "claude-sonnet-5",
+ "commitments": [
+  {
+   "metric": "adjusted EPS growth",
+   "value": "12%",
+   "period": "exercice fiscal 2026",
+   "verbatim": "we expect 12% growth in adjusted EPS for fiscal '26 and double-digit growth of adjusted EPS for fiscal '27, both excluding the impact of the 53rd week"
+  },
+  {
+   "metric": "adjusted EPS growth",
+   "value": "croissance a deux chiffres",
+   "period": "exercice fiscal 2027",
+   "verbatim": "double-digit growth of adjusted EPS for fiscal '27, both excluding the impact of the 53rd week"
+  },
+  {
+   "metric": "flotte de navires de croisiere",
+   "value": "de 8 a 13 navires",
+   "period": "d'ici 2031",
+   "verbatim": "plans to expand the cruise line fleet from 8 currently to 13 ships by 2031"
+  },
+  {
+   "metric": "attendance domestique des parcs",
+   "value": "amelioration versus baisse de 1% au T2",
+   "period": "T3",
+   "verbatim": "we expect attendance at our domestic parks in Q3 compared to the prior year period to show improvement compared to the 1% decline"
+  },
+  {
+   "metric": "Disney Entertainment segment operating income growth",
+   "value": "croissance a deux chiffres",
+   "period": "exercice fiscal en cours",
+   "verbatim": "Our guidance continues for double-digit segment operating income growth this fiscal year, excluding the 53rd week"
+  },
+  {
+   "metric": "sports operating income growth",
+   "value": "mid-single digits",
+   "period": "exercice fiscal en cours",
+   "verbatim": "On the sports operating income guidance, that is now mid-single digits, which includes the NFL Network transaction"
+  },
+  {
+   "metric": "impact de la 53e semaine sur le revenu total",
+   "value": "un peu moins de 2%",
+   "period": "exercice fiscal complet",
+   "verbatim": "Think about it as essentially a little less than a 2% benefit on our full year revenues"
+  },
+  {
+   "metric": "impact de la 53e semaine sur le resultat operationnel",
+   "value": "environ 4%",
+   "period": "exercice fiscal complet",
+   "verbatim": "it delivers about a 4% benefit to operating income on the full year basis"
+  }
+ ],
+ "dodges": []
+}

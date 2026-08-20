@@ -1,0 +1,82 @@
+{
+ "ticker": "DIS",
+ "societe": "Walt Disney Co",
+ "trimestre": "2026Q3",
+ "international": false,
+ "date_resultats": null,
+ "genere_le": "2026-08-20",
+ "modele": "claude-sonnet-5",
+ "verdict": "Plutot bullish. La direction affirme avoir battu son propre guidage (\"Total segment operating income came in ahead of our prior guidance, up 21%\") et releve dans ce call meme la guidance d'OI d'Experiences vers le haut de la fourchette annoncee, tout en portant l'enveloppe de rachats d'actions de 7 a au moins 9 milliards de dollars, un changement d'echelle de retour aux actionnaires qui merite d'etre en tete.",
+ "lecture": "## Verdict\n\nPlutot bullish. La direction affirme avoir battu son propre guidage (\"Total segment operating income came in ahead of our prior guidance, up 21%\") et releve dans ce call meme la guidance d'OI d'Experiences vers le haut de la fourchette annoncee, tout en portant l'enveloppe de rachats d'actions de 7 a au moins 9 milliards de dollars, un changement d'echelle de retour aux actionnaires qui merite d'etre en tete.\n\n## Face aux attentes\n\nAucun consensus de BPA ne m'a ete fourni pour ce trimestre : je ne peux donc pas situer le resultat par rapport aux attentes de marche. Le seul point de reference est celui que la direction choisit elle meme de mettre en avant, a savoir sa propre guidance anterieure : \"Our ability to outperform our prior consolidated fiscal Q3 guidance and reiterate our full year outlook despite the mixed box office performance demonstrates the strength of our diversified entertainment model.\" Le ton general (\"we're operating from a real position of strength\") est offensif, mais je ne peux pas verifier s'il s'agit d'un beat, d'un miss ou d'un trimestre en ligne au sens du consensus.\n\n## Les declarations cles\n\nCe qui change dans ce call :\n\nLe rachat d'actions passe de 7 a 9 milliards de dollars minimum : \"recall, we originally guided to about $7 billion in fiscal '26, and now we're up to at least $9 billion.\" Hugh Johnston precise que cette hausse vient de cash liberes du deal OpenAI et des produits attendus de la cession A&E annoncee la veille : un signal de generation de cash superieure aux plans initiaux, alloue au retour actionnaire plutot qu'a du desendettement supplementaire.\n\nLa guidance d'OI d'Experiences est relevee au haut de la fourchette : \"we did just this morning guide to the high end of our prior high-single-digit OI growth for fiscal year '26.\" Hugh ecarte explicitement l'hypothese d'un effet tarifs : \"tariffs really have nothing to do with it,\" attribuant la hausse a \"terrific execution by the Parks team.\"\n\nL'attendance domestique, qualitative au trimestre precedent (\"amelioration\"), devient chiffree : \"we had 3% attendance growth at our domestic parks\" et \"4% growth in per cap spending,\" malgre les nouveaux programmes de discount. Ceci confirme et depasse l'engagement qualitatif anterieur.\n\nPoint de vigilance neuf, non present dans la liste precedente : la faiblesse en Asie. \"We have seen a weaker consumer in Asia in our parks in Shanghai and Hong Kong in Q3, and that's continuing in Q4.\"\n\nAutre point neuf : pression sur les prix publicitaires en streaming, \"creating some pricing pressure for us and for others, which you saw in our SVOD ad sales growth rate this quarter.\"\n\nLe chiffre precis de 12% de croissance du BPA ajuste pour l'exercice 2026 n'est pas repete tel quel par la direction dans ce call, seul un analyste evoque \"double-digit adjusted EPS growth\" sans que Hugh Johnston ne le confirme chiffre par chiffre dans sa reponse.\n\nCe qui est reconduit sans chiffre nouveau : la croissance mid-single-digit de l'OI Sports, evoquee seulement comme \"growing,\" et l'impact de la 53e semaine, mentionne comme facteur d'exclusion sans pourcentage repete.\n\n## A surveiller\n\nLe rachat de 9 milliards sera t il integralement deploye d'ici la fin de l'exercice 2026 ? La faiblesse Asie (Shanghai, Hong Kong) s'aggrave t elle au T4 ou reste t elle contenue ? L'OI Experiences atterrira t il reellement au haut de la fourchette high single digit annoncee ce trimestre ? Le chiffre de 12% de croissance du BPA pour FY26 sera t il reaffirme explicitement au prochain call ou restera t il dilue en simple \"double-digit\" ?",
+ "attentes": {
+  "disponible": false,
+  "raison": "aucune ligne de consensus pour le trimestre du call (repère : trimestre clos le 2026-06-27, décalage +0)"
+ },
+ "qa": {
+  "esquives": [
+   {
+    "analyst": "Robert Fishman",
+    "question": "Quelle part de la croissance de Walt Disney World vient des investissements organiques versus le rattrapage lie a l'ouverture d'Epic l'an dernier",
+    "what_was_asked": "une ventilation chiffree entre effet de rattrapage (comparaison facile) et croissance organique reelle",
+    "what_was_given": "une affirmation qualitative que la croissance est desormais presque entierement organique, sans chiffres ni ventilation",
+    "severity": "medium"
+   },
+   {
+    "analyst": "Jessica Reif Ehrlich",
+    "question": "Comment definir le succes de l'accord TikTok pour Disney+",
+    "what_was_asked": "des criteres ou metriques concrets de succes pour ce partenariat",
+    "what_was_given": "un discours strategique general sur l'engagement des fans et une app plus sticky, sans metrique de succes definie",
+    "severity": "medium"
+   }
+  ],
+  "esquives_graves": 0,
+  "concessions": [
+   {
+    "topic": "Impact des tarifs douaniers sur les resultats Experiences",
+    "admission": "Des tarifs ont bien ete payes sur les deux premiers trimestres de l'annee avant d'etre rembourses au T3",
+    "verbatim": "les tarifs que nous avons payes etaient dans les deux premiers trimestres"
+   }
+  ],
+  "signaux_prospectifs": [
+   {
+    "topic": "Guidance Experiences OI",
+    "signal": "L'OI d'Experiences devrait atterrir en haut de la fourchette de croissance high single digit annuelle, hors 53e semaine",
+    "buried_in": "reponse a la question de Batya Levi sur l'origine de la surperformance",
+    "direction": "positive"
+   },
+   {
+    "topic": "Impact des tarifs au T4",
+    "signal": "L'effet des tarifs au quatrieme trimestre est attendu comme immateriel, contre un impact reel plus tot dans l'annee",
+    "buried_in": "reponse sur l'origine du relevement de guidance Experiences",
+    "direction": "positive"
+   },
+   {
+    "topic": "Calendrier de lancement des navires de croisiere",
+    "signal": "Confiance elevee et explicite dans le respect des delais de construction des futurs navires",
+    "buried_in": "reponse a Sean Diffley sur la visibilite des lancements de croisieres",
+    "direction": "positive"
+   },
+   {
+    "topic": "Durabilite de la croissance des parcs domestiques",
+    "signal": "La croissance actuelle est qualifiee de quasi entierement organique, suggerant une base de croissance plus solide et moins dependante d'un effet de base favorable",
+    "buried_in": "reponse a Robert Fishman sur Epic Universe",
+    "direction": "positive"
+   }
+  ],
+  "themes_recurrents": [
+   {
+    "theme": "Performance et moteurs de croissance des parcs (Experiences)",
+    "analyst_count": 3,
+    "summary": "Sean Diffley, Robert Fishman et Batya Levi interrogent sur les moteurs de croissance des parcs, les navires de croisiere, l'effet Epic Universe et la guidance d'OI Experiences."
+   },
+   {
+    "theme": "Strategie streaming et integration de contenu (TikTok, Disney+)",
+    "analyst_count": 2,
+    "summary": "Jessica Reif Ehrlich et Sean Diffley posent des questions liees a l'annonce TikTok et son integration avec Disney+."
+   }
+  ],
+  "chiffres_a_verifier": []
+ },
+ "source_transcript": "Alpha Vantage",
+ "mots_transcript": 9097
+}
