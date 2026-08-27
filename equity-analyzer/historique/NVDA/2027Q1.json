@@ -1,0 +1,43 @@
+{
+ "ticker": "NVDA",
+ "quarter": "2027Q1",
+ "model": "claude-sonnet-5",
+ "commitments": [],
+ "dodges": [
+  {
+   "analyst": "Benjamin Reitzes",
+   "question": "Confirmez-vous toujours l'objectif de marche data center de 3 000 a 4 000 milliards de dollars d'ici la fin de la decennie ?",
+   "what_was_asked": "Confirmation explicite du chiffre de TAM 3 a 4 mille milliards de dollars et si la croissance de NVIDIA restera superieure au capex des hyperscalers",
+   "what_was_given": "Une explication qualitative sur les deux segments de croissance sans reconfirmer ni infirmer le chiffre precis de 3 a 4 mille milliards",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Stacy Rasgon",
+   "question": "Quelle est la taille relative actuelle des segments hyperscale versus AI natif/cloud, sont-ils de meme ampleur ?",
+   "what_was_asked": "Une comparaison quantitative de la magnitude des deux segments",
+   "what_was_given": "Une reponse uniquement qualitative sur les dynamiques de croissance future, sans chiffres ni ordre de grandeur",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Christopher Muse",
+   "question": "Impact de VeraRubin sur la part de marche de NVIDIA dans l'inference a horizon fin 2026/2027",
+   "what_was_asked": "Une estimation ou un ordre de grandeur de la part de marche dans l'inference",
+   "what_was_given": "Une affirmation generale que la part de marche croit rapidement, sans aucune quantification",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Timothy Arcuri",
+   "question": "Traction commerciale de LPX (produit a haut debit de tokens)",
+   "what_was_asked": "Des indications chiffrees sur le nombre de clients ou le volume de traction de LPX",
+   "what_was_given": "Une description qualitative du positionnement de LPX comme produit de niche, sans chiffres",
+   "severity": "low"
+  },
+  {
+   "analyst": "Joshua Buchalter",
+   "question": "La rampe de VeraRubin sera-t-elle aussi rapide que celle de GB300 ?",
+   "what_was_asked": "Une comparaison de la pente de la rampe de production entre VeraRubin et GB300",
+   "what_was_given": "Un aveu direct qu'il est trop tot pour se prononcer, avec confirmation du calendrier T3/T4",
+   "severity": "low"
+  }
+ ]
+}
