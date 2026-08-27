@@ -5,38 +5,52 @@
  "commitments": [],
  "dodges": [
   {
-   "analyst": "Benjamin Reitzes",
-   "question": "Confirmez-vous toujours l'objectif de marche data center de 3 000 a 4 000 milliards de dollars d'ici la fin de la decennie ?",
-   "what_was_asked": "Confirmation explicite du chiffre de TAM 3 a 4 mille milliards de dollars et si la croissance de NVIDIA restera superieure au capex des hyperscalers",
-   "what_was_given": "Une explication qualitative sur les deux segments de croissance sans reconfirmer ni infirmer le chiffre precis de 3 a 4 mille milliards",
+   "analyst": "Joseph Moore",
+   "question": "Quelles differences competitives entre les deux segments et sur le chiffre surprenant de CPU ?",
+   "what_was_asked": "Differences competitives concretes entre les segments hyperscale et AI native, et explication du chiffre CPU surprenant",
+   "what_was_given": "Une explication generale de la philosophie de segmentation sans comparaison competitive chiffree ni traitement direct du chiffre CPU",
    "severity": "medium"
   },
   {
-   "analyst": "Stacy Rasgon",
-   "question": "Quelle est la taille relative actuelle des segments hyperscale versus AI natif/cloud, sont-ils de meme ampleur ?",
-   "what_was_asked": "Une comparaison quantitative de la magnitude des deux segments",
-   "what_was_given": "Une reponse uniquement qualitative sur les dynamiques de croissance future, sans chiffres ni ordre de grandeur",
+   "analyst": "Ben Reitzes",
+   "question": "L'objectif de 3000 a 4000 milliards de dollars de TAM data center d'ici la fin de la decennie est-il toujours valable, et le CapEx hyperscaler va-t-il continuer a croitre fortement apres cette annee ?",
+   "what_was_asked": "Confirmation chiffree du TAM 3T a 4T dollars et de la trajectoire du CapEx hyperscaler au-dela de cette annee",
+   "what_was_given": "Une reponse qualitative sur la croissance attendue sans reconfirmer le chiffre precis ni donner de trajectoire chiffree post-annee en cours",
    "severity": "medium"
   },
   {
    "analyst": "Christopher Muse",
-   "question": "Impact de VeraRubin sur la part de marche de NVIDIA dans l'inference a horizon fin 2026/2027",
-   "what_was_asked": "Une estimation ou un ordre de grandeur de la part de marche dans l'inference",
-   "what_was_given": "Une affirmation generale que la part de marche croit rapidement, sans aucune quantification",
+   "question": "Comment VeraRubin va-t-il affecter la part de marche NVIDIA dans l'inference fin 2026 et 2027 ?",
+   "what_was_asked": "Une estimation chiffree ou quantifiee de la part de marche inference future",
+   "what_was_given": "Des affirmations qualitatives de gain de part de marche sans chiffres",
    "severity": "medium"
   },
   {
    "analyst": "Timothy Arcuri",
-   "question": "Traction commerciale de LPX (produit a haut debit de tokens)",
-   "what_was_asked": "Des indications chiffrees sur le nombre de clients ou le volume de traction de LPX",
-   "what_was_given": "Une description qualitative du positionnement de LPX comme produit de niche, sans chiffres",
-   "severity": "low"
+   "question": "Quelle traction pour LPX, notamment par rapport au marche de 20 pour cent des tokens a haut debit mentionne auparavant ?",
+   "what_was_asked": "Une quantification de la traction commerciale de LPX et confirmation du chiffre de 20 pour cent",
+   "what_was_given": "Une description qualitative du positionnement niche de LPX sans chiffres de traction ni confirmation du pourcentage",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Stacy Rasgon",
+   "question": "Quelle est la taille relative des neo clouds/AI native clouds par rapport au segment hyperscale ?",
+   "what_was_asked": "Une comparaison chiffree de la taille des deux segments",
+   "what_was_given": "Une confirmation vague que les deux segments vont croitre rapidement, sans donner de chiffres de taille relative",
+   "severity": "high"
+  },
+  {
+   "analyst": "Jim Schneider",
+   "question": "Le CPU Vera standalone sera-t-il la plus grande source d'upside au-dela du trillion de dollars de visibilite ?",
+   "what_was_asked": "Une hierarchisation chiffree des sources d'upside au-dela du trillion annonce a GTC",
+   "what_was_given": "Une reponse qualitative situant Vera comme deuxieme plus grande source d'upside, sans chiffres",
+   "severity": "medium"
   },
   {
    "analyst": "Joshua Buchalter",
-   "question": "La rampe de VeraRubin sera-t-elle aussi rapide que celle de GB300 ?",
-   "what_was_asked": "Une comparaison de la pente de la rampe de production entre VeraRubin et GB300",
-   "what_was_given": "Un aveu direct qu'il est trop tot pour se prononcer, avec confirmation du calendrier T3/T4",
+   "question": "Le ramp de VeraRubin sera-t-il aussi rapide que celui de GB300 ?",
+   "what_was_asked": "Une comparaison precise du rythme de ramp entre VeraRubin et GB300",
+   "what_was_given": "Une reconnaissance qu'il est trop tot pour dire, avec confirmation seulement du calendrier de lancement en Q3",
    "severity": "low"
   }
  ]

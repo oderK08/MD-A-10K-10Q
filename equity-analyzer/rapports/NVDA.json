@@ -6,8 +6,8 @@
  "date_resultats": null,
  "genere_le": "2026-08-27",
  "modele": "claude-sonnet-5",
- "verdict": "Plutot bullish. Le trimestre bat largement sa propre guidance de revenu, la direction releve dividende et rachats d'actions et guide un T2 en forte hausse sequentielle, mais elle revoit aussi nettement a la hausse la trajectoire de croissance des couts operationnels annuels, un point qui merite d'etre pese contre l'euphorie du reste du call.",
- "lecture": "## Verdict\nPlutot bullish. Le trimestre bat largement sa propre guidance de revenu, la direction releve dividende et rachats d'actions et guide un T2 en forte hausse sequentielle, mais elle revoit aussi nettement a la hausse la trajectoire de croissance des couts operationnels annuels, un point qui merite d'etre pese contre l'euphorie du reste du call.\n\n## Face aux attentes\nAucun consensus de BPA ne m'a ete fourni pour ce trimestre, je ne peux donc pas situer le resultat par rapport aux attentes de marche. Par rapport a sa propre guidance du trimestre precedent (78 milliards de dollars plus ou moins 2%), le revenu reel de 82 milliards depasse nettement la fourchette haute. La marge brute, elle, tombe exactement dans la fourchette annoncee (74,9% GAAP, 75% non-GAAP), ce n'est pas un depassement. La direction ne minimise rien : \"We delivered an exceptional quarter, with revenue, operating income, and free cash flow exceeding our prior records\", et insiste sur la regularite avec \"the fourteenth straight quarter of sequential growth.\"\n\n## Les declarations cles\nChangement le plus important : la croissance des depenses operationnelles annuelles passe de \"low 40s pourcent\" a \"somewhere in the upper forties on a year-over-year basis\", \"driven by higher R&D and acceleration in the usage of AI tools\". C'est une revision nette de l'intensite d'investissement, alors que la marge brute annuelle reste reconduite a l'identique (\"still expecting to be in the mid-seventies\").\n\nLe taux d'imposition annuel est resserre a 16-18%, la direction le comparant elle-meme a un \"prior expectation of 17% to 19%\" : attention, la base fournie pour le trimestre precedent indiquait une fourchette plus large de 7% a 19%, je ne peux donc pas reconcilier precisement l'ampleur du resserrement.\n\nGuidance T2 nouvelle : revenu attendu a 91 milliards de dollars plus ou moins 2%, marge brute reconduite (74,9%/75%, plus ou moins 50 points de base), opex GAAP/non-GAAP a 8,5/8,3 milliards.\n\nDeux annonces neuves sur le capital retourne aux actionnaires : le dividende trimestriel passe de 0,01 a 0,25 dollar par action, avec une correction en direct de Jensen Huang apres l'annonce erronee de Colette Kress (\"Colette meant to say we are increasing our quarterly dividend from $0.01 to $0.25\"). Une nouvelle autorisation de rachat de 80 milliards s'ajoute aux 39 milliards restants du plan existant.\n\nL'engagement total d'approvisionnement (inventaire et prepaids inclus) monte a \"$145 billion\", chiffre absent de la guidance precedente qui ne parlait que de visibilite jusqu'en 2027.\n\nNouveau moteur chiffre : le CPU Vera ouvre un \"brand new $200 billion TAM\" et la direction affirme avoir \"visibility to nearly $20 billion in total CPU revenue this year\", des chiffres absents du trimestre precedent.\n\nL'objectif de \"$1 trillion in Blackwell and Rubin revenue... from 2025 through calendar 2027\" est reitere, mais un analyste rappelle qu'il avait deja ete communique au GTC : je ne peux donc pas dire si c'est une information neuve pour le marche.\n\nLe revenu Chine H200 reste exclu de l'outlook, sans changement : \"we are not including any China data center compute revenue in our outlook.\"\n\n## A surveiller\nLa croissance des opex tiendra-t-elle dans la fourchette \"upper forties\" annoncee, et avec quel effet sur la marge operationnelle au prochain trimestre ? VeraRubin demarre-t-il bien en production au T3 comme annonce, et a quel rythme de ramp ? Les 20 milliards de revenu CPU Vera vises cette annee se materialis",
+ "verdict": "Plutot bullish : le trimestre bat largement la propre guidance de la direction, le guidage de revenu du T2 est releve a 91 milliards de dollars, et la politique de retour aux actionnaires change d'echelle (dividende multiplie par 25, nouveau rachat d'actions de 80 milliards). A nuancer : la direction releve aussi sa guidance de croissance des depenses operationnelles annuelles, un engagement de premier ordre qui merite d'etre surveille.",
+ "lecture": "## Verdict\n\nPlutot bullish : le trimestre bat largement la propre guidance de la direction, le guidage de revenu du T2 est releve a 91 milliards de dollars, et la politique de retour aux actionnaires change d'echelle (dividende multiplie par 25, nouveau rachat d'actions de 80 milliards). A nuancer : la direction releve aussi sa guidance de croissance des depenses operationnelles annuelles, un engagement de premier ordre qui merite d'etre surveille.\n\n## Face aux attentes\n\nAucun consensus de BPA ne m'a ete fourni pour ce trimestre : je ne peux pas situer ce call par rapport aux attentes de marche. Je peux en revanche comparer le realise a la propre guidance donnee au trimestre precedent (78 milliards plus ou moins 2%, soit 76,4 a 79,6 milliards) : le realise ressort a \"$82 billion\", au dessus de la fourchette haute. La direction met ce depassement en avant sans ambiguite : \"We delivered an exceptional quarter, with revenue, operating income, and free cash flow exceeding our prior records\", et souligne la regularite de la trajectoire : \"the fourteenth straight quarter of sequential growth\". La marge brute, elle, atterrit pile dans la fourchette guidee (74,9% GAAP, 75% non-GAAP), un point tenu plutot que depasse.\n\n## Les declarations cles\n\nCe qui change : la croissance des depenses operationnelles pour l'exercice complet est revisee a la hausse, de \"low 40s pourcent\" annonce le trimestre precedent a \"somewhere in the upper forties on a year-over-year basis, driven by higher R&D and acceleration in the usage of AI tools\". C'est un engagement d'investissement plus lourd que prevu, a suivre pour son effet sur la marge operationnelle.\n\nLe taux d'imposition annuel est lui revise a la baisse : \"we expect GAAP and non-GAAP tax rates to be between 16-18%... This is lower than our prior expectation of 17% to 19%\", un gain net sur le resultat.\n\nLe guidage de revenu du T2 grimpe a \"$91 billion, plus or minus 2%\", soit une hausse sequentielle attendue d'environ 11% apres un T1 deja record, signe qu'aucune deceleration n'est anticipee.\n\nNouveaute non presente dans les engagements precedents : le dividende trimestriel passe de 0,01 a 0,25 dollar par action (Jensen corrige en direct le chiffre de Colette : \"Colette meant to say we are increasing our quarterly dividend from $0.01 to $0.25\"), accompagne d'une nouvelle autorisation de rachat de \"$80 billion... in addition to the $39 billion remaining\", avec l'objectif de \"return roughly 50% of free cash flow to shareholders this year\". C'est un changement d'echelle du capital retourne aux actionnaires.\n\nAutre nouveaute : un TAM CPU Vera de 200 milliards de dollars, avec \"visibility to nearly $20 billion in total CPU revenue this year\", un chiffre absent des engagements du trimestre precedent.\n\nCe qui est reconduit ou precise : la production VeraRubin, annoncee pour le second semestre, est desormais datee : \"we are on track to commence production shipments of VeraRubin in the second half of this year starting in Q3\". L'opportunite Blackwell/Rubin change de perimetre temporel, passant d'un cadre \"plus de 500 milliards en 2026\" a \"$1 trillion in Blackwell and Rubin revenue we foresee from 2025 through calendar 2027\" : les periodes ne sont pas comparables terme a terme, donc je ne peux pas chiffrer l'ampleur exacte de la revision. Le revenu Chine reste exclu du guidage : \"we are not including any China data center compute revenue in our outlook\", position inchangee.\n\n## A surveiller\n\nLa croissance des depenses operationnelles en \"upper forties\" se traduit-elle par une compression de la marge operationnelle au prochain trimestre ? Le ramp VeraRubin demarre-t-il en Q3 au rythme annonce, sachant que la direction reconnait \"it's a little early to say exactly\" sur la pente comparee a GB300 ? Les 20 milliards de visibilite CPU Vera se convertissent-ils en revenu reconnu ? Une licence H200 approuvee genere-t-elle enfin du revenu Chine, ou l'incertitude persiste-t-elle ?",
  "attentes": {
   "disponible": false,
   "raison": "aucune ligne de consensus pour le trimestre du call (repère : trimestre clos le 2026-07-26, décalage +1)"
@@ -15,106 +15,120 @@
  "qa": {
   "esquives": [
    {
-    "analyst": "Benjamin Reitzes",
-    "question": "Confirmez-vous toujours l'objectif de marche data center de 3 000 a 4 000 milliards de dollars d'ici la fin de la decennie ?",
-    "what_was_asked": "Confirmation explicite du chiffre de TAM 3 a 4 mille milliards de dollars et si la croissance de NVIDIA restera superieure au capex des hyperscalers",
-    "what_was_given": "Une explication qualitative sur les deux segments de croissance sans reconfirmer ni infirmer le chiffre precis de 3 a 4 mille milliards",
+    "analyst": "Joseph Moore",
+    "question": "Quelles differences competitives entre les deux segments et sur le chiffre surprenant de CPU ?",
+    "what_was_asked": "Differences competitives concretes entre les segments hyperscale et AI native, et explication du chiffre CPU surprenant",
+    "what_was_given": "Une explication generale de la philosophie de segmentation sans comparaison competitive chiffree ni traitement direct du chiffre CPU",
     "severity": "medium"
    },
    {
-    "analyst": "Stacy Rasgon",
-    "question": "Quelle est la taille relative actuelle des segments hyperscale versus AI natif/cloud, sont-ils de meme ampleur ?",
-    "what_was_asked": "Une comparaison quantitative de la magnitude des deux segments",
-    "what_was_given": "Une reponse uniquement qualitative sur les dynamiques de croissance future, sans chiffres ni ordre de grandeur",
+    "analyst": "Ben Reitzes",
+    "question": "L'objectif de 3000 a 4000 milliards de dollars de TAM data center d'ici la fin de la decennie est-il toujours valable, et le CapEx hyperscaler va-t-il continuer a croitre fortement apres cette annee ?",
+    "what_was_asked": "Confirmation chiffree du TAM 3T a 4T dollars et de la trajectoire du CapEx hyperscaler au-dela de cette annee",
+    "what_was_given": "Une reponse qualitative sur la croissance attendue sans reconfirmer le chiffre precis ni donner de trajectoire chiffree post-annee en cours",
     "severity": "medium"
    },
    {
     "analyst": "Christopher Muse",
-    "question": "Impact de VeraRubin sur la part de marche de NVIDIA dans l'inference a horizon fin 2026/2027",
-    "what_was_asked": "Une estimation ou un ordre de grandeur de la part de marche dans l'inference",
-    "what_was_given": "Une affirmation generale que la part de marche croit rapidement, sans aucune quantification",
+    "question": "Comment VeraRubin va-t-il affecter la part de marche NVIDIA dans l'inference fin 2026 et 2027 ?",
+    "what_was_asked": "Une estimation chiffree ou quantifiee de la part de marche inference future",
+    "what_was_given": "Des affirmations qualitatives de gain de part de marche sans chiffres",
     "severity": "medium"
    },
    {
     "analyst": "Timothy Arcuri",
-    "question": "Traction commerciale de LPX (produit a haut debit de tokens)",
-    "what_was_asked": "Des indications chiffrees sur le nombre de clients ou le volume de traction de LPX",
-    "what_was_given": "Une description qualitative du positionnement de LPX comme produit de niche, sans chiffres",
-    "severity": "low"
+    "question": "Quelle traction pour LPX, notamment par rapport au marche de 20 pour cent des tokens a haut debit mentionne auparavant ?",
+    "what_was_asked": "Une quantification de la traction commerciale de LPX et confirmation du chiffre de 20 pour cent",
+    "what_was_given": "Une description qualitative du positionnement niche de LPX sans chiffres de traction ni confirmation du pourcentage",
+    "severity": "medium"
+   },
+   {
+    "analyst": "Stacy Rasgon",
+    "question": "Quelle est la taille relative des neo clouds/AI native clouds par rapport au segment hyperscale ?",
+    "what_was_asked": "Une comparaison chiffree de la taille des deux segments",
+    "what_was_given": "Une confirmation vague que les deux segments vont croitre rapidement, sans donner de chiffres de taille relative",
+    "severity": "high"
+   },
+   {
+    "analyst": "Jim Schneider",
+    "question": "Le CPU Vera standalone sera-t-il la plus grande source d'upside au-dela du trillion de dollars de visibilite ?",
+    "what_was_asked": "Une hierarchisation chiffree des sources d'upside au-dela du trillion annonce a GTC",
+    "what_was_given": "Une reponse qualitative situant Vera comme deuxieme plus grande source d'upside, sans chiffres",
+    "severity": "medium"
    },
    {
     "analyst": "Joshua Buchalter",
-    "question": "La rampe de VeraRubin sera-t-elle aussi rapide que celle de GB300 ?",
-    "what_was_asked": "Une comparaison de la pente de la rampe de production entre VeraRubin et GB300",
-    "what_was_given": "Un aveu direct qu'il est trop tot pour se prononcer, avec confirmation du calendrier T3/T4",
+    "question": "Le ramp de VeraRubin sera-t-il aussi rapide que celui de GB300 ?",
+    "what_was_asked": "Une comparaison precise du rythme de ramp entre VeraRubin et GB300",
+    "what_was_given": "Une reconnaissance qu'il est trop tot pour dire, avec confirmation seulement du calendrier de lancement en Q3",
     "severity": "low"
    }
   ],
-  "esquives_graves": 0,
+  "esquives_graves": 1,
   "concessions": [
    {
-    "topic": "Contraintes d'approvisionnement",
-    "admission": "NVIDIA anticipe une contrainte d'offre sur toute la duree de vie de VeraRubin",
-    "verbatim": "I expect we will be supply-constrained throughout the life of VeraRubin"
+    "topic": "LPX",
+    "admission": "Le marche adressable pour LPX est restreint et le nombre de clients limite",
+    "verbatim": "The number of customers is not large"
    },
    {
-    "topic": "Portee limitee de LPX",
-    "admission": "LPX reste un produit de niche avec un nombre de clients restreint",
-    "verbatim": "LPX will be a niche product for some time"
-   },
-   {
-    "topic": "Incertitude sur le calendrier de rampe VeraRubin",
-    "admission": "La direction ne peut pas encore preciser la vitesse de la rampe de production",
+    "topic": "Rythme de ramp VeraRubin",
+    "admission": "L'entreprise ne peut pas encore preciser le rythme exact de ramp de VeraRubin",
     "verbatim": "It's a little early to say exactly"
+   },
+   {
+    "topic": "Contrainte d'approvisionnement",
+    "admission": "NVIDIA anticipe une contrainte d'offre persistante sur VeraRubin",
+    "verbatim": "I expect we will be supply-constrained throughout the life of VeraRubin"
    }
   ],
   "signaux_prospectifs": [
    {
-    "topic": "TAM Vera CPU",
-    "signal": "Vera ouvre un nouveau marche adressable de 200 milliards de dollars, non inclus dans le chiffre de visibilite de 1 000 milliards deja communique",
-    "buried_in": "Cloture du discours de Jensen Huang sur les cinq points cles",
-    "direction": "positive"
-   },
-   {
-    "topic": "Vera CPU standalone comme moteur de croissance",
-    "signal": "Vera standalone est identifie comme la deuxieme plus grande source de hausse au-dela du trillion de dollars deja visible",
-    "buried_in": "Reponse a Jim Schneider sur les sources d'upside",
-    "direction": "positive"
-   },
-   {
-    "topic": "Croissance relative des segments",
-    "signal": "Le segment AI natif/entreprise/souverain devrait croitre plus rapidement que le segment hyperscale a terme",
-    "buried_in": "Reponse a Stacy Rasgon sur la segmentation",
-    "direction": "positive"
-   },
-   {
-    "topic": "Partenariat Anthropic",
-    "signal": "La capacite de calcul deployee pour Anthropic sera significative cette annee et l'annee suivante",
-    "buried_in": "Reponse a Christopher Muse sur la part de marche en inference",
+    "topic": "Nouveau TAM Vera",
+    "signal": "Vera ouvre un marche de 200 milliards de dollars jamais adresse auparavant par NVIDIA",
+    "buried_in": "Remarques de cloture de Jensen Huang",
     "direction": "positive"
    },
    {
     "topic": "Calendrier VeraRubin",
-    "signal": "Le lancement commence au T3 avec montee en puissance au T4 et poursuite l'annee suivante, bons de commande deja en place",
-    "buried_in": "Reponse de Colette Kress a Joshua Buchalter",
+    "signal": "Debut du ramp de VeraRubin en Q3, poursuite en Q4 et l'annee suivante",
+    "buried_in": "Reponse de Colette Kress a la question sur le rythme de ramp",
+    "direction": "positive"
+   },
+   {
+    "topic": "Croissance relative des segments",
+    "signal": "Le segment AI native/enterprise/sovereign devrait croitre plus vite que le hyperscale a terme",
+    "buried_in": "Reponse a Stacy Rasgon sur la segmentation",
+    "direction": "positive"
+   },
+   {
+    "topic": "Vera CPU comme deuxieme moteur de croissance",
+    "signal": "Le CPU Vera standalone est presente comme la deuxieme plus grande source d'upside au-dela du trillion de visibilite deja communique",
+    "buried_in": "Reponse a Jim Schneider sur les sources d'upside",
+    "direction": "positive"
+   },
+   {
+    "topic": "Dividende",
+    "signal": "Augmentation du dividende trimestriel de 0,01 a 0,25 dollar, mentionnee de facon incidente",
+    "buried_in": "Introduction de la reponse de Jensen Huang a Joseph Moore",
     "direction": "positive"
    }
   ],
   "themes_recurrents": [
    {
-    "theme": "Role et potentiel du CPU Vera",
+    "theme": "Segmentation entre hyperscale et AI native/enterprise/sovereign",
     "analyst_count": 3,
-    "summary": "Joseph Moore, Vivek Arya et Jim Schneider ont tous interroge la direction sur le role du CPU Vera, son TAM et sa contribution incrementale au chiffre d'affaires au-dela des GPU."
+    "summary": "Plusieurs analystes (Moore, Reitzes, Rasgon) cherchent a comprendre la logique et la taille relative des nouveaux segments presentes par la direction."
    },
    {
-    "theme": "Nouvelle segmentation hyperscale versus AI natif/entreprise",
-    "analyst_count": 2,
-    "summary": "Joseph Moore et Stacy Rasgon ont demande des precisions sur la logique et la taille relative de la nouvelle segmentation presentee par la direction."
+    "theme": "CPU Vera et informatique agentique",
+    "analyst_count": 3,
+    "summary": "Les analystes (Arya, Schneider, Arcuri) interrogent la direction sur le role, la taille et la traction du CPU Vera et des produits associes comme LPX dans la nouvelle strategie agentique."
    },
    {
-    "theme": "Produits de niche (LPX) et leur place dans le portefeuille",
+    "theme": "Rythme de ramp et gains de part de marche de VeraRubin",
     "analyst_count": 2,
-    "summary": "Timothy Arcuri et Jim Schneider ont interroge sur la contribution de LPX au chiffre d'affaires futur, la direction confirmant un positionnement de niche."
+    "summary": "Muse et Buchalter s'interrogent sur la rapidite du deploiement de VeraRubin et son impact sur la part de marche dans l'inference."
    }
   ],
   "chiffres_a_verifier": []

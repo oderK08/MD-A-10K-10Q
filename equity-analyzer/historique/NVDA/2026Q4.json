@@ -4,88 +4,76 @@
  "model": "claude-sonnet-5",
  "commitments": [
   {
-   "metric": "revenu",
+   "metric": "revenu total",
    "value": "78 milliards de dollars, plus ou moins 2%",
    "period": "T1 exercice 2027",
-   "verbatim": "revenue is expected to be $78 billion, plus or minus 2%"
+   "verbatim": "So revenue is expected to be $78 billion, plus or minus 2%."
   },
   {
    "metric": "marge brute GAAP",
-   "value": "74.9%, plus ou moins 50 points de base",
+   "value": "74,9%, plus ou moins 50 points de base",
    "period": "T1 exercice 2027",
-   "verbatim": "GAAP and non-GAAP gross margins are expected to be 74.9% and 75%, respectively, plus or minus 50 basis points"
+   "verbatim": "GAAP and non-GAAP gross margins are expected to be 74.9% and 75%, respectively, plus or minus 50 basis points."
   },
   {
    "metric": "marge brute non-GAAP",
    "value": "75%, plus ou moins 50 points de base",
    "period": "T1 exercice 2027",
-   "verbatim": "GAAP and non-GAAP gross margins are expected to be 74.9% and 75%, respectively, plus or minus 50 basis points"
+   "verbatim": "GAAP and non-GAAP gross margins are expected to be 74.9% and 75%, respectively, plus or minus 50 basis points."
   },
   {
    "metric": "marge brute",
-   "value": "mid-70s (autour de 75%)",
-   "period": "exercice 2027",
-   "verbatim": "For the full year, we continue to see gross margins in the mid-70s"
+   "value": "mid-70s (autour de 70-75%)",
+   "period": "exercice 2027 complet",
+   "verbatim": "For the full year, we continue to see gross margins in the mid-70s."
   },
   {
    "metric": "depenses operationnelles GAAP",
    "value": "environ 7,7 milliards de dollars",
    "period": "T1 exercice 2027",
-   "verbatim": "GAAP and non-GAAP operating expenses are expected to be approximately $7.7 billion and $7.5 billion, respectively"
+   "verbatim": "GAAP and non-GAAP operating expenses are expected to be approximately $7.7 billion and $7.5 billion, respectively."
   },
   {
    "metric": "depenses operationnelles non-GAAP",
-   "value": "environ 7,5 milliards de dollars, incluant 1,9 milliard de stock-based compensation",
+   "value": "environ 7,5 milliards de dollars, incluant 1,9 milliard de charge de remuneration en actions",
    "period": "T1 exercice 2027",
    "verbatim": "including stock-based compensation expense of $1.9 billion"
   },
   {
    "metric": "croissance des depenses operationnelles non-GAAP",
-   "value": "croissance dans les low 40s pourcent en glissement annuel",
-   "period": "exercice 2027",
+   "value": "low 40s pourcent en glissement annuel",
+   "period": "exercice 2027 complet",
    "verbatim": "we expect non-GAAP operating expenses to grow in the low 40s on a year-over-year basis"
   },
   {
    "metric": "taux d'imposition GAAP et non-GAAP",
    "value": "entre 7% et 19%",
-   "period": "exercice 2027",
+   "period": "exercice 2027 complet",
    "verbatim": "we expect GAAP and non-GAAP tax rates to be between 7% and 19%"
   },
   {
-   "metric": "croissance sequentielle du revenu",
-   "value": "croissance sequentielle attendue tout au long de l'annee, depassant l'opportunite de 500 milliards de dollars Blackwell et Rubin",
+   "metric": "revenu data center opportunite Blackwell et Rubin",
+   "value": "depassement de 500 milliards de dollars",
    "period": "annee civile 2026",
    "verbatim": "we expect sequential revenue growth throughout calendar 2026, exceeding what was included in the $500 billion Blackwell and Rubin revenue opportunity"
   },
   {
-   "metric": "visibilite des stocks et engagements d'approvisionnement",
+   "metric": "visibilite des commandes et de l'approvisionnement",
    "value": "expeditions s'etendant jusqu'en 2027",
-   "period": "annee civile 2027",
-   "verbatim": "we believe we have inventory and supply commitments in place to address future demand, including shipments extending into calendar 2027"
+   "period": "calendrier 2027",
+   "verbatim": "We believe we have inventory and supply commitments in place to address future demand, including shipments extending into calendar 2027."
   },
   {
-   "metric": "production Vera Rubin",
-   "value": "debut de production au second semestre",
-   "period": "second semestre annee civile 2026",
-   "verbatim": "we remain on track to commence production shipments in the second half of the year"
-  },
-  {
-   "metric": "budget R&D annuel",
-   "value": "approchant 20 milliards de dollars",
-   "period": "non precise",
-   "verbatim": "fueled by an annual R&D budget approaching $20 billion"
-  },
-  {
-   "metric": "opportunite sovereign AI",
-   "value": "croissance au moins en ligne avec le marche des infrastructures IA",
+   "metric": "opportunite souveraine AI",
+   "value": "croissance au moins alignee sur le marche des infrastructures AI",
    "period": "long terme",
    "verbatim": "we expect our sovereign opportunity to grow at least in line with the AI infrastructure market"
   },
   {
-   "metric": "investissement dans Anthropic",
-   "value": "10 milliards de dollars",
-   "period": "non precise",
-   "verbatim": "we announced a partnership with Anthropic, and a $10 billion investment in their company"
+   "metric": "production Vera Rubin",
+   "value": "debut de la production",
+   "period": "second semestre de l'annee",
+   "verbatim": "we remain on track to commence production shipments in the second half of the year"
   }
  ],
  "dodges": []
