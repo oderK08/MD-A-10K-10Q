@@ -5,53 +5,32 @@
  "commitments": [],
  "dodges": [
   {
-   "analyst": "Joseph Moore",
-   "question": "Quelles differences competitives entre les deux segments et sur le chiffre surprenant de CPU ?",
-   "what_was_asked": "Differences competitives concretes entre les segments hyperscale et AI native, et explication du chiffre CPU surprenant",
-   "what_was_given": "Une explication generale de la philosophie de segmentation sans comparaison competitive chiffree ni traitement direct du chiffre CPU",
-   "severity": "medium"
-  },
-  {
-   "analyst": "Ben Reitzes",
-   "question": "L'objectif de 3000 a 4000 milliards de dollars de TAM data center d'ici la fin de la decennie est-il toujours valable, et le CapEx hyperscaler va-t-il continuer a croitre fortement apres cette annee ?",
-   "what_was_asked": "Confirmation chiffree du TAM 3T a 4T dollars et de la trajectoire du CapEx hyperscaler au-dela de cette annee",
-   "what_was_given": "Une reponse qualitative sur la croissance attendue sans reconfirmer le chiffre precis ni donner de trajectoire chiffree post-annee en cours",
-   "severity": "medium"
-  },
-  {
-   "analyst": "Christopher Muse",
-   "question": "Comment VeraRubin va-t-il affecter la part de marche NVIDIA dans l'inference fin 2026 et 2027 ?",
-   "what_was_asked": "Une estimation chiffree ou quantifiee de la part de marche inference future",
-   "what_was_given": "Des affirmations qualitatives de gain de part de marche sans chiffres",
-   "severity": "medium"
-  },
-  {
-   "analyst": "Timothy Arcuri",
-   "question": "Quelle traction pour LPX, notamment par rapport au marche de 20 pour cent des tokens a haut debit mentionne auparavant ?",
-   "what_was_asked": "Une quantification de la traction commerciale de LPX et confirmation du chiffre de 20 pour cent",
-   "what_was_given": "Une description qualitative du positionnement niche de LPX sans chiffres de traction ni confirmation du pourcentage",
-   "severity": "medium"
-  },
-  {
    "analyst": "Stacy Rasgon",
-   "question": "Quelle est la taille relative des neo clouds/AI native clouds par rapport au segment hyperscale ?",
-   "what_was_asked": "Une comparaison chiffree de la taille des deux segments",
-   "what_was_given": "Une confirmation vague que les deux segments vont croitre rapidement, sans donner de chiffres de taille relative",
+   "question": "Quelle est la taille relative des segments hyperscale et AI native/enterprise, et lequel croit plus vite ?",
+   "what_was_asked": "La magnitude comparee (en chiffres) des deux segments de data center et leur rythme de croissance respectif",
+   "what_was_given": "Une reponse qualitative disant que les deux segments vont croitre tres vite et que le second devrait croitre plus vite avec le temps, sans aucune donnee chiffree",
    "severity": "high"
-  },
-  {
-   "analyst": "Jim Schneider",
-   "question": "Le CPU Vera standalone sera-t-il la plus grande source d'upside au-dela du trillion de dollars de visibilite ?",
-   "what_was_asked": "Une hierarchisation chiffree des sources d'upside au-dela du trillion annonce a GTC",
-   "what_was_given": "Une reponse qualitative situant Vera comme deuxieme plus grande source d'upside, sans chiffres",
-   "severity": "medium"
   },
   {
    "analyst": "Joshua Buchalter",
    "question": "Le ramp de VeraRubin sera-t-il aussi rapide que celui de GB300 ?",
-   "what_was_asked": "Une comparaison precise du rythme de ramp entre VeraRubin et GB300",
-   "what_was_given": "Une reconnaissance qu'il est trop tot pour dire, avec confirmation seulement du calendrier de lancement en Q3",
-   "severity": "low"
+   "what_was_asked": "Une comparaison precise du rythme de deploiement entre VeraRubin et GB300",
+   "what_was_given": "Colette Kress a indique qu'il etait trop tot pour dire lequel serait plus rapide, en renvoyant au calendrier Q3/Q4",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Jim Schneider",
+   "question": "Le CPU Vera standalone sera-t-il la plus grande source d'upside au-dela du trillion de dollars deja visible ?",
+   "what_was_asked": "Une quantification ou un classement precis des sources d'upside (Vera, LPX, part de marche frontier)",
+   "what_was_given": "Jensen a dit que Vera serait la deuxieme plus grande source d'upside, sans aucun chiffre",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Joseph Moore",
+   "question": "Quelles sont les differences competitives entre les deux nouveaux segments et comment se repartit le CPU entre eux ?",
+   "what_was_asked": "Une analyse comparative de la position competitive de NVIDIA dans chacun des deux segments et la repartition du CPU",
+   "what_was_given": "Une longue explication de la philosophie de segmentation sans repondre directement a la question competitive ni a la repartition CPU",
+   "severity": "medium"
   }
  ]
 }
