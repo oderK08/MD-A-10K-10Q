@@ -5,31 +5,38 @@
  "commitments": [],
  "dodges": [
   {
+   "analyst": "Joseph Moore",
+   "question": "Differences competitives entre les deux segments et explication du chiffre CPU surprenant",
+   "what_was_asked": "Les differences competitives specifiques entre les deux segments et une explication du chiffre CPU jugee surprenant",
+   "what_was_given": "Une longue explication de la philosophie de segmentation sans aborder les differences competitives ni le chiffre CPU mentionne",
+   "severity": "high"
+  },
+  {
+   "analyst": "Christopher Muse",
+   "question": "Impact de VeraRubin sur la part de marche dans l'inference en 2026 2027",
+   "what_was_asked": "Une estimation chiffree de la part de marche dans l'inference a l'horizon 2026 2027",
+   "what_was_given": "Une affirmation qualitative de gain de part de marche sans chiffre precis",
+   "severity": "medium"
+  },
+  {
    "analyst": "Stacy Rasgon",
-   "question": "Quelle est la taille relative des segments hyperscale et AI native/enterprise, et lequel croit plus vite ?",
-   "what_was_asked": "La magnitude comparee (en chiffres) des deux segments de data center et leur rythme de croissance respectif",
-   "what_was_given": "Une reponse qualitative disant que les deux segments vont croitre tres vite et que le second devrait croitre plus vite avec le temps, sans aucune donnee chiffree",
+   "question": "Magnitude relative des segments hyperscale et AI native cloud",
+   "what_was_asked": "L'ampleur comparee, en chiffres ou en proportion, des deux segments",
+   "what_was_given": "Une description qualitative de la croissance future sans quantification des tailles actuelles",
    "severity": "high"
   },
   {
    "analyst": "Joshua Buchalter",
-   "question": "Le ramp de VeraRubin sera-t-il aussi rapide que celui de GB300 ?",
-   "what_was_asked": "Une comparaison precise du rythme de deploiement entre VeraRubin et GB300",
-   "what_was_given": "Colette Kress a indique qu'il etait trop tot pour dire lequel serait plus rapide, en renvoyant au calendrier Q3/Q4",
-   "severity": "medium"
+   "question": "Comparaison de la pente de ramp de VeraRubin avec celle de GB300",
+   "what_was_asked": "Si la pente de montee en puissance de VeraRubin serait similaire ou plus graduelle que celle de GB300",
+   "what_was_given": "Une admission qu'il est trop tot pour se prononcer, sans comparaison chiffree",
+   "severity": "low"
   },
   {
-   "analyst": "Jim Schneider",
-   "question": "Le CPU Vera standalone sera-t-il la plus grande source d'upside au-dela du trillion de dollars deja visible ?",
-   "what_was_asked": "Une quantification ou un classement precis des sources d'upside (Vera, LPX, part de marche frontier)",
-   "what_was_given": "Jensen a dit que Vera serait la deuxieme plus grande source d'upside, sans aucun chiffre",
-   "severity": "medium"
-  },
-  {
-   "analyst": "Joseph Moore",
-   "question": "Quelles sont les differences competitives entre les deux nouveaux segments et comment se repartit le CPU entre eux ?",
-   "what_was_asked": "Une analyse comparative de la position competitive de NVIDIA dans chacun des deux segments et la repartition du CPU",
-   "what_was_given": "Une longue explication de la philosophie de segmentation sans repondre directement a la question competitive ni a la repartition CPU",
+   "analyst": "Benjamin Reitzes",
+   "question": "Confirmation du TAM data center de 3000 a 4000 milliards de dollars d'ici la fin de la decennie",
+   "what_was_asked": "Une reaffirmation explicite du chiffre de TAM annonce precedemment",
+   "what_was_given": "Une explication conceptuelle de pourquoi NVIDIA devrait croitre plus vite que le capex des hyperscalers, sans reprendre le chiffre precis",
    "severity": "medium"
   }
  ]
