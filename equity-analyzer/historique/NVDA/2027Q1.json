@@ -5,39 +5,46 @@
  "commitments": [],
  "dodges": [
   {
-   "analyst": "Joseph Moore",
-   "question": "Differences competitives entre les deux segments et explication du chiffre CPU surprenant",
-   "what_was_asked": "Les differences competitives specifiques entre les deux segments et une explication du chiffre CPU jugee surprenant",
-   "what_was_given": "Une longue explication de la philosophie de segmentation sans aborder les differences competitives ni le chiffre CPU mentionne",
+   "analyst": "Christopher Muse",
+   "question": "Impact de VeraRubin sur la part de marche de NVIDIA dans l'inference fin 2026/2027",
+   "what_was_asked": "Une estimation chiffree ou directionnelle precise de la part de marche inference future",
+   "what_was_given": "Affirmations qualitatives de gain de part de marche sans aucun chiffre",
    "severity": "high"
   },
   {
-   "analyst": "Christopher Muse",
-   "question": "Impact de VeraRubin sur la part de marche dans l'inference en 2026 2027",
-   "what_was_asked": "Une estimation chiffree de la part de marche dans l'inference a l'horizon 2026 2027",
-   "what_was_given": "Une affirmation qualitative de gain de part de marche sans chiffre precis",
-   "severity": "medium"
-  },
-  {
    "analyst": "Stacy Rasgon",
-   "question": "Magnitude relative des segments hyperscale et AI native cloud",
-   "what_was_asked": "L'ampleur comparee, en chiffres ou en proportion, des deux segments",
-   "what_was_given": "Une description qualitative de la croissance future sans quantification des tailles actuelles",
+   "question": "Magnitude relative des deux segments (hyperscale vs AI natif/entreprise/souverain)",
+   "what_was_asked": "La taille comparee en dollars ou en pourcentage des deux segments",
+   "what_was_given": "Description qualitative du second segment comme representant une grande part du PIB mondial, sans chiffre",
    "severity": "high"
   },
   {
    "analyst": "Joshua Buchalter",
-   "question": "Comparaison de la pente de ramp de VeraRubin avec celle de GB300",
-   "what_was_asked": "Si la pente de montee en puissance de VeraRubin serait similaire ou plus graduelle que celle de GB300",
-   "what_was_given": "Une admission qu'il est trop tot pour se prononcer, sans comparaison chiffree",
-   "severity": "low"
+   "question": "Pente de la montee en puissance de VeraRubin comparee a GB300",
+   "what_was_asked": "Une comparaison chiffree ou une trajectoire precise du ramp VeraRubin vs GB300",
+   "what_was_given": "Reconnaissance explicite qu'il est trop tot pour dire, avec confirmation d'un demarrage au T3",
+   "severity": "medium"
+  },
+  {
+   "analyst": "Timothy Arcuri",
+   "question": "Traction de LPX et confirmation du chiffre de 20% du marche en synthese de tokens a haut debit",
+   "what_was_asked": "Confirmation ou infirmation du pourcentage de 20% et une mesure de traction",
+   "what_was_given": "Description qualitative du cas d'usage niche de LPX sans chiffre de traction ni confirmation du pourcentage",
+   "severity": "medium"
+  },
+  {
+   "analyst": "James Schneider",
+   "question": "Ampleur du potentiel additionnel au-dela du trillion de dollars deja communique (Vera, LPX, Rubin CPX)",
+   "what_was_asked": "Une quantification de l'upside additionnel par composant",
+   "what_was_given": "Un classement qualitatif (Vera en deuxieme position, LPX plus niche) sans chiffres",
+   "severity": "medium"
   },
   {
    "analyst": "Benjamin Reitzes",
-   "question": "Confirmation du TAM data center de 3000 a 4000 milliards de dollars d'ici la fin de la decennie",
-   "what_was_asked": "Une reaffirmation explicite du chiffre de TAM annonce precedemment",
-   "what_was_given": "Une explication conceptuelle de pourquoi NVIDIA devrait croitre plus vite que le capex des hyperscalers, sans reprendre le chiffre precis",
-   "severity": "medium"
+   "question": "Confirmation de l'objectif de 3 000 a 4 000 milliards de dollars de data center d'ici la fin de la decennie",
+   "what_was_asked": "Une reaffirmation explicite de cette fourchette chiffree",
+   "what_was_given": "Reponse generale sur le fait de croitre plus vite que le capex des hyperscalers, sans reprendre le chiffre",
+   "severity": "low"
   }
  ]
 }
